@@ -70,9 +70,7 @@
           ```
           docker build -t onnxruntime-cpu --build-arg DEVICE=CPU_FP32 --network host .
           ```
-     ```
-     docker build -t onnxruntime-cpu --build-arg DEVICE=CPU_FP32 --network host .
-     ```
+    
    - Pull the official image from DockerHub.
      ```
      # Will be available with next release
