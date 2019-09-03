@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/ usr / bin / env python3
 
 """
   Copyright(C) 2019 Intel Corporation
@@ -88,7 +88,7 @@ elif '2019.R1' in version:
     from mo.middle.pattern_match import for_graph_and_each_sub_graph_recursively
     from mo.graph.graph import check_empty_graph, Node, Graph
 else:
-    #No additional imports needed for 2019.R2
+#No additional imports needed for 2019.R2
     from extensions.middle.quantize_fuses import MarkNodesToFuseUpToFakeQuantize, FakeQuantizeFuse
     from extensions.back.CreateConstNodes import CreateConstNodesReplacement
     from extensions.back.RemoveRedundantReshapes import RemoveRedundantReshapes
@@ -119,20 +119,17 @@ infer.is_fully_defined_shape = is_fully_defined_shape
 def prepare_emit_ir(graph: nx.MultiDiGraph, data_type: str, output_dir: str, output_model_name: str,
                     mean_data: [list, None] = None, input_names: list = [], meta_info: dict = dict()):
 
-    print('entered prepare_emit_ir')
     for sub_graph in [graph] + collect_sub_graphs(graph):
         create_const_nodes(
             sub_graph, start_data_nodes_are_not_allowed=(sub_graph == graph))
-        print('entering determined_sort')
         op_order, data_order = determined_sort(get_sorted_outputs(sub_graph))
         mapping = {v: u for u, v in enumerate(op_order)}
-        mapping.update({v: u for u, v in enumerate(
+        mapping.update({
+v: u for u, v in enumerate(
             data_order, start=len(sub_graph))})
         relabel_nodes_inplace_safe(sub_graph, mapping)
         port_renumber(sub_graph)
         convert_data_type.convert(sub_graph, data_type)
-    print('processed all subgraphs')
-
     tensor_names.propagate_op_name_to_tensor(graph)
     weights = np.array([])
     bin_file = os.path.join(output_dir, '{}.bin'.format(output_model_name))
@@ -140,14 +137,12 @@ def prepare_emit_ir(graph: nx.MultiDiGraph, data_type: str, output_dir: str, out
         weights = serialize_constants(weights, graph, data_type=np.float16)
     elif(data_type == "FP32"):
         weights = serialize_constants(weights, graph, data_type=np.float32)
-    print('serialized_constants')
 
     mean_offset = None
     mean_size = None
     if mean_data:
         mean_offset, mean_size = serialize_mean_image(
             bin_file, mean_data=mean_data)
-    print('entering generate_ie_ir')
     xml_string = generate_ie_ir(graph=graph,
                                 file_name=os.path.join(
                                     output_dir, '{}.xml'.format(output_model_name)),
@@ -161,7 +156,6 @@ def prepare_emit_ir(graph: nx.MultiDiGraph, data_type: str, output_dir: str, out
 
 if '2019' in version:
     def graph_clean_up(graph: Graph, undead_node_types: list = None):
-        print('entered graph_clean_up')
         if undead_node_types is None:
             undead_node_types = []
 
@@ -172,11 +166,9 @@ if '2019' in version:
         mark_undead_nodes(graph, undead_node_types)
         mark_const_producer_nodes(graph)
         eliminate_dead_nodes(graph)
-        # Add Const op for constant data nodes
+#Add Const op for constant data nodes
         add_constant_operations(graph)
         shape_inference(graph)
-        print('exited graph_clean_up')
-
     def graph_clean_up_onnx(graph: Graph):
         graph_clean_up(graph, ['Shape'])
 
@@ -187,400 +179,346 @@ def driver_2018(onnx_modelproto_bytes, precision: str, output_model_name: str, o
               mean_scale_values: [dict, list] = ()):
 
     try:
-        model_proto = onnx.load_from_string(bytes(onnx_modelproto_bytes))
-    except Exception as e:
-        print("[python] onnx exception: ", str(e))
-
-    model_graph = model_proto.graph  # pylint: disable=no-member
-    log.debug("Number of nodes in graph_def: {}".format(len(model_graph.node)))
-    log.debug("Number of all input ports (not true inputs) in graph_def: {}".format(
-        len(model_graph.input)))
-    log.debug("Number of initializers in graph_def: {}".format(
-        len(model_graph.initializer)))
-    log.debug("Number of real inputs in graph_def: {}".format(
-        len(model_graph.input) - len(model_graph.initializer)))
-    update_extractors_with_extensions(onnx_op_extractors)
-
-    try:
-        graph = protobuf2nx(model_proto)
-        log.debug("Number of nodes in NX graph: {}".format(
-            graph.number_of_nodes()))
-        graph.__setattr__(
-            'name', output_model_name if output_model_name else model_proto.graph.name)  # pylint: disable=no-member
-        graph.graph['layout'] = 'NCHW'
-        graph.graph['fw'] = 'onnx'
-        graph.graph['feature_dim'] = 1 if graph.graph['layout'] == 'NCHW' else 3
-        graph.graph['ir_version'] = 4
-        extract_node_attrs(graph, lambda node: (
-            True, common_onnx_fields(node)))
-    except Exception as e:
-        raise Error(
-            'Cannot pre-process ONNX graph after reading from model file "{}". '
-            'File is corrupt or has unsupported format. Details: {}. ' +
-            refer_to_faq_msg(44),
-            model_file_name,
-            str(e)
-        ) from e
-    check_empty_graph(
-        graph, 'protobuf2nx. It may happen due to problems with loaded model')
-    packed_user_shapes, packed_outputs, _ = user_data_repack(
-        graph, user_shapes, outputs, None)
+        model_proto
+  = onnx.load_from_string(bytes(onnx_modelproto_bytes))
+        except Exception as e : print("[python] onnx exception: ", str(e))
 
-    output_op_nodes = add_output_ops(graph, packed_outputs)
-    input_op_nodes = add_input_ops(graph, packed_user_shapes, True)
+                                    model_graph = model_proto.graph #pylint : disable = no - member log.debug("Number of nodes in graph_def: {}".format(len(model_graph.node))) log.debug("Number of all input ports (not true inputs) in graph_def: {}".format(len(model_graph.input))) log.debug("Number of initializers in graph_def: {}".format(len(model_graph.initializer))) log.debug("Number of real inputs in graph_def: {}".format(len(model_graph.input) - len(model_graph.initializer))) update_extractors_with_extensions(onnx_op_extractors)
 
-    graph_clean_up(graph)
-    check_empty_graph(graph, 'add_output_ops and add_input_ops')
-    extract_node_attrs(graph, lambda node: onnx_op_extractor(
-        node, check_for_duplicates(onnx_op_extractors)))
-
-    class_registration.apply_replacements(
-        graph, class_registration.ClassType.FRONT_REPLACER)
-
-    create_tensor_nodes(graph)
-    graph_clean_up(graph)
-
-    override_placeholder_shapes(graph, packed_user_shapes)
-
-    graph_clean_up(graph)
-    remove_op_nodes(graph, {'op': 'Identity'})
-
-    graph_clean_up(graph)
-
-    remove_output_ops(graph)
-
-    partial_infer(graph)
-    graph_clean_up(graph)
-    check_empty_graph(graph, 'partial_infer')
-
-    input_op_nodes = add_input_ops(graph, packed_user_shapes, False)
-    graph_clean_up(graph)
-    check_empty_graph(graph, 'add_input_ops')
-
-    scale_input(graph, scale)
-    add_mean_scale_values(graph, mean_scale_values)
-
-    convert_dilated_convolution(graph)
-    graph_clean_up(graph)
-
-    graph_clean_up(graph)
-
-    remove_op_nodes(graph, {'op': 'Identity'})
-    remove_useless_split(graph)
-
-    class_registration.apply_replacements(
-        graph, class_registration.ClassType.MIDDLE_REPLACER)
-
-    convert_gemm_to_fully_connected(graph)
-    NormalizeFullyConnected().find_and_replace_pattern(graph)
-
-    fuse_pad(graph)
-    graph_clean_up(graph)
-
-    convert_batch_norm(graph)
-    graph_clean_up(graph)
-
-    convert_muladd_to_scaleshift_or_power(graph)
-    graph_clean_up(graph)
-
-    convert_mul_add_to_power(graph)
-    graph_clean_up(graph)
-
-    convert_reshape(graph)
-    convert_add_to_scaleshift(graph)  # scale = 1
-    convert_mul_to_scaleshift(graph)  # biases = 0
-
-    fuse_pad(graph)
-    graph_clean_up(graph)
-
-    fuse_sequence_of_reshapes(graph)
-    graph_clean_up(graph)
-
-    pattern = EltwiseInputNormalize()
-    pattern.find_and_replace_pattern(graph)
-
-    merge_nodes_permutations(graph)
-    permute_data_nodes_attrs(graph)
-    permute_op_nodes_attrs(graph)
-
-    class_registration.apply_replacements(
-        graph, class_registration.ClassType.BACK_REPLACER)
-
-    weights, xml_string = prepare_emit_ir(graph=graph, data_type=precision, output_dir=output_dir, output_model_name=output_model_name,
-                                          meta_info={'unset': []})
-
-    return weights, xml_string
-
-
-def driver_2019_R1(onnx_modelproto_bytes, precision: str, output_model_name: str, outputs: list, output_dir: str,
-              scale: float,
-              user_shapes: [None, list, np.array] = None,
-              mean_scale_values: [dict, list] = ()):
-
-    try:
-        model_proto = onnx.load_from_string(bytes(onnx_modelproto_bytes))
-    except Exception as e:
-        print("[python] onnx exception: ", str(e))
-
-    model_graph = model_proto.graph  # pylint: disable=no-member
-
-    update_extractors_with_extensions(onnx_op_extractors)
-
-    try:
-        graph = protobuf2nx(model_proto)
-        log.debug("Number of nodes in NX graph: {}".format(
-            graph.number_of_nodes()))
-        graph.__setattr__(
-            'name', output_model_name if output_model_name else model_proto.graph.name)  # pylint: disable=no-member
-        graph.graph['layout'] = 'NCHW'
-        graph.graph['cmd_params'] = argparse.Namespace(batch=None, data_type='float', disable_fusing=False, disable_gfusing=False, disable_resnet_optimization=False, enable_concat_optimization=False, extensions=mo_extensions, finegrain_fusing=None, framework='onnx', freeze_placeholder_with_value=None, generate_deprecated_IR_V2=False,
-                                                       input=None, input_model=None, input_shape=None, keep_shape_ops=False, log_level='ERROR', mean_scale_values={}, mean_values=(), model_name=None, move_to_preprocess=False, output=None, output_dir='.', placeholder_shapes=None, reverse_input_channels=False, scale=None, scale_values=(), silent=False, version=False)
-        graph.graph['ir_version'] = 4
-        graph.graph['fw'] = 'onnx'
-        graph.graph['feature_dim'] = 1 if graph.graph['layout'] == 'NCHW' else 3
-        extract_node_attrs(graph, lambda node: (
-            True, common_onnx_fields(node)))
-    except Exception as e:
-        raise Error(
-            'Cannot pre-process ONNX graph after reading from model file "{}". '
-            'File is corrupt or has unsupported format. Details: {}. ' +
-            refer_to_faq_msg(44),
-            graph.name,
-            str(e)
-        ) from e
-    graph.check_empty_graph(
-        'protobuf2nx. It may happen due to problems with loaded model')
-    extract_node_attrs(graph, lambda node: onnx_op_extractor(
-        node, check_for_duplicates(onnx_op_extractors)))
-
-    # --------------------------------- LOAD END ------------------------------------------------------
-    class_registration.apply_replacements(
-        graph, class_registration.ClassType.FRONT_REPLACER)
-    partial_infer(graph)
-    graph.check_empty_graph('partial_infer')
-    class_registration.apply_replacements(
-        graph, class_registration.ClassType.MIDDLE_REPLACER)
-
-    fuse_pad(graph)
-    graph_clean_up_onnx(graph)
-
-    mark_unfused_nodes(graph, 'False')
-    convert_batch_norm(graph)
-    graph_clean_up_onnx(graph)
-
-    convert_muladd_to_scaleshift_or_power(graph)
-    graph_clean_up_onnx(graph)
-
-    convert_mul_add_to_power(graph)
-    graph_clean_up_onnx(graph)
-
-    convert_reshape(graph)
-    graph_clean_up_onnx(graph)
-    convert_add_or_mul_to_scaleshift(graph)  # scale = 1
-    graph_clean_up_onnx(graph)
-
-    fuse_pad(graph)
-    graph_clean_up_onnx(graph)
-
-    fuse_sequence_of_reshapes(graph)
-    graph_clean_up_onnx(graph)
-
-    pattern = EltwiseInputNormalize()
-    pattern.find_and_replace_pattern(graph)
-
-    merge_nodes_permutations(graph)
-    permute_data_nodes_attrs(graph)
-    permute_op_nodes_attrs(graph)
-
-    class_registration.apply_replacements(
-        graph, class_registration.ClassType.BACK_REPLACER)
-
-    for_graph_and_each_sub_graph_recursively(graph, remove_const_ops)
-
-    CreateConstNodesReplacement().find_and_replace_pattern(graph)
-
-    for_graph_and_each_sub_graph_recursively(graph, remove_output_ops)
-
-    weights, xml_string = prepare_emit_ir(graph=graph, data_type=precision, output_dir=output_dir, output_model_name=output_model_name,
-                                          meta_info={'unset': []})
-
-    return weights, xml_string
-
-def driver_2019_R2(onnx_modelproto_bytes, precision: str, output_model_name: str, output_dir: str):
-    
-    print('Entered driver_2019_R2')
-    try:
-        model_proto = onnx.load_from_string(bytes(onnx_modelproto_bytes))
-    except Exception as e:
-        print("[python] onnx exception: ", str(e))
-
-    model_graph = model_proto.graph  # pylint: disable=no-member
-    log.debug("Number of nodes in graph_def: {}".format(len(model_graph.node)))
-    log.debug("Number of all input ports (not true inputs) in graph_def: {}".format(len(model_graph.input)))
-    log.debug("Number of initializers in graph_def: {}".format(len(model_graph.initializer)))
-    log.debug("Number of real inputs in graph_def: {}".format(len(model_graph.input) - len(model_graph.initializer)))
-    update_extractors_with_extensions(onnx_op_extractors)
-
-    try:
-        graph = protobuf2nx(model_proto)
-        log.debug("Number of nodes in NX graph: {}".format(graph.number_of_nodes()))
-        graph.__setattr__('name',
-                          output_model_name if output_model_name else model_proto.graph.name)  # pylint: disable=no-member
-        graph.graph['layout'] = 'NCHW'
-        graph.graph['fw'] = 'onnx'
-        graph.graph['feature_dim'] = 1 if graph.graph['layout'] == 'NCHW' else 3
-        graph.graph['cmd_params'] = argparse.Namespace(batch=None, data_type='float', disable_fusing=False, disable_gfusing=False, disable_resnet_optimization=False, enable_concat_optimization=False, extensions=mo_extensions, finegrain_fusing=None, framework='onnx', freeze_placeholder_with_value=None, generate_deprecated_IR_V2=False,
-                                            input=None, input_model=None, input_shape=None, keep_shape_ops=False, log_level='ERROR', mean_scale_values={}, mean_values=(), model_name=None, move_to_preprocess=False, output=None, output_dir='.', placeholder_shapes=None, reverse_input_channels=False, scale=None, scale_values=(), silent=False, version=False,
-                                            blobs_as_inputs=False,keep_quantize_ops_in_IR=False,generate_experimental_IR_V10=False)
-        graph.graph['ir_version'] = 6
-
-    except Exception as e:
-        raise Error(
-            'Cannot pre-process ONNX graph after reading from model file "{}". ' \
-            'File is corrupt or has unsupported format. Details: {}. ' +
-            refer_to_faq_msg(44),
-            model_file_name,
-            str(e)
-        ) from e
-    graph.check_empty_graph('protobuf2nx. It may happen due to problems with loaded model')
-    extract_node_attrs(graph, lambda node: onnx_op_extractor(node, check_for_duplicates(onnx_op_extractors)))
-
-    # --------------------------------- LOAD END ------------------------------------------------------
-    class_registration.apply_replacements(graph, class_registration.ClassType.FRONT_REPLACER)
-    class_registration.apply_replacements(graph, class_registration.ClassType.MIDDLE_REPLACER)
-
-    fuse_pad(graph)
-    graph_clean_up_onnx(graph)
-
-    for_graph_and_each_sub_graph_recursively(graph, convert_matmul_to_fully_connected)
-
-    # Mark nodes with attr 'can_be_fused': False to disable fusing for specified nodes
-    mark_unfused_nodes(graph, False)
-
-    # Converting FusedBatchNorm layer to Mul->Add->Mul->Add sequence
-    # IE doesn't support BN with 4 inputs, so we have to split it to two ScaleShift
-    convert_batch_norm(graph)
-    graph_clean_up_onnx(graph)
-
-    MarkNodesToFuseUpToFakeQuantize().find_and_replace_pattern(graph)
-    FakeQuantizeFuse().find_and_replace_pattern(graph)
-
-    AddFakeQuantizeFuse().find_and_replace_pattern(graph)
-    MulFakeQuantizeFuse().find_and_replace_pattern(graph)
-
-    convert_muladd_to_scaleshift(graph)
-    graph_clean_up_onnx(graph)
-
-    graph_clean_up_onnx(graph)
-    convert_add_or_mul_to_scaleshift(graph)  # scale = 1
-    graph_clean_up_onnx(graph)
-
-    fuse_pad(graph)
-    graph_clean_up_onnx(graph)
-
-    FuseReshapesSequence().find_and_replace_pattern(graph)
-    RemoveRedundantReshapes().find_and_replace_pattern(graph)
-
-    graph_clean_up_onnx(graph)
-
-    pattern = EltwiseInputNormalize()
-    pattern.find_and_replace_pattern(graph)
-
-    merge_nodes_permutations(graph)
-    permute_data_nodes_attrs(graph)
-    permute_op_nodes_attrs(graph)
-
-    graph_clean_up_onnx(graph)
-    class_registration.apply_replacements(graph, class_registration.ClassType.BACK_REPLACER)
-
-    for_graph_and_each_sub_graph_recursively(graph, remove_const_ops)
-
-    CreateConstNodesReplacement().find_and_replace_pattern(graph)
-
-    for_graph_and_each_sub_graph_recursively(graph, remove_output_ops)
-    
-    weights, xml_string = prepare_emit_ir(graph=graph, data_type=precision, output_dir=output_dir, output_model_name=output_model_name,
-                    meta_info={'unset': []})
-
-    print('Exiting driver function')
-    return weights, xml_string
-
-
-
-def driver_entry(onnx_modelproto_bytes, precision: str):
-    start_time = datetime.datetime.now()
-
-    model_name = "optimized_model"
-    outputs = None
-    placeholder_shapes = {}
-    mean_values = {}
-    scale_values = {}
-    mean_scale = {}
-
-    if 'R5' in version:
-        from mo.front.onnx.register_custom_ops import update_registration
-        import_extensions.load_dirs(
-            'onnx', [mo_extensions], update_registration)
-        weights, xml_string = driver_2018(onnx_modelproto_bytes, precision, model_name, outputs, ".", None,
-                                        user_shapes=placeholder_shapes,
-                                        mean_scale_values=mean_scale)
-    elif '2019.R1' in version:
-        from mo.front.onnx.register_custom_ops import get_front_classes
-        import_extensions.load_dirs('onnx', [mo_extensions], get_front_classes)
-        weights, xml_string = driver_2019_R1(onnx_modelproto_bytes, precision, model_name, outputs, ".", None,
-                                        user_shapes=placeholder_shapes,
-                                        mean_scale_values=mean_scale)
-    else:
-        from mo.front.onnx.register_custom_ops import get_front_classes
-        import_extensions.load_dirs('onnx', [mo_extensions], get_front_classes)
-        weights, xml_string = driver_2019_R2(onnx_modelproto_bytes, precision, model_name, ".")
-
-    return weights, xml_string
-
-
-def convert_fp16(onnx_modelproto_bytes):
-    try:
-        init_logger('ERROR', False)
-        framework = 'onnx'
-
-        weights, xml_string = driver_entry(
-            onnx_modelproto_bytes, precision='FP16')
-
-        float_array = np.asarray(weights, dtype=np.float16)
-
-        return float_array, xml_string
-    except:
-        return 1
-
-
-def convert_fp32(onnx_modelproto_bytes):
-    try:
-        init_logger('ERROR', False)
-        framework = 'onnx'
-
-        weights, xml_string = driver_entry(
-            onnx_modelproto_bytes, precision='FP32')
-
-        float_array = np.asarray(weights, dtype=np.float32)
-
-        return float_array, xml_string
-    except:
-        return 1
-
-
-if __name__ == "__main__":
-    ret_code = check_python_version()
-    if ret_code:
-        sys.exit(ret_code)
-
-    from mo.utils.cli_parser import get_onnx_cli_parser
-    if '2019.2' in ov_root:
-        print('2019 R2 version')
-    if '2019.1' in ov_root:
-        print('2019 R1 version')
-    else:
-        print('2018 R5 version')
-    weights_string, final_string = convert_fp32()
-    print(weights_string)
-
-    sys.exit(0)
+                                                                                                 try : graph
+    = protobuf2nx(model_proto)
+          log.debug("Number of nodes in NX graph: {}".format(
+              graph.number_of_nodes()))
+              graph.__setattr__(
+                  'name', output_model_name if output_model_name else model_proto.graph.name) #pylint : disable = no - member graph.graph['layout'] = 'NCHW' graph.graph['fw'] = 'onnx' graph.graph['feature_dim'] = 1 if graph.graph['layout'] == 'NCHW' else 3 graph.graph['ir_version'] = 4 extract_node_attrs(graph, lambda node
+                                                                                                                                                                                                                                                                                                                  : (
+                                                                                                                                                                                                                                                                                                                      True, common_onnx_fields(node)))
+                                                                                                                                                                                                                         except Exception as e : raise Error(
+                                                                                                                                                                                                                                                     'Cannot pre-process ONNX graph after reading from model file "{}". ' 'File is corrupt or has unsupported format. Details: {}. ' +
+                                                                                                                                                                                                                                                         refer_to_faq_msg(44),
+                                                                                                                                                                                                                                                     model_file_name,
+                                                                                                                                                                                                                                                     str(e)) from e
+                                                                                                                                                                                                                                                     check_empty_graph(
+                                                                                                                                                                                                                                                         graph, 'protobuf2nx. It may happen due to problems with loaded model')
+                                                                                                                                                                                                                                                         packed_user_shapes,
+                                                                                                        packed_outputs, _ = user_data_repack(
+                                                                                                                            graph, user_shapes, outputs, None)
+
+                                                                                                                            output_op_nodes = add_output_ops(graph, packed_outputs)
+                                                                                                                                input_op_nodes = add_input_ops(graph, packed_user_shapes, True)
+
+                                                                                                                                                     graph_clean_up(graph)
+                                                                                                                                                         check_empty_graph(graph, 'add_output_ops and add_input_ops')
+                                                                                                                                                             extract_node_attrs(graph, lambda node
+                                                                                                                                                                                : onnx_op_extractor(
+                                                                                                                                                                                    node, check_for_duplicates(onnx_op_extractors)))
+
+                                                                                                                                                                 class_registration.apply_replacements(
+                                                                                                                                                                     graph, class_registration.ClassType.FRONT_REPLACER)
+
+                                                                                                                                                                     create_tensor_nodes(graph)
+                                                                                                                                                                         graph_clean_up(graph)
+
+                                                                                                                                                                             override_placeholder_shapes(graph, packed_user_shapes)
+
+                                                                                                                                                                                 graph_clean_up(graph)
+                                                                                                                                                                                     remove_op_nodes(graph, {'op' : 'Identity'})
+
+                                                                                                                                                                                         graph_clean_up(graph)
+
+                                                                                                                                                                                             remove_output_ops(graph)
+
+                                                                                                                                                                                                 partial_infer(graph)
+                                                                                                                                                                                                     graph_clean_up(graph)
+                                                                                                                                                                                                         check_empty_graph(graph, 'partial_infer')
+
+                                                                                                                                                                                                             input_op_nodes = add_input_ops(graph, packed_user_shapes, False)
+                                                                                                                                                                                                                                  graph_clean_up(graph)
+                                                                                                                                                                                                                                      check_empty_graph(graph, 'add_input_ops')
+
+                                                                                                                                                                                                                                          scale_input(graph, scale)
+                                                                                                                                                                                                                                              add_mean_scale_values(graph, mean_scale_values)
+
+                                                                                                                                                                                                                                                  convert_dilated_convolution(graph)
+                                                                                                                                                                                                                                                      graph_clean_up(graph)
+
+                                                                                                                                                                                                                                                          graph_clean_up(graph)
+
+                                                                                                                                                                                                                                                              remove_op_nodes(graph, {'op' : 'Identity'})
+                                                                                                                                                                                                                                                                  remove_useless_split(graph)
+
+                                                                                                                                                                                                                                                                      class_registration.apply_replacements(
+                                                                                                                                                                                                                                                                                            graph, class_registration.ClassType.MIDDLE_REPLACER)
+
+                                                                                                                                                                                                                                                                          convert_gemm_to_fully_connected(graph)
+                                                                                                                                                                                                                                                                              NormalizeFullyConnected()
+                                                                                                                                                                                                                                                                                  .find_and_replace_pattern(graph)
+
+                                                                                                                                                                                                                                                                                      fuse_pad(graph)
+                                                                                                                                                                                                                                                                                          graph_clean_up(graph)
+
+                                                                                                                                                                                                                                                                                              convert_batch_norm(graph)
+                                                                                                                                                                                                                                                                                                  graph_clean_up(graph)
+
+                                                                                                                                                                                                                                                                                                      convert_muladd_to_scaleshift_or_power(graph)
+                                                                                                                                                                                                                                                                                                          graph_clean_up(graph)
+
+                                                                                                                                                                                                                                                                                                              convert_mul_add_to_power(graph)
+                                                                                                                                                                                                                                                                                                                  graph_clean_up(graph)
+
+                                                                                                                                                                                                                                                                                                                      convert_reshape(graph)
+                                                                                                                                                                                                                                                                                                                          convert_add_to_scaleshift(graph) #scale = 1 convert_mul_to_scaleshift(graph) #biases = 0
+
+                                                                                                                        fuse_pad(graph)
+                                                                                                                            graph_clean_up(graph)
+
+                                                                                                                                fuse_sequence_of_reshapes(graph)
+                                                                                                                                    graph_clean_up(graph)
+
+                                                                                                                                        pattern = EltwiseInputNormalize()
+                                                                                                                                                      pattern.find_and_replace_pattern(graph)
+
+                                                                                                                                                          merge_nodes_permutations(graph)
+                                                                                                                                                              permute_data_nodes_attrs(graph)
+                                                                                                                                                                  permute_op_nodes_attrs(graph)
+
+                                                                                                                                                                      class_registration.apply_replacements(
+                                                                                                                                                                          graph, class_registration.ClassType.BACK_REPLACER)
+
+                                                                                                                                                                          weights,
+                                                                                                        xml_string = prepare_emit_ir(graph = graph, data_type = precision, output_dir = output_dir, output_model_name = output_model_name,
+                                                                                                                                     meta_info = {'unset' : []})
+
+                                                                                                            return weights,
+                                                                                                        xml_string
+
+                                                                                                            def
+                                                                                                            driver_2019_R1(onnx_modelproto_bytes, precision
+                                                                                                                           : str, output_model_name
+                                                                                                                           : str, outputs
+                                                                                                                           : list, output_dir
+                                                                                                                           : str,
+                                                                                                                             scale
+                                                                                                                           : float,
+                                                                                                                             user_shapes
+                                                                                                                           : [ None, list, np.array ] = None,
+                                                                                                                             mean_scale_values
+                                                                                                                           : [ dict, list ] = ()) :
+
+                                                                                                                                                    try : model_proto
+      = onnx.load_from_string(bytes(onnx_modelproto_bytes))
+            except Exception as e : print("[python] onnx exception: ", str(e))
+
+                                        model_graph = model_proto.graph #pylint : disable = no - member
+
+                                                                                                     update_extractors_with_extensions(onnx_op_extractors)
+
+                                                                                                         try : graph
+        = protobuf2nx(model_proto)
+              log.debug("Number of nodes in NX graph: {}".format(
+                  graph.number_of_nodes()))
+                  graph.__setattr__(
+                      'name', output_model_name if output_model_name else model_proto.graph.name) #pylint : disable = no - member graph.graph['layout'] = 'NCHW' graph.graph['cmd_params'] = argparse.Namespace(batch = None, data_type = 'float', disable_fusing = False, disable_gfusing = False, disable_resnet_optimization = False, enable_concat_optimization = False, extensions = mo_extensions, finegrain_fusing = None, framework = 'onnx', freeze_placeholder_with_value = None, generate_deprecated_IR_V2 = False,
+                                                                                                                                                                                                                input = None, input_model = None, input_shape = None, keep_shape_ops = False, log_level = 'ERROR', mean_scale_values = {}, mean_values = (), model_name = None, move_to_preprocess = False, output = None, output_dir = '.', placeholder_shapes = None, reverse_input_channels = False, scale = None, scale_values = (), silent = False, version = False)
+                                                                                                                                                                                                 graph.graph['ir_version'] = 4 graph.graph['fw'] = 'onnx' graph.graph['feature_dim'] = 1 if graph.graph['layout'] == 'NCHW' else 3 extract_node_attrs(graph, lambda node
+                                                                                                                                                                                                                                                                                                                                                      : (True, common_onnx_fields(node))) except Exception as e : raise Error('Cannot pre-process ONNX graph after reading from model file "{}". ' 'File is corrupt or has unsupported format. Details: {}. ' + refer_to_faq_msg(44), graph.name, str(e)) from e graph.check_empty_graph('protobuf2nx. It may happen due to problems with loaded model') extract_node_attrs(graph, lambda node
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            : onnx_op_extractor(node, check_for_duplicates(onnx_op_extractors)))
+
+#-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- - LOAD END -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+                                                                                                                                                                                                                                                                                                                                                                                                                      class_registration.apply_replacements(graph, class_registration.ClassType.FRONT_REPLACER) partial_infer(graph) graph.check_empty_graph('partial_infer') class_registration.apply_replacements(graph, class_registration.ClassType.MIDDLE_REPLACER)
+
+                                                                                                                                                                                                                                                                                                                                                                                                                          fuse_pad(graph) graph_clean_up_onnx(graph)
+
+                                                                                                                                                                                                                                                                                                                                                                                                                              mark_unfused_nodes(graph, 'False') convert_batch_norm(graph) graph_clean_up_onnx(graph)
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                  convert_muladd_to_scaleshift_or_power(graph) graph_clean_up_onnx(graph)
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                      convert_mul_add_to_power(graph) graph_clean_up_onnx(graph)
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                          convert_reshape(graph) graph_clean_up_onnx(graph) convert_add_or_mul_to_scaleshift(graph) #scale = 1 graph_clean_up_onnx(graph)
+
+                                                                                                                                                                                                                                                                                           fuse_pad(graph)
+                                                                                                                                                                                                                                                                                               graph_clean_up_onnx(graph)
+
+                                                                                                                                                                                                                                                                                                   fuse_sequence_of_reshapes(graph)
+                                                                                                                                                                                                                                                                                                       graph_clean_up_onnx(graph)
+
+                                                                                                                                                                                                                                                                                                           pattern = EltwiseInputNormalize()
+                                                                                                                                                                                                                                                                                                                         pattern.find_and_replace_pattern(graph)
+
+                                                                                                                                                                                                                                                                                                                             merge_nodes_permutations(graph)
+                                                                                                                                                                                                                                                                                                                                 permute_data_nodes_attrs(graph)
+                                                                                                                                                                                                                                                                                                                                     permute_op_nodes_attrs(graph)
+
+                                                                                                                                                                                                                                                                                                                                         class_registration.apply_replacements(
+                                                                                                                                                                                                                                                                                                                                                               graph, class_registration.ClassType.BACK_REPLACER)
+
+                                                                                                                                                                                                                                                                                                                                             for_graph_and_each_sub_graph_recursively(graph, remove_const_ops)
+
+                                                                                                                                                                                                                                                                                                                                                 CreateConstNodesReplacement()
+                                                                                                                                                                                                                                                                                                                                                     .find_and_replace_pattern(graph)
+
+                                                                                                                                                                                                                                                                                                                                                         for_graph_and_each_sub_graph_recursively(graph, remove_output_ops)
+
+                                                                                                                                                                                                                                                                                                                                                             weights,
+                                                                                                            xml_string = prepare_emit_ir(graph = graph, data_type = precision, output_dir = output_dir, output_model_name = output_model_name,
+                                                                                                                                         meta_info = {'unset' : []})
+
+                                                                                                                return weights,
+                                                                                                            xml_string
+
+                                                                                                                def driver_2019_R2(onnx_modelproto_bytes, precision
+                                                                                                                                   : str, output_model_name
+                                                                                                                                   : str, output_dir
+                                                                                                                                   : str) :
+
+                                                                                                                                            try : model_proto
+          = onnx.load_from_string(bytes(onnx_modelproto_bytes))
+                except Exception as e : print("[python] onnx exception: ", str(e))
+
+                                            model_graph = model_proto.graph #pylint : disable = no - member log.debug("Number of nodes in graph_def: {}".format(len(model_graph.node))) log.debug("Number of all input ports (not true inputs) in graph_def: {}".format(len(model_graph.input))) log.debug("Number of initializers in graph_def: {}".format(len(model_graph.initializer))) log.debug("Number of real inputs in graph_def: {}".format(len(model_graph.input) - len(model_graph.initializer))) update_extractors_with_extensions(onnx_op_extractors)
+
+                                                                                                         try : graph
+            = protobuf2nx(model_proto)
+                  log.debug("Number of nodes in NX graph: {}".format(graph.number_of_nodes()))
+                      graph.__setattr__('name',
+                                        output_model_name if output_model_name else model_proto.graph.name) #pylint : disable = no - member graph.graph['layout'] = 'NCHW' graph.graph['fw'] = 'onnx' graph.graph['feature_dim'] = 1 if graph.graph['layout'] == 'NCHW' else 3 graph.graph['cmd_params'] = argparse.Namespace(batch = None, data_type = 'float', disable_fusing = False, disable_gfusing = False, disable_resnet_optimization = False, enable_concat_optimization = False, extensions = mo_extensions, finegrain_fusing = None, framework = 'onnx', freeze_placeholder_with_value = None, generate_deprecated_IR_V2 = False,
+                                                                                                                                                                                                                                                                                                                              input = None, input_model = None, input_shape = None, keep_shape_ops = False, log_level = 'ERROR', mean_scale_values = {}, mean_values = (), model_name = None, move_to_preprocess = False, output = None, output_dir = '.', placeholder_shapes = None, reverse_input_channels = False, scale = None, scale_values = (), silent = False, version = False,
+                                                                                                                                                                                                                                                                                                                              blobs_as_inputs = False, keep_quantize_ops_in_IR = False, generate_experimental_IR_V10 = False)
+                                                                                                                                                                                                                                                                                                               graph.graph['ir_version'] = 6
+
+                                                                                                                                                                                                                                                                                                                                           except Exception as e : raise Error(
+                                                                                                                                                                                                                                                                                                                                                                       'Cannot pre-process ONNX graph after reading from model file "{}". ' 'File is corrupt or has unsupported format. Details: {}. ' +
+                                                                                                                                                                                                                                                                                                                                                                           refer_to_faq_msg(44),
+                                                                                                                                                                                                                                                                                                                                                                       model_file_name,
+                                                                                                                                                                                                                                                                                                                                                                       str(e)) from e
+                                                                                                                                                                                                                                                                                                                                                                       graph.check_empty_graph('protobuf2nx. It may happen due to problems with loaded model')
+                                                                                                                                                                                                                                                                                                                                                                           extract_node_attrs(graph, lambda node
+                                                                                                                                                                                                                                                                                                                                                                                              : onnx_op_extractor(node, check_for_duplicates(onnx_op_extractors)))
+
+#-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- - LOAD END -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+                                                                                                                                                                                                                                                                                                                                                                               class_registration.apply_replacements(graph, class_registration.ClassType.FRONT_REPLACER)
+                                                                                                                                                                                                                                                                                                                                                                                   class_registration.apply_replacements(graph, class_registration.ClassType.MIDDLE_REPLACER)
+
+                                                                                                                                                                                                                                                                                                                                                                                       fuse_pad(graph)
+                                                                                                                                                                                                                                                                                                                                                                                           graph_clean_up_onnx(graph)
+
+                                                                                                                                                                                                                                                                                                                                                                                               for_graph_and_each_sub_graph_recursively(graph, convert_matmul_to_fully_connected)
+
+#Mark nodes with attr 'can_be_fused' : False to disable fusing for specified nodes
+                                                                                                                                                                                                                                                                                                                                                                                                   mark_unfused_nodes(graph, False)
+
+#Converting FusedBatchNorm layer to Mul->Add->Mul->Add sequence
+#IE doesn't support BN with 4 inputs, so we have to split it to two ScaleShift
+                                                                                                                                                                                                                                                                                                                                                                                                       convert_batch_norm(graph)
+                                                                                                                                                                                                                                                                                                                                                                                                           graph_clean_up_onnx(graph)
+
+                                                                                                                                                                                                                                                                                                                                                                                                               MarkNodesToFuseUpToFakeQuantize()
+                                                                                                                                                                                                                                                                                                                                                                                                                   .find_and_replace_pattern(graph)
+                                                                                                                                                                                                                                                                                                                                                                                                                       FakeQuantizeFuse()
+                                                                                                                                                                                                                                                                                                                                                                                                                   .find_and_replace_pattern(graph)
+
+                                                                                                                                                                                                                                                                                                                                                                                                                       AddFakeQuantizeFuse()
+                                                                                                                                                                                                                                                                                                                                                                                                                   .find_and_replace_pattern(graph)
+                                                                                                                                                                                                                                                                                                                                                                                                                       MulFakeQuantizeFuse()
+                                                                                                                                                                                                                                                                                                                                                                                                                   .find_and_replace_pattern(graph)
+
+                                                                                                                                                                                                                                                                                                                                                                                                                       convert_muladd_to_scaleshift(graph)
+                                                                                                                                                                                                                                                                                                                                                                                                                           graph_clean_up_onnx(graph)
+
+                                                                                                                                                                                                                                                                                                                                                                                                                               graph_clean_up_onnx(graph)
+                                                                                                                                                                                                                                                                                                                                                                                                                                   convert_add_or_mul_to_scaleshift(graph) #scale = 1 graph_clean_up_onnx(graph)
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        fuse_pad(graph)
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            graph_clean_up_onnx(graph)
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                FuseReshapesSequence()
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    .find_and_replace_pattern(graph)
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        RemoveRedundantReshapes()
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    .find_and_replace_pattern(graph)
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        graph_clean_up_onnx(graph)
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            pattern = EltwiseInputNormalize()
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          pattern.find_and_replace_pattern(graph)
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              merge_nodes_permutations(graph)
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  permute_data_nodes_attrs(graph)
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      permute_op_nodes_attrs(graph)
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          graph_clean_up_onnx(graph)
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              class_registration.apply_replacements(graph, class_registration.ClassType.BACK_REPLACER)
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  for_graph_and_each_sub_graph_recursively(graph, remove_const_ops)
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      CreateConstNodesReplacement()
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          .find_and_replace_pattern(graph)
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              for_graph_and_each_sub_graph_recursively(graph, remove_output_ops)
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  weights,
+                                                                                                                      xml_string = prepare_emit_ir(graph = graph, data_type = precision, output_dir = output_dir, output_model_name = output_model_name,
+                                                                                                                                                   meta_info = {'unset' : []})
+
+                                                                                                                          return weights,
+                                                                                                                      xml_string
+
+                                                                                                                          def driver_entry(onnx_modelproto_bytes, precision
+                                                                                                                                           : str) : start_time = datetime.datetime.now()
+
+                                                                                                                                                                     model_name = "optimized_model" outputs = None placeholder_shapes = {} mean_values = {} scale_values = {} mean_scale = {}
+
+                                                                                                                                                                                                                                                                                           if 'R5' in version : from mo.front.onnx.register_custom_ops import update_registration
+                                                                                                                                                                                                                                                                                                                import_extensions.load_dirs(
+                                                                                                                                                                                                                                                                                                                    'onnx', [mo_extensions], update_registration)
+                                                                                                                                                                                                                                                                                                                    weights,
+                                                                                                                      xml_string = driver_2018(onnx_modelproto_bytes, precision, model_name, outputs, ".", None,
+                                                                                                                                               user_shapes = placeholder_shapes,
+                                                                                                                                               mean_scale_values = mean_scale)
+                                                                                                                                       elif '2019.R1' in version : from mo.front.onnx.register_custom_ops import get_front_classes
+                                                                                                                                                                   import_extensions.load_dirs('onnx', [mo_extensions], get_front_classes)
+                                                                                                                                                                       weights,
+                                                                                                                      xml_string = driver_2019_R1(onnx_modelproto_bytes, precision, model_name, outputs, ".", None,
+                                                                                                                                                  user_shapes = placeholder_shapes,
+                                                                                                                                                  mean_scale_values = mean_scale) else : from mo.front.onnx.register_custom_ops import get_front_classes
+                                                                                                                                                                                         import_extensions.load_dirs('onnx', [mo_extensions], get_front_classes)
+                                                                                                                                                                                             weights,
+                                                                                                                      xml_string = driver_2019_R2(onnx_modelproto_bytes, precision, model_name, ".")
+
+                                                                                                                          return weights,
+                                                                                                                      xml_string
+
+                def convert_fp16(onnx_modelproto_bytes) : try : init_logger('ERROR', False)
+                                                                    framework
+              = 'onnx'
+
+                  weights,
+                  xml_string = driver_entry(
+                      onnx_modelproto_bytes, precision = 'FP16')
+
+                      float_array = np.asarray(weights, dtype = np.float16)
+
+                                        return float_array,
+                  xml_string
+                      except : return 1
+
+                               def convert_fp32(onnx_modelproto_bytes) : try : init_logger('ERROR', False)
+                                                                                   framework
+= 'onnx'
+
+    weights,
+    xml_string = driver_entry(
+        onnx_modelproto_bytes, precision = 'FP32')
+
+        float_array = np.asarray(weights, dtype = np.float32)
+
+                          return float_array,
+    xml_string
+            except : return 1
+
+                     if __name__ == "__main__" : ret_code = check_python_version() if ret_code : sys.exit(ret_code)
+
+#from mo.utils.cli_parser import get_onnx_cli_parser
+                                                                                                     weights_string,
+    final_string = convert_fp32()
+                       sys.exit(0)

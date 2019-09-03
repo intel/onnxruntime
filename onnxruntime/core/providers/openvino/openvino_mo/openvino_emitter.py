@@ -56,7 +56,7 @@ def create_const_nodes(graph: nx.MultiDiGraph, start_data_nodes_are_not_allowed:
                     [(copy_data_node_name, const_node_name, {'in': 0, 'bin': 'custom'})])
             elif start_data_nodes_are_not_allowed:
                 log.debug('node = {}'.format(node.graph.node[node.id]))
-                # TODO for body sub-graph it shouldn't be reported as an error
+#TODO for body sub - graph it shouldn't be reported as an error
                 raise Error(
                     'Discovered data node without inputs and value, node.name = {}, consumer.name = {}. ' +
                     refer_to_faq_msg(23),
@@ -119,7 +119,7 @@ def serialize_constants_recursively(weights, graph: nx.MultiDiGraph, data_type, 
             node = NodeWrap(graph, node)
         else:
             node = Node(graph, node)
-        # Dump blobs recursively if sub-graphs are present in the node
+#Dump blobs recursively if sub - graphs are present in the node
         if node.has_valid('sub_graphs'):
             for sub_graph_attr_name in node.sub_graphs:
                 sub_graph = node[sub_graph_attr_name]
@@ -148,8 +148,8 @@ def xml_shape(shape: np.ndarray, element: xml.etree.ElementTree.Element):
         dim = SubElement(element, 'dim')
         if d <= 0:
             d = 1
-           # raise Error('The value "{}" for shape is less or equal to 0. May be the input shape of the topology is '
-           #         'wrong.'.format(d))
+#raise Error('The value "{}" for shape is less or equal to 0. May be the input shape of the topology is '
+#'wrong.'.format(d))
         if int(d) != d:
             raise Error('The value "{}" for shape is not integer.'.format(d))
         if not isinstance(d, np.int64):
@@ -174,7 +174,7 @@ def sorted_outputs(node):
 
 
 def xml_ports(node: Node, element: xml.etree.ElementTree.Element, edges: xml.etree.ElementTree.Element):
-    # input ports
+#input ports
     inputs = None  # will create input section only if at least one input is available
     for u, d in sorted_inputs(node):
         if 'bin' not in d and ('xml_skip' not in d or not d['xml_skip']):
@@ -185,7 +185,7 @@ def xml_ports(node: Node, element: xml.etree.ElementTree.Element, edges: xml.etr
             assert node.graph.node[u]['shape'] is not None, 'Input shape is not calculated properly for node {}'.format(
                 node.id)
             xml_shape(node.graph.node[u]['shape'], port)
-            # u is a data node that has a single producer, let's find it
+#u is a data node that has a single producer, let's find it
             assert (node.graph.node[u]['kind'] == 'data')
             in_nodes = list(node.graph.in_edges(u, data=True))
             assert (len(in_nodes) <= 1)
@@ -197,7 +197,7 @@ def xml_ports(node: Node, element: xml.etree.ElementTree.Element, edges: xml.etr
                 edge.set('to-layer', str(node.node))
                 edge.set('to-port', str(d['in']))
 
-    # output ports
+#output ports
     outputs = None
     for v, d in sorted_outputs(node):
         if 'xml_skip' not in d or not d['xml_skip']:
@@ -245,7 +245,7 @@ def serialize_element(
         if isinstance(attr, tuple):
             key = attr[0]
             try:
-                if callable(attr[1]):
+                  if callable(attr[1]):
                     value = attr[1](node)
                 else:
                     value = node[attr[1]] if attr[1] in node else None
@@ -296,13 +296,11 @@ def serialize_node_attributes(
         unsupported):
 
     try:
-        for s in schema:
-            if not isinstance(s, tuple):
-                if s == '@ports':
-                    try:
-                        # TODO make sure that edges are generated regardless of the existence of @ports
-                        xml_ports(node, parent_element, edges)
-                    except Exception as e:
+        for
+          s in schema : if not isinstance(s, tuple) : if s == '@ports' : try :
+#TODO make sure that edges are generated regardless of the existence of @ports
+                                                                         xml_ports(node, parent_element, edges)
+                                                                             except Exception as e:
                         raise Error(('Unable to create ports for node with id {}. ' +
                                      refer_to_faq_msg(3)).format(node.id)) from e
                 elif s == '@consts':
@@ -331,9 +329,9 @@ def serialize_node_attributes(
 def create_pre_process_block_for_image(net: xml.etree.ElementTree.Element, ref_layer_names: list, mean_offset: tuple,
                                        mean_size: tuple):
     pre_process = SubElement(net, 'pre-process')
-    # TODO: to think about need to output FP16 mean values
+#TODO : to think about need to output FP16 mean values
     pre_process.set('mean-precision', 'FP32')
-    # TODO: extend it for several inputs
+#TODO : extend it for several inputs
     pre_process.set('reference-layer-name', ref_layer_names[0])
     for idx in range(len(mean_size)):
         channel_xml = SubElement(pre_process, 'channel')
@@ -402,7 +400,7 @@ def generate_ie_ir(graph: nx.MultiDiGraph, file_name: str, input_names: tuple = 
     net = Element('net')
     net.set('name', graph.name)
     net.set('version', str((graph.graph['ir_version'])))
-    # TODO substitute real batches here (is it a number or is it an index?)
+#TODO substitute real batches here(is it a number or is it an index ?)
     net.set('batch', '1')
 
     if mean_size or mean_offset:
