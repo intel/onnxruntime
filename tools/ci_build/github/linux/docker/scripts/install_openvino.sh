@@ -14,9 +14,9 @@ export INTEL_CVSDK_DIR=/data/dldt/openvino_2019.3.334
 apt-get update && apt-get -y  install libusb-1.0-0-dev
 
 cd ${INTEL_CVSDK_DIR}/inference-engine
+git checkout tags/$OPENVINO_VERSION -b $OPENVINO_VERSION
 git submodule init
 git submodule update --recursive
-git checkout tags/$OPENVINO_VERSION -b $OPENVINO_VERSION
 
 mkdir -p build
 cd build
