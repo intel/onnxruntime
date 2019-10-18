@@ -120,6 +120,8 @@ if platform.system() == 'Linux':
   libs.extend(['libngraph.so', 'libcodegen.so', 'libcpu_backend.so', 'libmkldnn.so', 'libtbb_debug.so', 'libtbb_debug.so.2', 'libtbb.so', 'libtbb.so.2'])
   # Nuphar Libs
   libs.extend(['libtvm.so'])
+  # Openvino Libs
+  libs.extend(['libcpu_extension.so'])
 elif platform.system() == "Darwin":
   libs = ['onnxruntime_pybind11_state.so', 'libmkldnn.0.dylib', 'mimalloc.so'] # TODO add libmklml and libiomp5 later.
 else:
@@ -127,6 +129,8 @@ else:
   libs.extend(['ngraph.dll', 'cpu_backend.dll', 'tbb.dll', 'mimalloc-override.dll', 'mimalloc-redirect.dll', 'mimalloc-redirect32.dll'])
   # Nuphar Libs
   libs.extend(['tvm.dll'])
+  # Openvino Libs
+  libs.extend(['libcpu_extension.dll'])
 
 if is_manylinux2010:
     data = []

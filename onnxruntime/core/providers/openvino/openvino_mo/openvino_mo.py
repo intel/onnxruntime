@@ -53,13 +53,10 @@ import datetime
 import argparse
 import sys
 import os
+
 ov_root = os.environ['INTEL_CVSDK_DIR']
 if '2019.3' in ov_root:
     version = '2019.R3'
-elif '2019.1' in ov_root:
-    version = '2019.R1'
-elif '2018.5' in ov_root:
-    version = '2018.R5'
 else:
     version = 'unsupported'
     print('You are using unsupported version of OpenVINO. Please refer to BUILD.md for supported versions of OpenVINO.')
@@ -68,44 +65,22 @@ print('mo_path = {}'.format(mo_path))
 mo_extensions = mo_path + "/extensions"
 sys.path.append(mo_path)
 
-
-if '2018.R5' in version:
-    from mo.middle.passes.shape import convert_reshape, fuse_sequence_of_reshapes
-    from mo.utils import import_extensions
-    from mo.middle.passes.conv import convert_add_to_scaleshift, convert_gemm_to_fully_connected, \
-        convert_muladd_to_scaleshift_or_power, fuse_pad, convert_dilated_convolution, convert_mul_to_scaleshift
-    from mo.middle.passes.eliminate import graph_clean_up, remove_op_nodes, remove_useless_split, get_nodes_with_attributes
-    from mo.middle.passes.infer import scale_input, override_placeholder_shapes, convert_mul_add_to_power, \
-        add_mean_scale_values, override_batch, exit_bound_edges, control_flow_infer
-    from mo.graph.graph import check_empty_graph, Node, unique_id
-elif '2019.R1' in version:
-    from mo.middle.passes.shape import convert_reshape, fuse_sequence_of_reshapes
-    from mo.utils import import_extensions, class_registration
-    from mo.middle.passes.conv import convert_add_or_mul_to_scaleshift, convert_muladd_to_scaleshift_or_power, fuse_pad
-    from mo.middle.passes.eliminate import remove_const_ops, mark_output_reachable_nodes, mark_undead_nodes, mark_const_producer_nodes, \
-        eliminate_dead_nodes, add_constant_operations, shape_inference, remove_op_nodes, get_nodes_with_attributes
-    from mo.middle.passes.infer import override_placeholder_shapes, convert_mul_add_to_power,  override_batch, exit_bound_edges, control_flow_infer
-    from extensions.back.CreateConstNodes import CreateConstNodesReplacement
-    from mo.middle.pattern_match import for_graph_and_each_sub_graph_recursively
-    from mo.graph.graph import check_empty_graph, Node, Graph
-else:
-    #No additional imports needed for 2019.R3
-    from extensions.middle.quantize_fuses import MarkNodesToFuseUpToFakeQuantize, FakeQuantizeFuse
-    from extensions.back.CreateConstNodes import CreateConstNodesReplacement
-    from extensions.back.RemoveRedundantReshapes import RemoveRedundantReshapes
-    from extensions.back.FuseReshapesSequence import FuseReshapesSequence
-    from extensions.middle.AddFakeQuantizeFuse import AddFakeQuantizeFuse
-    from extensions.middle.MulFakeQuantizeFuse import MulFakeQuantizeFuse
-    from mo.middle.pattern_match import for_graph_and_each_sub_graph_recursively
-    from mo.graph.graph import check_empty_graph, Node, Graph
-    from mo.utils import import_extensions, class_registration
-    from mo.middle.passes.conv import fuse_pad
-    from mo.middle.passes.eliminate import remove_const_ops, mark_output_reachable_nodes, mark_undead_nodes, mark_const_producer_nodes, \
-        eliminate_dead_nodes, add_constant_operations, shape_inference, remove_op_nodes, get_nodes_with_attributes
-    from mo.middle.passes.conv import convert_muladd_to_scaleshift, \
-        convert_add_or_mul_to_scaleshift, \
-        convert_matmul_to_fully_connected, batch_norm_fuse
-    from mo.middle.passes.fusing.decomposition import convert_scale_shift_to_mul_add, convert_batch_norm
+from extensions.middle.quantize_fuses import MarkNodesToFuseUpToFakeQuantize, FakeQuantizeFuse
+from extensions.back.CreateConstNodes import CreateConstNodesReplacement
+from extensions.back.RemoveRedundantReshapes import RemoveRedundantReshapes
+from extensions.back.FuseReshapesSequence import FuseReshapesSequence
+from extensions.middle.AddFakeQuantizeFuse import AddFakeQuantizeFuse
+from extensions.middle.MulFakeQuantizeFuse import MulFakeQuantizeFuse
+from mo.middle.pattern_match import for_graph_and_each_sub_graph_recursively
+from mo.graph.graph import check_empty_graph, Node, Graph
+from mo.utils import import_extensions, class_registration
+from mo.middle.passes.conv import fuse_pad
+from mo.middle.passes.eliminate import remove_const_ops, mark_output_reachable_nodes, mark_undead_nodes, mark_const_producer_nodes, \
+    eliminate_dead_nodes, add_constant_operations, shape_inference, remove_op_nodes, get_nodes_with_attributes
+from mo.middle.passes.conv import convert_muladd_to_scaleshift, \
+    convert_add_or_mul_to_scaleshift, \
+    convert_matmul_to_fully_connected, batch_norm_fuse
+from mo.middle.passes.fusing.decomposition import convert_scale_shift_to_mul_add, convert_batch_norm
 
 
 def is_fully_defined_shape(shape: np.ndarray):
@@ -159,254 +134,28 @@ def prepare_emit_ir(graph: nx.MultiDiGraph, data_type: str, output_dir: str, out
     return weights, xml_string
 
 
-if '2019' in version:
-    def graph_clean_up(graph: Graph, undead_node_types: list = None):
-     
-        if undead_node_types is None:
-            undead_node_types = []
+def graph_clean_up(graph: Graph, undead_node_types: list = None):
+ 
+    if undead_node_types is None:
+        undead_node_types = []
 
-        if 'Shape' in undead_node_types:
-            undead_node_types.remove('Shape')
+    if 'Shape' in undead_node_types:
+        undead_node_types.remove('Shape')
 
-        mark_output_reachable_nodes(graph)
-        mark_undead_nodes(graph, undead_node_types)
-        mark_const_producer_nodes(graph)
-        eliminate_dead_nodes(graph)
-        # Add Const op for constant data nodes
-        add_constant_operations(graph)
-        shape_inference(graph)
+    mark_output_reachable_nodes(graph)
+    mark_undead_nodes(graph, undead_node_types)
+    mark_const_producer_nodes(graph)
+    eliminate_dead_nodes(graph)
+    # Add Const op for constant data nodes
+    add_constant_operations(graph)
+    shape_inference(graph)
        
 
-    def graph_clean_up_onnx(graph: Graph):
-        graph_clean_up(graph, ['Shape'])
+def graph_clean_up_onnx(graph: Graph):
+    graph_clean_up(graph, ['Shape'])
 
 
-def driver_2018(onnx_modelproto_bytes, precision: str, output_model_name: str, outputs: list, output_dir: str,
-              scale: float,
-              user_shapes: [None, list, np.array] = None,
-              mean_scale_values: [dict, list] = ()):
-
-    try:
-        model_proto = onnx.load_from_string(bytes(onnx_modelproto_bytes))
-    except Exception as e:
-        print("[python] onnx exception: ", str(e))
-
-    model_graph = model_proto.graph  # pylint: disable=no-member
-    log.debug("Number of nodes in graph_def: {}".format(len(model_graph.node)))
-    log.debug("Number of all input ports (not true inputs) in graph_def: {}".format(
-        len(model_graph.input)))
-    log.debug("Number of initializers in graph_def: {}".format(
-        len(model_graph.initializer)))
-    log.debug("Number of real inputs in graph_def: {}".format(
-        len(model_graph.input) - len(model_graph.initializer)))
-    update_extractors_with_extensions(onnx_op_extractors)
-
-    try:
-        graph = protobuf2nx(model_proto)
-        log.debug("Number of nodes in NX graph: {}".format(
-            graph.number_of_nodes()))
-        graph.__setattr__(
-            'name', output_model_name if output_model_name else model_proto.graph.name)  # pylint: disable=no-member
-        graph.graph['layout'] = 'NCHW'
-        graph.graph['fw'] = 'onnx'
-        graph.graph['feature_dim'] = 1 if graph.graph['layout'] == 'NCHW' else 3
-        graph.graph['ir_version'] = 4
-        extract_node_attrs(graph, lambda node: (
-            True, common_onnx_fields(node)))
-    except Exception as e:
-        raise Error(
-            'Cannot pre-process ONNX graph after reading from model file "{}". '
-            'File is corrupt or has unsupported format. Details: {}. ' +
-            refer_to_faq_msg(44),
-            model_file_name,
-            str(e)
-        ) from e
-    check_empty_graph(
-        graph, 'protobuf2nx. It may happen due to problems with loaded model')
-    packed_user_shapes, packed_outputs, _ = user_data_repack(
-        graph, user_shapes, outputs, None)
-
-    output_op_nodes = add_output_ops(graph, packed_outputs)
-    input_op_nodes = add_input_ops(graph, packed_user_shapes, True)
-
-    graph_clean_up(graph)
-    check_empty_graph(graph, 'add_output_ops and add_input_ops')
-    extract_node_attrs(graph, lambda node: onnx_op_extractor(
-        node, check_for_duplicates(onnx_op_extractors)))
-
-    class_registration.apply_replacements(
-        graph, class_registration.ClassType.FRONT_REPLACER)
-
-    create_tensor_nodes(graph)
-    graph_clean_up(graph)
-
-    override_placeholder_shapes(graph, packed_user_shapes)
-
-    graph_clean_up(graph)
-    remove_op_nodes(graph, {'op': 'Identity'})
-
-    graph_clean_up(graph)
-
-    remove_output_ops(graph)
-
-    partial_infer(graph)
-    graph_clean_up(graph)
-    check_empty_graph(graph, 'partial_infer')
-
-    input_op_nodes = add_input_ops(graph, packed_user_shapes, False)
-    graph_clean_up(graph)
-    check_empty_graph(graph, 'add_input_ops')
-
-    scale_input(graph, scale)
-    add_mean_scale_values(graph, mean_scale_values)
-
-    convert_dilated_convolution(graph)
-    graph_clean_up(graph)
-
-    graph_clean_up(graph)
-
-    remove_op_nodes(graph, {'op': 'Identity'})
-    remove_useless_split(graph)
-
-    class_registration.apply_replacements(
-        graph, class_registration.ClassType.MIDDLE_REPLACER)
-
-    convert_gemm_to_fully_connected(graph)
-    NormalizeFullyConnected().find_and_replace_pattern(graph)
-
-    fuse_pad(graph)
-    graph_clean_up(graph)
-
-    convert_batch_norm(graph)
-    graph_clean_up(graph)
-
-    convert_muladd_to_scaleshift_or_power(graph)
-    graph_clean_up(graph)
-
-    convert_mul_add_to_power(graph)
-    graph_clean_up(graph)
-
-    convert_reshape(graph)
-    convert_add_to_scaleshift(graph)  # scale = 1
-    convert_mul_to_scaleshift(graph)  # biases = 0
-
-    fuse_pad(graph)
-    graph_clean_up(graph)
-
-    fuse_sequence_of_reshapes(graph)
-    graph_clean_up(graph)
-
-    pattern = EltwiseInputNormalize()
-    pattern.find_and_replace_pattern(graph)
-
-    merge_nodes_permutations(graph)
-    permute_data_nodes_attrs(graph)
-    permute_op_nodes_attrs(graph)
-
-    class_registration.apply_replacements(
-        graph, class_registration.ClassType.BACK_REPLACER)
-
-    weights, xml_string = prepare_emit_ir(graph=graph, data_type=precision, output_dir=output_dir, output_model_name=output_model_name,
-                                          meta_info={'unset': []})
-
-    return weights, xml_string
-
-
-def driver_2019_R1(onnx_modelproto_bytes, precision: str, output_model_name: str, outputs: list, output_dir: str,
-              scale: float,
-              user_shapes: [None, list, np.array] = None,
-              mean_scale_values: [dict, list] = ()):
-
-    try:
-        model_proto = onnx.load_from_string(bytes(onnx_modelproto_bytes))
-    except Exception as e:
-        print("[python] onnx exception: ", str(e))
-
-    model_graph = model_proto.graph  # pylint: disable=no-member
-
-    update_extractors_with_extensions(onnx_op_extractors)
-
-    try:
-        graph = protobuf2nx(model_proto)
-        log.debug("Number of nodes in NX graph: {}".format(
-            graph.number_of_nodes()))
-        graph.__setattr__(
-            'name', output_model_name if output_model_name else model_proto.graph.name)  # pylint: disable=no-member
-        graph.graph['layout'] = 'NCHW'
-        graph.graph['cmd_params'] = argparse.Namespace(batch=None, data_type='float', disable_fusing=False, disable_gfusing=False, disable_resnet_optimization=False, enable_concat_optimization=False, extensions=mo_extensions, finegrain_fusing=None, framework='onnx', freeze_placeholder_with_value=None, generate_deprecated_IR_V2=False,
-                                                       input=None, input_model=None, input_shape=None, keep_shape_ops=False, log_level='ERROR', mean_scale_values={}, mean_values=(), model_name=None, move_to_preprocess=False, output=None, output_dir='.', placeholder_shapes=None, reverse_input_channels=False, scale=None, scale_values=(), silent=False, version=False)
-        graph.graph['ir_version'] = 4
-        graph.graph['fw'] = 'onnx'
-        graph.graph['feature_dim'] = 1 if graph.graph['layout'] == 'NCHW' else 3
-        extract_node_attrs(graph, lambda node: (
-            True, common_onnx_fields(node)))
-    except Exception as e:
-        raise Error(
-            'Cannot pre-process ONNX graph after reading from model file "{}". '
-            'File is corrupt or has unsupported format. Details: {}. ' +
-            refer_to_faq_msg(44),
-            graph.name,
-            str(e)
-        ) from e
-    graph.check_empty_graph(
-        'protobuf2nx. It may happen due to problems with loaded model')
-    extract_node_attrs(graph, lambda node: onnx_op_extractor(
-        node, check_for_duplicates(onnx_op_extractors)))
-
-    # --------------------------------- LOAD END ------------------------------------------------------
-    class_registration.apply_replacements(
-        graph, class_registration.ClassType.FRONT_REPLACER)
-    partial_infer(graph)
-    graph.check_empty_graph('partial_infer')
-    class_registration.apply_replacements(
-        graph, class_registration.ClassType.MIDDLE_REPLACER)
-
-    fuse_pad(graph)
-    graph_clean_up_onnx(graph)
-
-    mark_unfused_nodes(graph, 'False')
-    convert_batch_norm(graph)
-    graph_clean_up_onnx(graph)
-
-    convert_muladd_to_scaleshift_or_power(graph)
-    graph_clean_up_onnx(graph)
-
-    convert_mul_add_to_power(graph)
-    graph_clean_up_onnx(graph)
-
-    convert_reshape(graph)
-    graph_clean_up_onnx(graph)
-    convert_add_or_mul_to_scaleshift(graph)  # scale = 1
-    graph_clean_up_onnx(graph)
-
-    fuse_pad(graph)
-    graph_clean_up_onnx(graph)
-
-    fuse_sequence_of_reshapes(graph)
-    graph_clean_up_onnx(graph)
-
-    pattern = EltwiseInputNormalize()
-    pattern.find_and_replace_pattern(graph)
-
-    merge_nodes_permutations(graph)
-    permute_data_nodes_attrs(graph)
-    permute_op_nodes_attrs(graph)
-
-    class_registration.apply_replacements(
-        graph, class_registration.ClassType.BACK_REPLACER)
-
-    for_graph_and_each_sub_graph_recursively(graph, remove_const_ops)
-
-    CreateConstNodesReplacement().find_and_replace_pattern(graph)
-
-    for_graph_and_each_sub_graph_recursively(graph, remove_output_ops)
-
-    weights, xml_string = prepare_emit_ir(graph=graph, data_type=precision, output_dir=output_dir, output_model_name=output_model_name,
-                                          meta_info={'unset': []})
-
-    return weights, xml_string
-
-def driver_2019_R3(onnx_modelproto_bytes, precision: str, output_model_name: str, output_dir: str): 
+def driver(onnx_modelproto_bytes, precision: str, output_model_name: str, output_dir: str): 
     try:
         model_proto = onnx.load_from_string(bytes(onnx_modelproto_bytes))
     except Exception as e:
@@ -515,23 +264,9 @@ def driver_entry(onnx_modelproto_bytes, precision: str):
     scale_values = {}
     mean_scale = {}
 
-    if 'R5' in version:
-        from mo.front.onnx.register_custom_ops import update_registration
-        import_extensions.load_dirs(
-            'onnx', [mo_extensions], update_registration)
-        weights, xml_string = driver_2018(onnx_modelproto_bytes, precision, model_name, outputs, ".", None,
-                                        user_shapes=placeholder_shapes,
-                                        mean_scale_values=mean_scale)
-    elif '2019.R1' in version:
-        from mo.front.onnx.register_custom_ops import get_front_classes
-        import_extensions.load_dirs('onnx', [mo_extensions], get_front_classes)
-        weights, xml_string = driver_2019_R1(onnx_modelproto_bytes, precision, model_name, outputs, ".", None,
-                                        user_shapes=placeholder_shapes,
-                                        mean_scale_values=mean_scale)
-    else:
-        from mo.front.onnx.register_custom_ops import get_front_classes
-        import_extensions.load_dirs('onnx', [mo_extensions], get_front_classes)
-        weights, xml_string = driver_2019_R3(onnx_modelproto_bytes, precision, model_name, ".")
+    from mo.front.onnx.register_custom_ops import get_front_classes
+    import_extensions.load_dirs('onnx', [mo_extensions], get_front_classes)
+    weights, xml_string = driver(onnx_modelproto_bytes, precision, model_name, ".")
 
     return weights, xml_string
 

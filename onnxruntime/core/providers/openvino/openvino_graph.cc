@@ -44,8 +44,7 @@ OpenVINOGraph::OpenVINOGraph(const onnxruntime::Node* fused_node) {
   device_id_ = "CPU";
   precision_ = InferenceEngine::Precision::FP32;
   precision_str = "FP32";
-  InferenceEngine::IExtensionPtr extension_ptr = InferenceEngine::make_so_pointer<InferenceEngine::IExtension>("libcpu_extension_sse4.so");
-  ie.AddExtension(extension_ptr, "CPU");
+  ie.AddExtension(std::make_shared<InferenceEngine::Extensions::Cpu::CpuExtensions>(), "CPU");
 #endif
 #ifdef OPENVINO_CONFIG_GPU_FP32
   device_id_ = "GPU";
