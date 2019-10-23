@@ -14,7 +14,7 @@ endif()
 
  # Libraries for python package.
 if (WIN32)
-    set(OPENVINO_CPU_EXTENSION_LIB libcpu_extension.dll)
+    set(OPENVINO_CPU_EXTENSION_LIB cpu_extension.dll)
 else()
     set(OPENVINO_CPU_EXTENSION_LIB libcpu_extension.so)
 endif()

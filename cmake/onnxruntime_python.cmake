@@ -226,7 +226,7 @@ if (onnxruntime_USE_OPENVINO)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
-        ${OPENVINO_CPU_EXTENSION_DIR}/${CPU_EXTENSION_LIB}
+        ${OPENVINO_CPU_EXTENSION_DIR}/${OPENVINO_CPU_EXTENSION_LIB}
         $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
   )
 endif()
