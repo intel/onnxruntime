@@ -209,6 +209,24 @@ def driver(onnx_modelproto_bytes, precision: str, output_model_name: str, output
     convert_batch_norm(graph)
     graph_clean_up_onnx(graph)
 
+    # Converting ScaleShift layer to Mul->Add
+    convert_scale_shift_to_mul_add(graph)
+    graph_clean_up_onnx(graph)
+
+    # Fusing the sequences of Mul/Add operations
+    fuse_mul_add_sequence(graph)
+    graph_clean_up_onnx(graph)
+
+    # Fusing linear operation to Convolution
+    fuse_linear_ops(graph)
+    graph_clean_up_onnx(graph)
+
+    grouped_convolutions_fusing(graph)
+    graph_clean_up_onnx(graph)
+
+    fuse_linear_ops(graph)
+    graph_clean_up_onnx(graph)
+
     MarkNodesToFuseUpToFakeQuantize().find_and_replace_pattern(graph)
     FakeQuantizeFuse().find_and_replace_pattern(graph)
 
