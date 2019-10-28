@@ -75,9 +75,7 @@ Below topologies are supported from ONNX open model zoo using OpenVINO Execution
 
 | **Topology** | **CPU** | **GPU** | **VPU** |
 | --- | --- | --- | --- |
-| MNIST | Yes | Yes | Yes**
-
-**Inception_v1 and MNIST are supported in OpenVINO R1.1 and are not supported in OpenVINO R5.0.1.
+| MNIST | Yes | Yes | Yes
 
 ### Object Detection Networks
 
