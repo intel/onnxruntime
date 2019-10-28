@@ -530,11 +530,7 @@ endif()
 
 if(onnxruntime_USE_OPENVINO)
 
-    add_definitions(-DUSE_OPENVINO=1)
-
-  #Build CPU Extensions
-	include(openvino)
-	list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_openvino_cpu_extensions)
+  add_definitions(-DUSE_OPENVINO=1)
 
 	if (onnxruntime_USE_OPENVINO_BINARY)
 	    #TODO: set plugin path var
