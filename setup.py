@@ -134,7 +134,7 @@ else:
   # Nuphar Libs
   libs.extend(['tvm.dll'])
   # Openvino Libs
-  libs.extend(['libcpu_extension.dll'])
+  libs.extend(['cpu_extension.dll'])
   if nightly_build:
     libs.extend(['onnxruntime_pywrapper.dll'])
 
