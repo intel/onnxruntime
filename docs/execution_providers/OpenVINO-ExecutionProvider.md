@@ -18,10 +18,12 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | BatchNormalization | Scaleshift (can be fused into Convlution or Fully Connected) | Yes | Yes | Yes | Yes
 | Concat  | Concat | Yes | Yes | Yes | Yes
 | Conv | Convolution | Yes | Yes | Yes | Yes
+| Div | Eltwise(operation = mul)->Power | Yes | Yes | Yes | Yes
 | Dropout | Ignored | Yes | Yes | Yes | Yes
 | Flatten  | Reshape | Yes | Yes | Yes | No
 | Gemm | FullyConnected | Yes | Yes | Yes | Yes
 | GlobalAveragePool | Pooling | Yes | Yes | Yes | Yes
+| GlobalMaxPool | Pooling | Yes | Yes | Yes | Yes
 | Identity | Ignored | Yes | Yes | Yes | Yes
 | ImageScaler | ScaleShift  | Yes  | Yes  | Yes | Yes
 | LRN  | Norm | Yes | Yes | Yes | Yes
@@ -32,6 +34,7 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | Reshape | Reshape | Yes | Yes | Yes | No
 |  Softmax  | SoftMax | Yes | Yes | Yes | No
 | Sum | Eltwise(operation=sum) | Yes | Yes | Yes | Yes
+| Sub | Power->Eltwise(operation = sum)| Yes | Yes | Yes | Yes
 | Transpose | Permute | Yes | Yes | Yes | No
 | UnSqueeze | Reshape  | Yes  | Yes  | Yes | No
 | LeakyRelu | ReLU | Yes  | Yes  | Yes | Yes
