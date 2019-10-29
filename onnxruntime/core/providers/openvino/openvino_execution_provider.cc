@@ -239,10 +239,9 @@ void CheckGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::stri
 
     //Zero dimension check
     for (size_t i = 0; i < node_inputs.size(); i++) {
-
       auto name = node_inputs[i]->Name();
       auto it = initializers.find(name);
-      if(it == initializers.end() && node_inputs[i]->Shape() != nullptr){
+      if (it == initializers.end() && node_inputs[i]->Shape() != nullptr) {
         if (node_inputs[i]->Shape()->dim_size() == 0) {
           throw "Node_input is zero dimension";
         }
@@ -343,7 +342,7 @@ void CheckGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::stri
     }
 
     //Dropout , Identity and Concat can't have graph inputs
-      if (node->OpType() == "Dropout" || node->OpType() == "Identity" || node->OpType() == "Concat" || node->OpType() == "Gemm") {
+    if (node->OpType() == "Dropout" || node->OpType() == "Identity" || node->OpType() == "Concat" || node->OpType() == "Gemm") {
       auto graph_inputs = graph_viewer.GetInputs();
       for (const auto& input : node->InputDefs()) {
         auto it = find(graph_inputs.begin(), graph_inputs.end(), input);

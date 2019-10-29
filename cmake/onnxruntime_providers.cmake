@@ -281,26 +281,25 @@ if (onnxruntime_USE_NGRAPH)
 endif()
 
 if (onnxruntime_USE_OPENVINO)
-  file(GLOB_RECURSE onnxruntime_providers_openvino_cc_srcs
-    "${ONNXRUNTIME_ROOT}/core/providers/openvino/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/openvino/*.cc"
-  )
-  file(GLOB_RECURSE onnxruntime_providers_openvino_py_srcs
-    "${ONNXRUNTIME_ROOT}/core/providers/openvino/openvino_mo/*.py"
-  )
-
   # Below variables point to directories within the OpenVINO installation directory
   # whose value is set in INTEL_CVSDK_DIR variable by running the setupvars.sh script
   if ($ENV{INTEL_CVSDK_DIR} MATCHES "2019.3")
-     message($ENV{INTEL_CVSDK_DIR})
-     set(OPENVINO_INCLUDE_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/include)
-     set(OPENVINO_EXTENSIONS_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/src/extension)
-     set(OPENVINO_TBB_INCLUDE_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/include)
+    file(GLOB_RECURSE onnxruntime_providers_openvino_cc_srcs
+      "${ONNXRUNTIME_ROOT}/core/providers/openvino/*.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/openvino/*.cc"
+    )
+    file(GLOB_RECURSE onnxruntime_providers_openvino_py_srcs
+      "${ONNXRUNTIME_ROOT}/core/providers/openvino/openvino_mo/*.py"
+    )
+
+    message($ENV{INTEL_CVSDK_DIR})
+    set(OPENVINO_INCLUDE_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/include)
+    set(OPENVINO_EXTENSIONS_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/src/extension)
+    set(OPENVINO_TBB_INCLUDE_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/include)
     if(WIN32)
      set(OPENVINO_LIB_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64/Release)
      set(OPENVINO_TBB_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64/Release)
-     set(OPENVINO_MKL_TINY_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/bin/intel64/Release)
-	 
+     set(OPENVINO_MKL_TINY_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/bin/intel64/Release)	 
     else()
      set(OPENVINO_LIB_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64/)
      set(OPENVINO_TBB_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/lib)
@@ -325,7 +324,6 @@ if (onnxruntime_USE_OPENVINO)
     target_include_directories(onnxruntime_providers_openvino SYSTEM PUBLIC ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${OPENVINO_INCLUDE_DIR} ${OPENVINO_EXTENSIONS_DIR} ${OPENVINO_LIB_DIR} ${OPENVINO_TBB_INCLUDE_DIR} ${PYTHON_INCLUDE_DIRS})
   endif()
   
-  if ($ENV{INTEL_CVSDK_DIR} MATCHES "2019.3")
    if (WIN32)   
      string(REPLACE "include" "libs" PYTHON_LIB ${PYTHON_INCLUDE_DIRS})	
 	   find_package(InferenceEngine 2.1 REQUIRED)
@@ -346,7 +344,6 @@ if (onnxruntime_USE_OPENVINO)
      target_link_libraries(onnxruntime_providers_openvino PRIVATE -linference_engine IE::ie_cpu_extension -ltbb ${PYTHON_LIBRARIES})
      file(COPY ${onnxruntime_providers_openvino_py_srcs} DESTINATION ${onnxruntime_BINARY_DIR})
    endif()
-  endif()
   file(COPY ${onnxruntime_providers_openvino_py_srcs} DESTINATION ${onnxruntime_BINARY_DIR})
 endif()
 

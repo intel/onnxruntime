@@ -73,7 +73,6 @@ OpenVINOGraph::OpenVINOGraph(const onnxruntime::Node* fused_node) {
   precision_str = "FP32";
 #endif
 
-
   // Infer Request class represents OpenVINO's logical hardware instance. These logical
   // instances are bound to physical hardware instances at runtime depending
   // on the physical hardware availability. If multiple Infer Requests are mapped to
@@ -111,11 +110,10 @@ OpenVINOGraph::OpenVINOGraph(const onnxruntime::Node* fused_node) {
     input_indexes_.push_back(index);
   }
 
-  class FPGA_ErrorListener : public InferenceEngine::IErrorListener{
-
-        void onError(const char *msg) noexcept override {
-          LOGS_DEFAULT(INFO) << log_tag << msg;
-        }
+  class FPGA_ErrorListener : public InferenceEngine::IErrorListener {
+    void onError(const char* msg) noexcept override {
+      LOGS_DEFAULT(INFO) << log_tag << msg;
+    }
   };
 
   FPGA_ErrorListener err_listener;
@@ -125,9 +123,9 @@ OpenVINOGraph::OpenVINOGraph(const onnxruntime::Node* fused_node) {
 
   // Create hardware specific OpenVINO network representation
   GetExecutableHandle(openvino_network_);
-  
+
   //Loading model to the plugin
-  auto exeNetwork = ie.LoadNetwork(*openvino_network_,device_id_);
+  auto exeNetwork = ie.LoadNetwork(*openvino_network_, device_id_);
 
   LOGS_DEFAULT(INFO) << log_tag << "Network loaded into accelerator plug-in succesfully";
 
@@ -150,7 +148,6 @@ void OpenVINOGraph::ConvertONNXModelToOpenVINOIR(const std::string& onnx_model,
   PyObject* pModule = NULL;
   PyObject* pName;
   pName = PyUnicode_FromString("openvino_mo");
-
 
   pModule = PyImport_Import(pName);
   if (pModule == NULL) {
@@ -211,8 +208,8 @@ std::shared_ptr<InferenceEngine::CNNNetwork> OpenVINOGraph::BuildOpenVINONetwork
   const auto& attributes = fused_node_->GetAttributes();
   std::string xml_string = attributes.at("xml_str").s();
   std::string weights_string = attributes.at("weights_str").s();
-   InferenceEngine::TensorDesc tensorDesc(InferenceEngine::Precision::U8,
-                                          {weights_string.size()},InferenceEngine::Layout::C);
+  InferenceEngine::TensorDesc tensorDesc(InferenceEngine::Precision::U8,
+                                         {weights_string.size()}, InferenceEngine::Layout::C);
   InferenceEngine::TBlob<uint8_t>::Ptr weightsPtr(new InferenceEngine::TBlob<uint8_t>(tensorDesc));
   weightsPtr->allocate();
 
