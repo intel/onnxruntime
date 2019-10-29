@@ -389,6 +389,8 @@ if (onnxruntime_USE_OPENVINO_BINARY)
      set(OPENVINO_TBB_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/lib)
      set(OPENVINO_MKL_TINY_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/mkltiny_lnx/lib)
     endif()
+  else()
+     message(FATAL_ERROR "OpenVINO 2019 R3.1 must be installed with environment variables set before building ONNX Runtime")
   endif()
 endif()
 
