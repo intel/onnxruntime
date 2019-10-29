@@ -291,7 +291,6 @@ if (onnxruntime_USE_OPENVINO)
 
   # Below variables point to directories within the OpenVINO installation directory
   # whose value is set in INTEL_CVSDK_DIR variable by running the setupvars.sh script
-if (onnxruntime_USE_OPENVINO_BINARY)
   if ($ENV{INTEL_CVSDK_DIR} MATCHES "2019.3")
      message($ENV{INTEL_CVSDK_DIR})
      set(OPENVINO_INCLUDE_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/include)
@@ -310,7 +309,6 @@ if (onnxruntime_USE_OPENVINO_BINARY)
   else()
      message(FATAL_ERROR "OpenVINO 2019 R3.1 must be installed with environment variables set before building ONNX Runtime")
   endif()
-endif()
 
   find_package(PythonLibs REQUIRED)
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_openvino_cc_srcs})
