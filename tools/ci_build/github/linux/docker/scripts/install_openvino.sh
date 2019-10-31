@@ -26,6 +26,7 @@ make -j$(nproc)
 cd ${INTEL_CVSDK_DIR}
 mkdir -p deployment_tools
 mv inference-engine inference_engine && mv inference_engine deployment_tools/
+ln -s deployment_tools/inference_engine inference-engine
 mv model-optimizer model_optimizer && mv model_optimizer deployment_tools/
 
 cd ${INTEL_CVSDK_DIR}/deployment_tools/model_optimizer/install_prerequisites && ./install_prerequisites_onnx.sh
@@ -33,7 +34,7 @@ cd ${INTEL_CVSDK_DIR}/deployment_tools/model_optimizer/install_prerequisites && 
 cd ${INTEL_CVSDK_DIR}/deployment_tools/inference_engine
 mkdir -p lib/intel64
 mkdir -p external/tbb/lib
-mv bin/intel64/Release/lib/* lib/intel64
-mv temp/tbb/lib/* external/tbb/lib
+cp -R bin/intel64/Release/lib/* lib/intel64
+cp -R temp/tbb/lib/* external/tbb/lib
 
 cd ~
