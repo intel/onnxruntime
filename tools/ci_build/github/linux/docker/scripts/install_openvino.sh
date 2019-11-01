@@ -31,6 +31,7 @@ mv model-optimizer model_optimizer && mv model_optimizer deployment_tools/
 
 cd ${INTEL_CVSDK_DIR}/deployment_tools/model_optimizer/install_prerequisites && ./install_prerequisites_onnx.sh
 pip3 install test-generator==0.1.1
+export InferenceEngine_DIR=${INTEL_CVSDK_DIR}/deployment_tools/inference_engine/build
 
 cd ${INTEL_CVSDK_DIR}/deployment_tools/inference_engine
 mkdir -p lib/intel64
