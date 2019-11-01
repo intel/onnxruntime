@@ -292,7 +292,6 @@ if (onnxruntime_USE_OPENVINO)
       "${ONNXRUNTIME_ROOT}/core/providers/openvino/openvino_mo/*.py"
     )
 
-    message($ENV{INTEL_CVSDK_DIR})
     set(OPENVINO_INCLUDE_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/include)
     set(OPENVINO_EXTENSIONS_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/src/extension)
     set(OPENVINO_TBB_INCLUDE_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/include)
