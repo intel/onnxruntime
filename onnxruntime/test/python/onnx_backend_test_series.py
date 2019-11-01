@@ -147,8 +147,8 @@ def create_backend_test(testname=None):
             current_failing_tests.append('^test_div_cpu*')
 
         if c2.supports_device('OPENVINO_CPU_FP32'):
-            current_failing_tests += ['^test_scan9_sum_cpu',
-                                      '^test_scan_sum_cpu']
+            current_failing_tests += ['^test_scan9_sum_cpu',#sum_out output node not defined, temporarily disabling test
+                                      '^test_scan_sum_cpu'] #sum_out output node not defined, temporarily disabling test
 
         filters = current_failing_tests + \
                   tests_with_pre_opset7_dependencies_filters() + \
