@@ -45,10 +45,9 @@ std::shared_ptr<InferenceEngine::CNNNetwork>
 CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, std::string device_id,
                  InferenceEngine::Precision precision) {
 
-  std::istringstream model_stream{model_proto.SerializeAsString()};
   std::shared_ptr<ngraph::Function> ng_function;
   try {
-    ng_function = ngraph::onnx_import::import_onnx_model(model_stream);
+    ng_function = ngraph::onnx_import::import_onnx_model(model_proto);
     LOGS_DEFAULT(INFO) << "ONNX Import Done";
   } catch (const std::exception& exp) {
     ORT_THROW(log_tag + "[OpenVINO-EP] Exception while importing model to nGraph Func: " + std::string(exp.what()));
