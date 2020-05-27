@@ -157,14 +157,14 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 
 ### OpenVINO on VAD-M Accelerator Version
 
-1.  Download OpenVINO **Full package** for version **2020.2** for Linux on host machine from [this link](https://software.intel.com/en-us/openvino-toolkit/choose-download) and install it with the help of [this link](https://docs.openvinotoolkit.org/latest/_docs_install_guides_installing_openvino_linux.html)
+1.  Download OpenVINO **Full package** for version **2020.2** for Linux on host machine from [this link](https://software.intel.com/en-us/openvino-toolkit/choose-download) and install it with the help of instructions from [this link](https://docs.openvinotoolkit.org/latest/_docs_install_guides_installing_openvino_linux.html)
 
-2. Build the docker image from the DockerFile in this repository.
+2. Install the HDDL drivers on the host machine according to the reference in [here](https://docs.openvinotoolkit.org/latest/_docs_install_guides_installing_openvino_linux_ivad_vpu.html)
+
+3. Build the docker image from the DockerFile in this repository.
      ```
       docker build --rm -t onnxruntime-vadr --build-arg DEVICE=VAD-M_FP16 --network host .
      ```
-3. Install the HDDL drivers on the host machine according to the reference in [here](https://docs.openvinotoolkit.org/latest/_docs_install_guides_installing_openvino_linux_ivad_vpu.html)
-
 4. Run hddldaemon on the host in a separate terminal session using the following command: 
      ```
       $HDDL_INSTALL_DIR/bin/hddldaemon
