@@ -1482,11 +1482,7 @@ TEST(MathOpTest, Equal_int64) {
   test.AddInput<int64_t>("A", dims, {1, 0, -1, -1});
   test.AddInput<int64_t>("B", dims, {1, 1, 2, -1});
   test.AddOutput<bool>("C", dims, {true, false, false, true});
-  #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
-  #else
-    test.Run();
-  #endif
+  test.Run();
 }
 
 TEST(MathOpTest, Equal_float) {

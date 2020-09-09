@@ -20,8 +20,7 @@ bool IsDebugEnabled();
 void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
                std::shared_ptr<InferenceEngine::CNNNetwork> network,
                std::unordered_map<std::string, int> output_names,
-               std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map,
-               std::string device_id);
+               std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map);
 
 std::shared_ptr<InferenceEngine::CNNNetwork>
 CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const SubGraphContext& subgraph_context, std::map<std::string,
@@ -29,7 +28,7 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const SubGraphCo
 
 int GetFirstAvailableDevice(GlobalContext& global_context);
 
-#if defined(OPENVINO_2020_4) || defined (OPENVINO_2021_1)
+#if defined(OPENVINO_2020_4)
 void FillOutputsWithConstantData(Ort::CustomOpApi& ort, std::shared_ptr<ngraph::Node> node, OrtValue* out_tensor);
 
 template <typename T>
@@ -37,7 +36,7 @@ void FillOutputHelper(Ort::CustomOpApi& ort, OrtValue* out_tensor, std::shared_p
 #endif
 
 InferenceEngine::Precision
-ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type, std::string device_id);
+ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type);
 
 std::vector<OrtValue*> GetOutputTensors(Ort::CustomOpApi& ort,
                                         OrtKernelContext* context, size_t batch_size,

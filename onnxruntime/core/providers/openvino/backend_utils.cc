@@ -76,7 +76,7 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const SubGraphCo
     ng_function->validate_nodes_and_infer_types();
   }
 
-#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1)
+#if defined(OPENVINO_2020_4)
   std::map<std::string, std::string> result_to_output;
   for(auto& result : ng_function->get_results()){
     result_to_output[result->get_friendly_name()] = result->input_value(0).get_node_shared_ptr()->get_friendly_name();
@@ -104,7 +104,7 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const SubGraphCo
   }
 }
 
-InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type, std::string device_id) {
+InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type) {
   ONNX_NAMESPACE::DataType type_string = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(onnx_type);
   if (*type_string == "float" || *type_string == "tensor(float)") {
     return InferenceEngine::Precision::FP32;
@@ -121,11 +121,7 @@ InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::
   } else if (*type_string == "uint8" || *type_string == "tensor(uint8)") {
     return InferenceEngine::Precision::U8;
   } else if (*type_string == "bool" || *type_string == "tensor(bool)") {
-    if (device_id == "MYRIAD") {
-      return InferenceEngine::Precision::FP32;
-    } else {
-      return InferenceEngine::Precision::U8;
-    }
+    return InferenceEngine::Precision::U8;
   } else if (*type_string == "int64" || *type_string == "tensor(int64)") {
     return InferenceEngine::Precision::I32;
   } else {
@@ -136,8 +132,7 @@ InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::
 void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
                std::shared_ptr<InferenceEngine::CNNNetwork> network,
                std::unordered_map<std::string, int> output_names,
-               std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map,
-               std::string device_id) {
+               std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map) {
   // Configure input & output
   // Prepare input blobs
 
@@ -148,7 +143,7 @@ void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
   int input_idx = 0;
   for (auto iter = inputInfo.begin(); iter != inputInfo.end(); ++iter, ++input_idx) {
     // Get the onnx index for the corresponding input (ignoring initializers)
-    auto precision = ConvertPrecisionONNXToOpenVINO(model_proto.graph().input(input_idx).type(), device_id);
+    auto precision = ConvertPrecisionONNXToOpenVINO(model_proto.graph().input(input_idx).type());
     iter->second->setPrecision(precision);
   }
 
@@ -156,13 +151,13 @@ void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
   auto outputInfo = network->getOutputsInfo();
   for (auto iter = outputInfo.begin(); iter != outputInfo.end(); ++iter) {
     auto output_name = iter->first;
-#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1)
+#if defined(OPENVINO_2020_4)
     auto it = const_outputs_map.find(output_name);
     //Output is constant and don't need to set precision
     if(it != const_outputs_map.end())
       break;
 #endif
-    auto precision = ConvertPrecisionONNXToOpenVINO(model_proto.graph().output(output_names.at(output_name)).type(), device_id);
+    auto precision = ConvertPrecisionONNXToOpenVINO(model_proto.graph().output(output_names.at(output_name)).type());
     iter->second->setPrecision(precision);
   }
 }
@@ -202,7 +197,7 @@ GetOutputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_
       delete output_shape;
     }
   }
-#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1)
+#if defined(OPENVINO_2020_4)
   for(auto item : const_output_map){
     auto it = output_names.find(item.first);
     if(it == output_names.end()) {
@@ -249,7 +244,7 @@ int GetFirstAvailableDevice(GlobalContext& global_context){
   return i;
 }
 
-#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1)
+#if defined(OPENVINO_2020_4)
 void FillOutputsWithConstantData(Ort::CustomOpApi& ort, std::shared_ptr<ngraph::Node> node, OrtValue* out_tensor){
 
 
@@ -281,7 +276,7 @@ void FillOutputsWithConstantData(Ort::CustomOpApi& ort, std::shared_ptr<ngraph::
 }
 #endif
 
-#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1)
+#if defined(OPENVINO_2020_4)
 template<typename T>
 void FillOutputHelper(Ort::CustomOpApi& ort, OrtValue* out_tensor, std::shared_ptr<ngraph::Node> node){
 
