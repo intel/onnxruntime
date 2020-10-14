@@ -32,6 +32,8 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   ie_cnn_network_ = CreateCNNNetwork(model_proto, global_context_, subgraph_context_, const_outputs_map_);
   SetIODefs(model_proto, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_, global_context_.device_type);
 
+  InferenceEngine::ExecutableNetwork exe_network;
+
 #if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1)
   if(const_outputs_map_.size() == subgraph_context_.output_names.size())
     subgraph_context_.is_constant = true;
@@ -69,7 +71,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
 
 // Starts an asynchronous inference request for data in slice indexed by batch_slice_idx on
 // an Infer Request indexed by infer_req_idx
-void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* context) {
+void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* context, std::shared_ptr<InferenceEngine::InferRequest> infer_request) {
 
   auto graph_input_info = ie_cnn_network_->getInputsInfo();
 
@@ -80,7 +82,7 @@ void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* 
     InferenceEngine::Blob::Ptr graph_input_blob;
     std::string input_name = input_info_iter->first;
     try {
-      graph_input_blob = infer_request_->GetBlob(input_name);
+      graph_input_blob = infer_request->GetBlob(input_name);
 
     } catch (InferenceEngine::details::InferenceEngineException e) {
       ORT_THROW(log_tag + " Cannot access IE Blob for input: " + input_name + e.what());
@@ -93,7 +95,7 @@ void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* 
   }
   // Start Async inference
   try {
-    infer_request_->StartAsync();
+    infer_request->StartAsync();
   } catch (InferenceEngine::details::InferenceEngineException e) {
     ORT_THROW(log_tag + " Couldn't start Inference: " + e.what());
   } catch (...) {
@@ -103,10 +105,10 @@ void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* 
 
 // Wait for asynchronous inference completion on an Infer Request object indexed by infer_req_idx
 // and copy the results into a slice location within the batched output buffer indexed by batch_slice_idx
-void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* context) {
+void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* context, std::shared_ptr<InferenceEngine::InferRequest> infer_request) {
   // Wait for Async inference completion
   try {
-    infer_request_->Wait(InferenceEngine::IInferRequest::WaitMode::RESULT_READY);
+    infer_request->Wait(InferenceEngine::IInferRequest::WaitMode::RESULT_READY);
   } catch (InferenceEngine::details::InferenceEngineException e) {
     ORT_THROW(log_tag + " Exception with completing Inference: " + e.what());
   } catch (...) {
@@ -120,14 +122,14 @@ void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContex
     InferenceEngine::Blob::Ptr graph_output_blob;
     auto output_name = output_info_iter->first;
     try {
-      graph_output_blob = infer_request_->GetBlob(output_name);
+      graph_output_blob = infer_request->GetBlob(output_name);
     } catch (InferenceEngine::details::InferenceEngineException e) {
       ORT_THROW(log_tag + " Cannot access IE Blob for output: " + output_name + e.what());
     } catch (...) {
       ORT_THROW(log_tag + " Cannot access IE Blob for output: " + output_name);
     }
     size_t batch_size = 1;
-    auto output_tensor = GetOutputTensor(ort, context, batch_size, infer_request_, output_name, subgraph_context_.output_names);
+    auto output_tensor = GetOutputTensor(ort, context, batch_size, infer_request, output_name, subgraph_context_.output_names);
     auto precision = output_info_iter->second->getPrecision();
 
     size_t batch_slice = 0;
@@ -151,8 +153,8 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   // Currently allows only one Infer execution at a time
 
   //Requesting for idle infer_request_ from the pool
-  infer_request_ = inferRequestsQueue->getIdleRequest();
-  if (!infer_request_) {
+  std::shared_ptr<InferenceEngine::InferRequest> infer_request = inferRequestsQueue->getIdleRequest();
+  if (!infer_request) {
     THROW_IE_EXCEPTION << "No idle Infer Requests!";
   }
 
@@ -171,14 +173,14 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
 #endif
   }
   else{
-    StartAsyncInference(ort, context);
-    CompleteAsyncInference(ort, context);
+    StartAsyncInference(ort, context, infer_request);
+    CompleteAsyncInference(ort, context, infer_request);
   }
   // Get Output tensors
   LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
-  //Once the inference is completed, the infer_request_ is free and placed back into pool of infer_request_'s
-  inferRequestsQueue->putIdleRequest(infer_request_); 
-  inferRequestsQueue->printstatus(); //Printing the current status of infer_request_'s available in the pool
+  //Once the inference is completed, the infer_request is free and placed back into pool of infer_request's
+  inferRequestsQueue->putIdleRequest(infer_request); 
+  inferRequestsQueue->printstatus(); //Printing the current status of infer_request's available in the pool
 }
 
 }  // namespace openvino_ep
