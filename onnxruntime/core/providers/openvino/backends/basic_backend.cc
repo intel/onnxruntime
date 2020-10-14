@@ -61,6 +61,10 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
     ORT_THROW(log_tag + " Exception while Loading Network for graph " + subgraph_context_.subgraph_name);
   }
   LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
+
+  size_t nireq = 4; // currently the value is hardcoded to 4
+  //Initializing the pool with infer_request's
+  inferRequestsQueue = std::unique_ptr<InferRequestsQueue>(new InferRequestsQueue(exe_network, nireq));
 }
 
 // Starts an asynchronous inference request for data in slice indexed by batch_slice_idx on
@@ -146,11 +150,8 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   // Preliminary Thread safety mechanism
   // Currently allows only one Infer execution at a time
 
-  size_t nireq = 4; // currently the value is hardcoded to 4
-  static InferRequestsQueue inferRequestsQueue(exe_network, nireq); // static InferRequestsQueue object created
-
-  //Requesting for infer_request_  from the pool
-  infer_request_ = inferRequestsQueue.getIdleRequest();
+  //Requesting for idle infer_request_ from the pool
+  infer_request_ = inferRequestsQueue->getIdleRequest();
   if (!infer_request_) {
     THROW_IE_EXCEPTION << "No idle Infer Requests!";
   }
@@ -176,8 +177,8 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   // Get Output tensors
   LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
   //Once the inference is completed, the infer_request_ is free and placed back into pool of infer_request_'s
-  inferRequestsQueue.putIdleRequest(infer_request_); 
-  inferRequestsQueue.printstatus(); //Printing the current status of infer_request_'s available in the pool
+  inferRequestsQueue->putIdleRequest(infer_request_); 
+  inferRequestsQueue->printstatus(); //Printing the current status of infer_request_'s available in the pool
 }
 
 }  // namespace openvino_ep

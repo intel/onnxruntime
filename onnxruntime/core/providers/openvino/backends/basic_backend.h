@@ -19,6 +19,7 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
+class InferRequestsQueue;
 class BasicBackend : public IBackend {
  public:
   BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
@@ -37,8 +38,9 @@ class BasicBackend : public IBackend {
   mutable std::mutex compute_lock_;
   std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network_;
   std::map<std::string, std::shared_ptr<ngraph::Node>> const_outputs_map_;
-  InferenceEngine::InferRequest::Ptr infer_request_;
+  std::shared_ptr<InferenceEngine::InferRequest> infer_request_;
   InferenceEngine::ExecutableNetwork exe_network;
+  std::unique_ptr<InferRequestsQueue> inferRequestsQueue;
 };
 
 class InferRequestsQueue {
