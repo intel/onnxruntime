@@ -43,7 +43,12 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   if(subgraph_context_.is_constant)
     return;
   std::map<std::string, std::string> config;
-  if(global_context_.device_type == "MYRIAD"){
+#ifndef NDEBUG
+    if (openvino_ep::backend_utils::IsDebugEnabled()) {
+      config["PERF_COUNT"] = CONFIG_VALUE(YES);
+    }
+#endif
+  if(global_context_.device_type.find("MYRIAD") != std::string::npos){
 
     if(subgraph_context_.set_vpu_config) {
       config["VPU_DETECT_NETWORK_BATCH"] = CONFIG_VALUE(NO);
@@ -178,6 +183,12 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   }
   // Get Output tensors
   LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
+#ifndef NDEBUG
+  if (openvino_ep::backend_utils::IsDebugEnabled()) {
+  std::string& hw_target = (global_context_.device_id != "") ? global_context_.device_id : global_context_.device_type;
+  printPerformanceCounts(*infer_request_, std::cout, hw_target, true);
+  }
+#endif
 }
 
 }  // namespace openvino_ep
