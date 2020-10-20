@@ -11,7 +11,6 @@
 #include "core/providers/openvino/ibackend.h"
 
 #include <vector>
-#include <queue>
 #include <string>
 #include <condition_variable>
 #include <mutex>
@@ -51,16 +50,18 @@ InferRequestsQueue(InferenceEngine::ExecutableNetwork& net, size_t nireq) {
   }
 
 ~InferRequestsQueue() {
-  std::cout << "calling out the ~InferRequestsQueue() Destructor " << std::endl;
+  // clearing out the infer_requests_ vector pool in the class's destructor
+  for(auto& pointer : infer_requests_) {
+       pointer = nullptr;
+   }
+  infer_requests_.erase(std::remove(infer_requests_.begin(), infer_requests_.end(), nullptr), infer_requests_.end());
 }
 
 void printstatus() {
     std::cout << "printing elements of the vector (infer_requests_): " << std::endl;
-    for (auto i = infer_requests_.begin(); i != infer_requests_.end(); ++i)
-    {
-        std::cout << *i << " ";
+    for (auto i = infer_requests_.begin(); i != infer_requests_.end(); ++i) {
+        std::cout << *i << " " << '\n';
     }
-        std::cout << '\n';
 }
 
 void putIdleRequest(InferenceEngine::InferRequest::Ptr infer_request_) {

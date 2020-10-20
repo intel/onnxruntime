@@ -64,8 +64,8 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   }
   LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
 
-  size_t nireq = 4; // currently the value is hardcoded to 4
-  //Initializing the pool with infer_request's
+  //Initializing the infer_requests_ pool with 8 infer_request's (creating infer_request)
+  size_t nireq = 8;
   inferRequestsQueue = std::unique_ptr<InferRequestsQueue>(new InferRequestsQueue(exe_network, nireq));
 }
 
@@ -150,17 +150,17 @@ void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContex
 
 void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   // Preliminary Thread safety mechanism
-  // Currently allows only one Infer execution at a time
+  // currently allows a maximum of 8 Infer request's to paralelly execute at the same time
 
-  //Requesting for idle infer_request_ from the pool
+  //Requesting for an idle infer_request from a pool of infer_requests_
   std::shared_ptr<InferenceEngine::InferRequest> infer_request = inferRequestsQueue->getIdleRequest();
   if (!infer_request) {
+    LOGS_DEFAULT(INFO) << "No idle Infer Requests found from the infer_requests_ pool!";
     THROW_IE_EXCEPTION << "No idle Infer Requests!";
   }
 
   LOGS_DEFAULT(INFO) << log_tag << "Running graph " << subgraph_context_.subgraph_name;
   LOGS_DEFAULT(INFO) << log_tag << "In Infer";
-  //std::lock_guard<std::mutex> lock(compute_lock_);
 
   if(subgraph_context_.is_constant){
 #if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1)
@@ -178,9 +178,11 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   }
   // Get Output tensors
   LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
-  //Once the inference is completed, the infer_request is free and placed back into pool of infer_request's
+  //Once the inference is completed, the infer_request becomes free and is placed back into pool of infer_requests_
   inferRequestsQueue->putIdleRequest(infer_request); 
-  inferRequestsQueue->printstatus(); //Printing the current status of infer_request's available in the pool
+#ifndef NDEBUG
+  inferRequestsQueue->printstatus(); //Printing the elements of infer_requests_ vector pool only in debug mode
+#endif
 }
 
 }  // namespace openvino_ep
