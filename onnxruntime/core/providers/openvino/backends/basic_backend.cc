@@ -66,7 +66,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
 
   //Initializing the infer_requests_ pool with 8 infer_request's (creating infer_request)
   size_t nireq = 8;
-  inferRequestsQueue = std::unique_ptr<InferRequestsQueue>(new InferRequestsQueue(exe_network, nireq));
+  inferRequestsQueue_ = std::unique_ptr<InferRequestsQueue>(new InferRequestsQueue(exe_network, nireq));
 }
 
 // Starts an asynchronous inference request for data in slice indexed by batch_slice_idx on
@@ -153,7 +153,7 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   // currently allows a maximum of 8 Infer request's to paralelly execute at the same time
 
   //Requesting for an idle infer_request from a pool of infer_requests_
-  std::shared_ptr<InferenceEngine::InferRequest> infer_request = inferRequestsQueue->getIdleRequest();
+  std::shared_ptr<InferenceEngine::InferRequest> infer_request = inferRequestsQueue_->getIdleRequest();
   if (!infer_request) {
     LOGS_DEFAULT(INFO) << "No idle Infer Requests found from the infer_requests_ pool!";
     THROW_IE_EXCEPTION << "No idle Infer Requests!";
@@ -179,9 +179,9 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   // Get Output tensors
   LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
   //Once the inference is completed, the infer_request becomes free and is placed back into pool of infer_requests_
-  inferRequestsQueue->putIdleRequest(infer_request); 
+  inferRequestsQueue_->putIdleRequest(infer_request); 
 #ifndef NDEBUG
-  inferRequestsQueue->printstatus(); //Printing the elements of infer_requests_ vector pool only in debug mode
+  inferRequestsQueue_->printstatus(); //Printing the elements of infer_requests_ vector pool only in debug mode
 #endif
 }
 

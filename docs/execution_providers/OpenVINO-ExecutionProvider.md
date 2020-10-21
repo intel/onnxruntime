@@ -249,5 +249,4 @@ To use csharp api for openvino execution provider create a custom nuget package.
 
 ## Multi-threading for OpenVINO EP
 
-A pool of 8 usable InferRequests will be made available which may be picked up by any of the threads
-running in parallel to run the Infer() call and perform multi-threaded inference. The choice of how many optimal threads to run in parallel is upto the user and the device that is being used. By Default, only 1 thread would be running during inference.
+OpenVINO Execution Provider enables thread-safe deep learning inference

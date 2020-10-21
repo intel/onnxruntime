@@ -37,7 +37,7 @@ class BasicBackend : public IBackend {
   mutable std::mutex compute_lock_;
   std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network_;
   std::map<std::string, std::shared_ptr<ngraph::Node>> const_outputs_map_;
-  std::unique_ptr<InferRequestsQueue> inferRequestsQueue;
+  std::unique_ptr<InferRequestsQueue> inferRequestsQueue_;
 };
 
 class InferRequestsQueue {
