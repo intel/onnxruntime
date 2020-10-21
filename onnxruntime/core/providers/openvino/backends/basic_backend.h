@@ -60,8 +60,9 @@ InferRequestsQueue(InferenceEngine::ExecutableNetwork& net, size_t nireq) {
 void printstatus() {
     std::cout << "printing elements of the vector (infer_requests_): " << std::endl;
     for (auto i = infer_requests_.begin(); i != infer_requests_.end(); ++i) {
-        std::cout << *i << " " << '\n';
+        std::cout << *i << " ";
     }
+    std::cout << '\n';
 }
 
 void putIdleRequest(InferenceEngine::InferRequest::Ptr infer_request_) {

@@ -181,7 +181,9 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   //Once the inference is completed, the infer_request becomes free and is placed back into pool of infer_requests_
   inferRequestsQueue_->putIdleRequest(infer_request); 
 #ifndef NDEBUG
-  inferRequestsQueue_->printstatus(); //Printing the elements of infer_requests_ vector pool only in debug mode
+  if (openvino_ep::backend_utils::IsDebugEnabled()) {
+      inferRequestsQueue_->printstatus(); //Printing the elements of infer_requests_ vector pool only in debug mode
+  }
 #endif
 }
 
