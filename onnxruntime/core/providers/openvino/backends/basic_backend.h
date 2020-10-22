@@ -43,6 +43,7 @@ class BasicBackend : public IBackend {
 class InferRequestsQueue {
 public:
 InferRequestsQueue(InferenceEngine::ExecutableNetwork& net, size_t nireq) {
+  InferenceEngine::InferRequest::Ptr infer_request_;
   for (size_t id = 0; id < nireq; id++) {
       infer_request_ = net.CreateInferRequestPtr();
       infer_requests_.push_back(infer_request_);
@@ -83,7 +84,6 @@ private:
 std::mutex _mutex;
 std::condition_variable _cv;
 std::vector<InferenceEngine::InferRequest::Ptr> infer_requests_;
-InferenceEngine::InferRequest::Ptr infer_request_;
 };
 
 }  // namespace openvino_ep
