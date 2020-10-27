@@ -186,7 +186,7 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
 #ifndef NDEBUG
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
   std::string& hw_target = (global_context_.device_id != "") ? global_context_.device_id : global_context_.device_type;
-  printPerformanceCounts(*infer_request_, std::cout, hw_target, true);
+  printPerformanceCounts(*infer_request_, std::cout, hw_target);
   }
 #endif
 }
