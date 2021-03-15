@@ -4,15 +4,15 @@ ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_centos.sh && /tmp/scripts/manylinux/install_deps.sh && rm -rf /tmp/scripts
 
 COPY manylinux2014_build_scripts /manylinux2014_build_scripts
-RUN bash /manylinux2014_build_scripts/build.sh 8 && rm -r manylinux2014_build_scripts 
+RUN bash /manylinux2014_build_scripts/build.sh 8  || { rc=$?; [ "$rc" -eq 1 ] && exit 0; exit "$rc"; } && rm -r manylinux2014_build_scripts
 RUN yum downgrade  -y glibc-2.17-317.el7 glibc-common-2.17-317.el7 glibc-devel-2.17-317.el7 glibc-headers-2.17-317.el7
 
-ARG BUILD_UID=1001
-ARG BUILD_USER=onnxruntimedev
-RUN adduser --uid $BUILD_UID $BUILD_USER
-WORKDIR /home/$BUILD_USER
-USER $BUILD_USER
-ENV PATH /usr/local/gradle/bin:$PATH
+# ARG BUILD_UID=1001
+# ARG BUILD_USER=onnxruntimedev
+# RUN adduser --uid $BUILD_UID $BUILD_USER
+# WORKDIR /home/$BUILD_USER
+# USER $BUILD_USER
+# ENV PATH /usr/local/gradle/bin:$PATH
 
 ARG MY_ROOT=/code
 ARG YUM_OV_PACKAGE=intel-openvino-runtime-centos7-2021.2.200.x86_64
@@ -20,7 +20,48 @@ ARG DEVICE=CPU_FP32
 ARG ONNXRUNTIME_REPO=https://github.com/intel/onnxruntime
 ARG ONNXRUNTIME_BRANCH=master
 
-ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2021.2.200
+
+# libusb1.0.22
+WORKDIR /opt
+RUN yum install -y wget
+RUN wget https://github.com/libusb/libusb/archive/v1.0.22.zip
+RUN unzip v1.0.22.zip && rm -rf v1.0.22.zip
+# bootstrap steps
+WORKDIR /opt/libusb-1.0.22
+RUN ./bootstrap.sh
+RUN ./configure --disable-udev --enable-shared
+RUN make -j4
+# configure libusb1.0.22
+WORKDIR /opt/libusb-1.0.22/libusb
+RUN /bin/mkdir -p '/usr/local/lib'
+RUN /bin/bash ../libtool   --mode=install /usr/bin/install -c   libusb-1.0.la '/usr/local/lib'
+RUN /bin/mkdir -p '/usr/local/include/libusb-1.0'
+RUN /usr/bin/install -c -m 644 libusb.h '/usr/local/include/libusb-1.0'
+RUN /bin/mkdir -p '/usr/local/lib/pkgconfig'
+WORKDIR /
+
+RUN yum install -y python3-devel
+RUN python3 -m pip install numpy wheel setuptools
+RUN pip3 install --upgrade pip setuptools wheel
+
+# # Build openvino from source
+# RUN git clone https://github.com/openvinotoolkit/openvino.git
+
+# # Install openvino from yum
+# USER root
+RUN yum-config-manager --add-repo https://yum.repos.intel.com/openvino/2021/setup/intel-openvino-2021.repo
+RUN rpm --import https://yum.repos.intel.com/openvino/2021/setup/RPM-GPG-KEY-INTEL-OPENVINO-2021
+# RUN yum update && yum list intel-openvino*
+RUN yum clean all
+RUN yum check-update || { rc=$?; [ "$rc" -eq 100 ] && exit 0; exit "$rc"; }
+RUN yum list intel-openvino*
+RUN yum install -y $YUM_OV_PACKAGE
+# USER $BUILD_USER
+
+# # Install OpenVINO from pip
+# RUN python3 -m pip install openvino
+
+# ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2021.2.200
 # ENV InferenceEngine_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/share
 # ENV IE_PLUGINS_PATH=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64
 # ENV LD_LIBRARY_PATH=/opt/intel/opencl:${INTEL_OPENVINO_DIR}/inference_engine/external/gna/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/mkltiny_lnx/lib:$INTEL_OPENVINO_DIR/deployment_tools/ngraph/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/omp/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/lib:${IE_PLUGINS_PATH}:${LD_LIBRARY_PATH}
@@ -30,42 +71,17 @@ ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2021.2.200
 # ENV LD_LIBRARY_PATH=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/hddl/lib:$LD_LIBRARY_PATH
 # ENV LD_LIBRARY_PATH=/usr/local/lib:/usr/lib:/usr/local/lib64:/usr/lib64:/lib64:$LD_LIBRARY_PATH
 
-# # libusb1.0.22
-# RUN yum install -y wget
-# RUN cd /opt/ && wget https://github.com/libusb/libusb/archive/v1.0.22.zip g
-# RUN unzip v1.0.22.zip && rm -rf v1.0.22.zip && cd  /opt/libusb-1.0.22 g
-# # bootstrap steps
-# RUN ./bootstrap.sh g 
-# RUN ./configure --disable-udev --enable-shared g
-# RUN make -j4 g
-# # configure libusb1.0.22
-# RUN cd /opt/libusb-1.0.22/libusb g
-# RUN /bin/mkdir -p '/usr/local/lib' g
-# RUN /bin/bash ../libtool   --mode=install /usr/bin/install -c   libusb-1.0.la '/usr/local/lib' g
-# RUN /bin/mkdir -p '/usr/local/include/libusb-1.0' g
-# RUN /usr/bin/install -c -m 644 libusb.h '/usr/local/include/libusb-1.0' g
-# RUN /bin/mkdir -p '/usr/local/lib/pkgconfig' g
-
-# Install openvino
-USER root
-RUN yum-config-manager --add-repo https://yum.repos.intel.com/openvino/2021/setup/intel-openvino-2021.repo 
-RUN rpm --import https://yum.repos.intel.com/openvino/2021/setup/RPM-GPG-KEY-INTEL-OPENVINO-2021 
-# RUN yum update && yum list intel-openvino* 
-RUN yum clean all 
-RUN yum check-update || { rc=$?; [ "$rc" -eq 100 ] && exit 0; exit "$rc"; } 
-RUN yum list intel-openvino* 
-RUN yum install -y $YUM_OV_PACKAGE 
-USER $BUILD_USER
-# RUN printf "\nexport LD_LIBRARY_PATH=\${LD_LIBRARY_PATH}:/usr/local/lib\n" >> /opt/intel/openvino_2021.2.200/bin/setupvars.sh 
-# RUN cd /opt/libusb-1.0.22 
-# RUN /usr/bin/install -c -m 644 libusb-1.0.pc '/usr/local/lib/pkgconfig' 
-# RUN cp /opt/intel/openvino_2021/deployment_tools/inference_engine/external/97-myriad-usbboot.rules /etc/udev/rules.d/ 
-# RUN ldconfig
+RUN printf "\nexport LD_LIBRARY_PATH=\${LD_LIBRARY_PATH}:/usr/local/lib\n" >> /opt/intel/openvino_2021.2.200/bin/setupvars.sh
+RUN cd /opt/libusb-1.0.22 && \
+    /usr/bin/install -c -m 644 libusb-1.0.pc '/usr/local/lib/pkgconfig' && \
+    cp /opt/intel/openvino_2021/deployment_tools/inference_engine/external/97-myriad-usbboot.rules /etc/udev/rules.d/  && \
+    ldconfig
 
 # Install onnxruntime
+# RUN mkdir mytemp
+WORKDIR /
 RUN git clone --recursive -b ${ONNXRUNTIME_BRANCH} ${ONNXRUNTIME_REPO}
-RUN mkdir mytemp 
-# RUN pip3 install numpy wheel setuptools 
-# RUN cd onnxruntime && source scl_source enable devtoolset-7 
-# RUN ./build.sh --config Release --update --build --parallel --use_openvino ${DEVICE} --build_shared_lib --build_wheel
-RUN  cd onnxruntime && /opt/python/cp36-cp36m/bin/python3 ./tools/ci_build/build.py --build_dir /home/onnxruntimedev/build --config Release --update --build --parallel --use_openvino CPU_FP32 --build_shared_lib --build_wheel --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp36-cp36m/include/python3.6m/  PYTHON_LIBRARY=/usr/lib64/librt.so 
+WORKDIR /onnxruntime
+# RUN source scl_source enable devtoolset-7
+RUN source /opt/intel/openvino_2021.2.200/bin/setupvars.sh && ./build.sh --config Release --update --build --parallel --use_openvino ${DEVICE} --build_shared_lib --build_wheel
+# RUN  cd onnxruntime && /opt/python/cp36-cp36m/bin/python3 ./tools/ci_build/build.py --build_dir /home/onnxruntimedev/build --config Release --update --build --parallel --use_openvino CPU_FP32 --build_shared_lib --build_wheel --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp36-cp36m/include/python3.6m/  PYTHON_LIBRARY=/usr/lib64/librt.so
