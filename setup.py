@@ -7,7 +7,7 @@ from setuptools import setup, find_packages, Extension
 from distutils import log as logger
 from distutils.command.build_ext import build_ext as _build_ext
 from glob import glob
-from os import path, getcwd, environ, remove, walk, makedirs, listdir
+from os import path, getcwd, environ, remove, walk, makedirs, listdir, getenv
 from shutil import copyfile, copytree, rmtree
 import platform
 import subprocess
@@ -147,7 +147,7 @@ try:
                 file = glob(path.join(self.dist_dir, '*linux*.whl'))[0]
                 logger.info('repairing %s for manylinux1', file)
                 try:
-                    subprocess.run(['auditwheel', 'repair', '-w', self.dist_dir, file], check=True, stdout=subprocess.PIPE)
+                    subprocess.run(['auditwheel', '-v', 'repair', '-w', self.dist_dir, file], check=True, stdout=subprocess.PIPE)
                 finally:
                     logger.info('removing %s', file)
                     remove(file)
@@ -165,6 +165,37 @@ if platform.system() == 'Linux':
   libs.extend(['libonnxruntime_providers_dnnl.so'])
   libs.extend(['libonnxruntime_providers_tensorrt.so'])
   libs.extend(['libonnxruntime_providers_openvino.so'])
+
+  #OpenVINO libs
+  ov_dir = getenv('INTEL_OPENVINO_DIR')
+
+  #IE libs
+  ov_ie_lib_names = ['cache.json','libclDNNPlugin.so','libGNAPlugin.so','libHeteroPlugin.so', 'libinference_engine_c_api.so','libinference_engine_ir_reader.so','libinference_engine_legacy.so','libinference_engine_lp_transformations.so','libinference_engine_onnx_reader.so','libinference_engine_preproc.so','libinference_engine.so','libinference_engine_transformations.so','libMKLDNNPlugin.so','libMultiDevicePlugin.so','libmyriadPlugin.so','myriad_compile','pcie-ma2x8x.mvcmd','plugins.xml','usb-ma2x8x.mvcmd']
+# 'myriad_perfcheck','hddl_perfcheck','libHDDLPlugin.so'
+  for x in ov_ie_lib_names:
+    copyfile(path.join(ov_dir, 'deployment_tools/inference_engine/lib/intel64', x), path.join('onnxruntime/capi',x))
+  libs.extend(ov_ie_lib_names)
+
+#   #HDDL libs
+#   ov_ie_hddl_names = ['libbsl.so','libbsl.so.0','libhddlapi.so','libion.so','libion.so.0','libmvnc-hddl.so','libmvnc-hddl.so.0']
+#   for x in ov_ie_hddl_names:
+#     copyfile(path.join(ov_dir, 'deployment_tools/inference_engine/external/hddl/lib', x), path.join('onnxruntime/capi',x))
+#   libs.extend(ov_ie_hddl_names)
+
+  #TBB libs
+  ov_ie_tbb_names = ['libhwloc.so.5','libtbbbind.so.2','libtbbmalloc_proxy.so.2','libtbbmalloc.so.2','libtbb_preview.so.2','libtbb.so.2','libtbbbind.so','libtbbmalloc_proxy.so','libtbbmalloc.so','libtbb_preview.so','libtbb.so']
+  for x in ov_ie_tbb_names:
+    copyfile(path.join(ov_dir, 'deployment_tools/inference_engine/external/tbb/lib', x), path.join('onnxruntime/capi',x))
+  libs.extend(ov_ie_tbb_names)
+
+  #Ngraph libs
+  ov_ngraph_lib_names = ['libonnx_importer.so', 'libngraph.so']
+  for x in ov_ngraph_lib_names:
+    copyfile(path.join(ov_dir, 'deployment_tools/ngraph/lib', x), path.join('onnxruntime/capi',x))
+  libs.extend(ov_ngraph_lib_names)
+#   ov_ngraph_libs = [path.join(ov_dir, 'deployment_tools/ngraph/lib64', x) for x in ov_ngraph_lib_names]
+#   ov_libs = ov_ie_libs + ov_ngraph_libs
+
   # Nuphar Libs
   libs.extend(['libtvm.so.0.5.1'])
   if nightly_build:
@@ -193,15 +224,25 @@ else:
 
 if is_manylinux:
     data = ['capi/libonnxruntime_pywrapper.so'] if nightly_build else []
+    data = [path.join('capi', x) for x in libs if path.isfile(path.join('onnxruntime', 'capi', x))]
     ext_modules = [
         Extension(
             'onnxruntime.capi.onnxruntime_pybind11_state',
             ['onnxruntime/capi/onnxruntime_pybind11_state_manylinux1.so'],
         ),
+        # Extension(
+        #     name='onnxruntime.ov_libs',
+        #     library_dirs=['/opt/intel/openvino_2021/deployment_tools/inference_engine/lib/intel64','/opt/intel/openvino_2021/deployment_tools/ngraph/lib'],
+        #     libraries=['cache.json','onnx_importer.so','clDNNPlugin.so','tbbbind.so','HeteroPlugin.so','tbbbind.so.2','hwloc.so.5','tbbmalloc_proxy.so','inference_engine_c_api.so','tbbmalloc_proxy.so.2','inference_engine_ir_reader.so','libtbbmalloc.so','libinference_engine_legacy.so','libtbbmalloc.so.2','libinference_engine_lp_transformations.so','libtbb_preview.so','libinference_engine_onnx_reader.so','libtbb_preview.so.2','libinference_engine_preproc.so','libtbb.so','libinference_engine.so','libtbb.so.2','libinference_engine_transformations.so','myriad_compile','libMKLDNNPlugin.so','myriad_perfcheck','libMultiDevicePlugin.so','pcie-ma2x8x.mvcmd','libmyriadPlugin.so','plugins.xml','libngraph.so','usb-ma2x8x.mvcmd'])
+        # )
     ]
 else:
     data = [path.join('capi', x) for x in libs if path.isfile(path.join('onnxruntime', 'capi', x))]
     ext_modules = []
+
+# if package_name == 'onnxruntime-openvino':
+    # packages += ["onnxruntime.ov_libs"]
+    # extra += ['ov_libs']
 
 # Additional examples
 examples_names = ["mul_1.onnx", "logreg_iris.onnx", "sigmoid.onnx"]
