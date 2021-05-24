@@ -15,7 +15,7 @@ RUN yum downgrade  -y glibc-2.17-317.el7 glibc-common-2.17-317.el7 glibc-devel-2
 # ENV PATH /usr/local/gradle/bin:$PATH
 
 ARG MY_ROOT=/code
-ARG YUM_OV_PACKAGE=intel-openvino-runtime-centos7-2021.2.200.x86_64
+ARG YUM_OV_PACKAGE=intel-openvino-runtime-centos7-2021.3.394.x86_64
 ARG DEVICE=CPU_FP32
 ARG ONNXRUNTIME_REPO=https://github.com/intel/onnxruntime
 ARG ONNXRUNTIME_BRANCH=master
@@ -44,21 +44,54 @@ RUN yum install -y python3-devel
 RUN python3 -m pip install numpy wheel setuptools
 RUN pip3 install --upgrade pip setuptools wheel
 
-# # Build openvino from source
-# RUN git clone https://github.com/openvinotoolkit/openvino.git
+# Build from Installer package
 
-# # Install openvino from yum
-# USER root
+# # Build openvino from source
+# WORKDIR /
+# RUN git clone -b 2021.3 https://github.com/openvinotoolkit/openvino.git
+# WORKDIR /openvino
+# RUN git submodule update --init --recursive
+# # RUN source scripts/install_dependencies/install_openvino_dependencies.sh
+# RUN mkdir -p build /opt/intel/openvino_2021.3
+# WORKDIR /openvino/build
+# RUN cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/intel/openvino_2021.3 -DNGRAPH_COMPONENT_PREFIX=deployment_tools/ngraph
+# RUN make --jobs=$(nproc --all)
+# RUN make install
+
+
+# Install openvino from yum
 RUN yum-config-manager --add-repo https://yum.repos.intel.com/openvino/2021/setup/intel-openvino-2021.repo
 RUN rpm --import https://yum.repos.intel.com/openvino/2021/setup/RPM-GPG-KEY-INTEL-OPENVINO-2021
-# RUN yum update && yum list intel-openvino*
 RUN yum clean all
 RUN yum check-update || { rc=$?; [ "$rc" -eq 100 ] && exit 0; exit "$rc"; }
 RUN yum list intel-openvino*
 RUN yum install -y $YUM_OV_PACKAGE
-# USER $BUILD_USER
+
+#Install GPU drivers and dependencies
+RUN mkdir /tmp/opencl 
+WORKDIR /tmp/opencl 
+RUN yum install -y epel-release 
+RUN yum install -y ocl-icd ocl-icd-devel 
+RUN wget -O intel-igc-core-1.0.2597-1.el7.x86_64.rpm https://sourceforge.net/projects/intel-compute-runtime/files/19.41.14441/centos-7/intel-igc-core-1.0.2597-1.el7.x86_64.rpm/download 
+RUN wget -O intel-opencl-19.41.14441-1.el7.x86_64.rpm https://sourceforge.net/projects/intel-compute-runtime/files/19.41.14441/centos-7/intel-opencl-19.41.14441-1.el7.x86_64.rpm/download 
+RUN wget -O intel-igc-opencl-devel-1.0.2597-1.el7.x86_64.rpm https://sourceforge.net/projects/intel-compute-runtime/files/19.41.14441/centos-7/intel-igc-opencl-devel-1.0.2597-1.el7.x86_64.rpm/download 
+RUN wget -O intel-igc-opencl-1.0.2597-1.el7.x86_64.rpm https://sourceforge.net/projects/intel-compute-runtime/files/19.41.14441/centos-7/intel-igc-opencl-1.0.2597-1.el7.x86_64.rpm/download 
+RUN wget -O intel-gmmlib-19.3.2-1.el7.x86_64.rpm https://sourceforge.net/projects/intel-compute-runtime/files/19.41.14441/centos-7/intel-gmmlib-19.3.2-1.el7.x86_64.rpm/download 
+RUN wget -O intel-gmmlib-devel-19.3.2-1.el7.x86_64.rpm https://sourceforge.net/projects/intel-compute-runtime/files/19.41.14441/centos-7/intel-gmmlib-devel-19.3.2-1.el7.x86_64.rpm/download 
+RUN rpm -i /tmp/opencl/*.rpm  
+RUN ldconfig  
+# RUN rm -rf /tmp/opencl 
+# RUN export external="97-myriad-usbboot.rules gna hddl myriad";  
+# RUN export plugins="libGNAPlugin.so libHeteroPlugin.so libMKLDNNPlugin.so libMultiDevicePlugin.so libmyriadPlugin.so libHDDLPlugin.so libkmbPlugin.so libVPUXPlugin.so libHDDL2Plugin.so hddl_perfcheck myriad_compile myriad_perfcheck vpu_custom_kernels"; 
+# RUN export external="gna hddl"; 
+# RUN export plugins="libGNAPlugin.so libHeteroPlugin.so libMKLDNNPlugin.so libMultiDevicePlugin.so libclDNNPlugin.so libHDDLPlugin.so libkmbPlugin.so libVPUXPlugin.so libHDDL2Plugin.so hddl_perfcheck myriad_compile myriad_perfcheck vpu_custom_kernels"; 
+# RUN export plugins="libGNAPlugin.so libHeteroPlugin.so libMKLDNNPlugin.so libMultiDevicePlugin.so libclDNNPlugin.so libmyriadPlugin.so libkmbPlugin.so libVPUXPlugin.so libHDDL2Plugin.so hddl_perfcheck myriad_compile myriad_perfcheck vpu_custom_kernels"; 
+# RUN export plugins="libGNAPlugin.so libHeteroPlugin.so libMultiDevicePlugin.so libclDNNPlugin.so libmyriadPlugin.so libHDDLPlugin.so libkmbPlugin.so libVPUXPlugin.so libHDDL2Plugin.so hddl_perfcheck myriad_compile myriad_perfcheck vpu_custom_kernels" 
+
+RUN yum install numactl-libs 
 
 # # Install OpenVINO from pip
+# Only meant for OV python applications. 
 # RUN python3 -m pip install openvino
 
 # ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2021.2.200
@@ -71,17 +104,19 @@ RUN yum install -y $YUM_OV_PACKAGE
 # ENV LD_LIBRARY_PATH=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/hddl/lib:$LD_LIBRARY_PATH
 # ENV LD_LIBRARY_PATH=/usr/local/lib:/usr/lib:/usr/local/lib64:/usr/lib64:/lib64:$LD_LIBRARY_PATH
 
-RUN printf "\nexport LD_LIBRARY_PATH=\${LD_LIBRARY_PATH}:/usr/local/lib\n" >> /opt/intel/openvino_2021.2.200/bin/setupvars.sh
+WORKDIR /
+RUN printf "\nexport LD_LIBRARY_PATH=\${LD_LIBRARY_PATH}:/usr/local/lib\n" >> /opt/intel/openvino_2021/bin/setupvars.sh
 RUN cd /opt/libusb-1.0.22 && \
     /usr/bin/install -c -m 644 libusb-1.0.pc '/usr/local/lib/pkgconfig' && \
     cp /opt/intel/openvino_2021/deployment_tools/inference_engine/external/97-myriad-usbboot.rules /etc/udev/rules.d/  && \
     ldconfig
 
+RUN mkdir /onnxruntime /mytemp
 # Install onnxruntime
+# WORKDIR /
 # RUN mkdir mytemp
-WORKDIR /
-RUN git clone --recursive -b ${ONNXRUNTIME_BRANCH} ${ONNXRUNTIME_REPO}
-WORKDIR /onnxruntime
+# RUN git clone --recursive -b ${ONNXRUNTIME_BRANCH} ${ONNXRUNTIME_REPO}
+# WORKDIR /onnxruntime
 # RUN source scl_source enable devtoolset-7
-RUN source /opt/intel/openvino_2021.2.200/bin/setupvars.sh && ./build.sh --config Release --update --build --parallel --use_openvino ${DEVICE} --build_shared_lib --build_wheel
+CMD source /opt/intel/openvino_2021/bin/setupvars.sh && cd /onnxruntime && ./build.sh --config Release --update --build --parallel --use_openvino ${DEVICE}  --build_wheel
 # RUN  cd onnxruntime && /opt/python/cp36-cp36m/bin/python3 ./tools/ci_build/build.py --build_dir /home/onnxruntimedev/build --config Release --update --build --parallel --use_openvino CPU_FP32 --build_shared_lib --build_wheel --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp36-cp36m/include/python3.6m/  PYTHON_LIBRARY=/usr/lib64/librt.so
