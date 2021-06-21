@@ -54,6 +54,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>
+std::cout << "In the OpenVINO EP" << std::endl;
 OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer, const std::vector<const KernelRegistry*>& kernel_registries) const {
   ORT_UNUSED_PARAMETER(kernel_registries);
 
