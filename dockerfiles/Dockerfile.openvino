@@ -14,7 +14,7 @@ ENV DEBIAN_FRONTEND noninteractive
 
 ARG DEVICE=CPU_FP32 
 ARG ONNXRUNTIME_REPO=https://github.com/microsoft/onnxruntime.git
-ARG ONNXRUNTIME_BRANCH=v1.8.0
+ARG ONNXRUNTIME_BRANCH=v1.8.1
 
 ENV InferenceEngine_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/share
 ENV ngraph_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/ngraph/cmake
