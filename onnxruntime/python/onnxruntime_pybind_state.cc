@@ -554,7 +554,14 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
           } else {
             ORT_THROW("Invalid value passed for enable_vpu_fast_compile: ", option.second);
           }
-
+        } else if (option.first == "disable_graph_partition") {
+            if (option.second == "True") {
+              params.disable_graph_partition = true;
+            } else if (option.second == "False") {
+              params.disable_graph_partition = false;
+            } else {
+              ORT_THROW("Invalid value passed for disable_graph_partition: ", option.second);
+            }
         } else if (option.first == "use_compiled_network") {
           if (option.second == "True") {
             params.use_compiled_network = true;
@@ -563,7 +570,6 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
           } else {
             ORT_THROW("Invalid value passed for use_compiled_network: ", option.second);
           }
-
         } else if (option.first == "device_id") {
           params.device_id = option.second.c_str();
         } else if (option.first == "num_of_threads") {
