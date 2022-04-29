@@ -122,9 +122,14 @@ class InferenceManager(GraphExecutionManager):
             if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE) is False:
                 # Assert that the input and model device match
                 _utils._check_same_device(self._device, "Input argument to forward", *inputs)
-
+            # Run openvino EP with only exported_model as optimization introduces fused unsupported ops
+            provider = self._provider_configs.provider
+            if not provider == "openvino":
+                infer_model = self._onnx_models.optimized_model
+            else :
+                infer_model = self._onnx_models.exported_model
             user_outputs, _ = InferenceManager.execution_session_run_forward(self._execution_agent,
-                                                                             self._onnx_models.optimized_model,
+                                                                             infer_model,
                                                                              self._device,
                                                                              *_io._combine_input_buffers_initializers(
                                                                                  self._graph_initializers,
@@ -155,7 +160,7 @@ class InferenceManager(GraphExecutionManager):
         """Build an optimized inference graph using the module_graph_builder"""
 
         super()._build_graph()
-        if self._debug_options.save_onnx_models.save:
+        if self._debug_options.save_onnx_models.save and self._provider_configs.provider!="openvino":
             self._onnx_models.save_optimized_model(self._debug_options.save_onnx_models.path,
                                                    self._debug_options.save_onnx_models.name_prefix,
                                                    self._export_mode)
@@ -164,5 +169,11 @@ class InferenceManager(GraphExecutionManager):
         """Creates an InferenceAgent that can run forward graph on an inference model"""
 
         session_options, providers, provider_options = self._get_session_config()
-        self._execution_agent = InferenceAgent(self._onnx_models.optimized_model.SerializeToString(),
+        # Run openvino EP with only exported_model as optimization introduces fused unsupported ops
+        provider = self._provider_configs.provider
+        if not provider == "openvino":
+            infer_model = self._onnx_models.optimized_model.SerializeToString()
+        else :
+            infer_model = self._onnx_models.exported_model.SerializeToString()
+        self._execution_agent = InferenceAgent(infer_model,
                                                session_options, providers, provider_options)
