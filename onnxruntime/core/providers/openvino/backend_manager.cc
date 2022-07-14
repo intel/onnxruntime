@@ -236,6 +236,14 @@ BackendManager::ReWriteBatchDimWithOne(const ONNX_NAMESPACE::ModelProto& model_p
 }
 
 void BackendManager::Compute(Ort::CustomOpApi api, OrtKernelContext* context) {
+  std::chrono::high_resolution_clock::time_point start_compute, end_compute;
+  #ifdef OPENVINO_FIL_ENABLED
+    static bool fil_enabled = true;
+    if(fil_enabled) {
+      start_compute = std::chrono::high_resolution_clock::now();
+      LOGS_DEFAULT(INFO) << "Start Compute"; 
+    }
+  #endif
   if (subgraph_context_.has_dynamic_input_shape) {
     std::vector<std::vector<int64_t>> tensor_shapes = GetInputTensorShapes(api, context);
     auto key = MakeMapKeyString(tensor_shapes, GetGlobalContext().device_type);
@@ -266,6 +274,15 @@ void BackendManager::Compute(Ort::CustomOpApi api, OrtKernelContext* context) {
   } else {
     concrete_backend_->Infer(api, context);
   }
+  #ifdef OPENVINO_FIL_ENABLED
+    if(fil_enabled) {
+      end_compute = std::chrono::high_resolution_clock::now();
+      LOGS_DEFAULT(INFO) << "End Compute";
+      std::chrono::duration<double> compute_time = end_compute - start_compute;
+      std::cout << "Compute Time: " << compute_time.count() << " s" << std::endl;
+      fil_enabled = false; //calculating compute time for first run only
+    }
+  #endif
 }
 
 void BackendManager::ShutdownBackendManager() {
