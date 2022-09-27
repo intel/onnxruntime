@@ -381,20 +381,26 @@ void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContex
   infer_request->WaitRequest();
   #if defined (OV_API_20)
   auto graph_output_info = exe_network_.Get().outputs();
-  for (const auto& it : subgraph_context_.output_names) {
-    const auto& output_name = it.first;
+  for (auto output_info_iter = graph_output_info.begin();
+       output_info_iter != graph_output_info.end(); ++output_info_iter) {
+    OVTensorPtr graph_output_blob;
+    auto output_names = output_info_iter->get_names();
+    std::string onnx_output_name;
+    std::string output_name;
+    int output_name_found = 0;
     // using the output name retrieved from ONNX original to match with the output names returned by OV tensors
-    bool output_name_found = std::any_of(graph_output_info.begin(), graph_output_info.end(),
-                                         [&output_name] (const ov::Output<const ov::Node>& node) {
-                                           const auto& names = node.get_names();
-                                           return names.find(output_name) != names.end();
-                                         });
-    if (!output_name_found) {
-      ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX. [ONNX Output: ] " + output_name +
-                " doesn't exist in the list of OpenVINO output tensor names");
+    for (auto it = subgraph_context_.output_names.begin(); it != subgraph_context_.output_names.end(); ++it) {
+      onnx_output_name = it->first;
+      if (output_names.find(onnx_output_name) != output_names.end()) {
+        //Assigning the output_name
+        output_name = it->first;
+        output_name_found += 1;
+      }
     }
-
-    OVTensorPtr graph_output_blob = infer_request->GetTensor(output_name);
+    if(output_name_found!=int(output_names.size())) {
+      ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX. [ONNX Output: ] " + onnx_output_name + " doesn't exist in the list of OpenVINO output tensor names");
+    }
+    graph_output_blob = infer_request->GetTensor(output_name);
     size_t batch_size = 1;
     auto output_tensor = GetOutputTensor(ort, context, batch_size, infer_request, output_name, subgraph_context_.output_names);
     auto mem_info = ort.GetTensorMemoryInfo(output_tensor);
@@ -404,7 +410,7 @@ void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContex
       size_t batch_slice = 0;
       FillOutputBlob(graph_output_blob, output_tensor, ort, batch_slice);
     }
-  }
+  } 
   #else
   auto graph_output_info = exe_network_.Get().GetOutputsInfo();
   for (auto output_info_iter = graph_output_info.begin();
