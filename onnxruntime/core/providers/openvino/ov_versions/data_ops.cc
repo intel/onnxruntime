@@ -453,6 +453,21 @@ void DataOps::populate_op_mode_supported() {
                              }};
     op_list_.insert({"GatherElements", obj});
   }
+   {
+    UnsupportedOpMode obj = {{V_2022_3},
+                             [this](const Node* node, const InitializedTensorSet&) {
+                               if (device_id_.find("GPU") != std::string::npos && node->OpType()=="If"){
+                                 // Only Equal op is supported as input for IF op in GPU
+                                for (auto nit = node->InputNodesBegin(); nit != node->InputNodesEnd(); ++nit){
+                                  if (nit->OpType() == "Equal"){
+                                    return false;
+                                  }
+                                }
+                               }
+                               return true;
+                             }};
+    op_list_.insert({"If", obj});
+  }
   {
     UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
                              [this](const Node* node, const InitializedTensorSet&) {
