@@ -841,6 +841,11 @@ bool DataOps::op_is_supported(std::string name, std::vector<SupportedOp>& op_lis
 bool DataOps::type_is_supported(const NodeArg* node_arg, bool is_initializer) {
   const auto* type_proto = node_arg->TypeAsProto();
   if (!type_proto) {
+#ifndef NDEBUG
+    if (openvino_ep::backend_utils::IsDebugEnabled()) {
+      std::cout << "Node is not a proto " << std::endl;
+    }
+#endif
     return false;
   }
 
@@ -893,9 +898,6 @@ bool DataOps::type_is_supported(const NodeArg* node_arg, bool is_initializer) {
       return false;
 
     } else if (device_id_ == "GPU") {
-      auto prec_str = openvino_ep::BackendManager::GetGlobalContext().precision_str;
-      if (prec_str == "FP32" && dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16)
-        return false;
       for (auto const& var : supported_types_gpu_) {
         if ((var.first <= version_id_) &&
             (var.second == dtype)) {
@@ -1013,6 +1015,11 @@ bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string
   });
 
   if (!are_types_supported) {
+    #ifndef NDEBUG
+    if (openvino_ep::backend_utils::IsDebugEnabled()) {
+      std::cout << "DType is not supported" << std::endl;
+    }
+#endif
     return false;
   }
 
