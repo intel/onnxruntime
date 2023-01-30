@@ -45,8 +45,7 @@ namespace onnxruntime {
     OVExeNetwork OVCore::LoadNetwork(const std::string& model, std::string& hw_target, ov::AnyMap& device_config, std::string name) {
         ov::CompiledModel obj;
         try {
-            // OVTensor weights;
-            obj = oe.compile_model(model, hw_target, config=device_config);
+            obj = oe.compile_model(model, ov::Tensor(), hw_target, device_config);
             OVExeNetwork exe(obj);
             return exe;
         } catch (const Exception& e) {

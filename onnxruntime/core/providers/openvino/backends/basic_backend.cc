@@ -70,7 +70,9 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
       }
     LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
   } else {
-    exe_network_ = global_context_.ie_core.LoadNetwork(global_context.onnx_model_path_name, hw_target, device_config, subgraph_context_.subgraph_name);
+    std::string model;
+    model_proto.SerializeToString(model);
+    exe_network_ = global_context_.ie_core.LoadNetwork(model, hw_target, device_config, subgraph_context_.subgraph_name);
     LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
   }
 
