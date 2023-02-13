@@ -106,6 +106,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"CumSum", V_2022_1, {"CPU", "GPU"}},
     {"DepthToSpace", V_2020_4, {"All"}},
     {"DequantizeLinear", V_2021_4, {"CPU", "GPU"}},
+    {"DequantizeLinear", V_2023_0, {"VPUX"}},
     {"Div", V_2020_4, {"All"}},
     {"Dropout", V_2020_4, {"All"}},
     {"Elu", V_2020_4, {"All"}},
@@ -165,6 +166,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"PRelu", V_2020_4, {"All"}},
     {"QLinearMatMul", V_2022_3, {"CPU"}},
     {"QuantizeLinear", V_2021_4, {"CPU", "GPU"}},
+    {"QuantizeLinear", V_2023_0, {"VPUX"}},
     {"Range", V_2021_2, {"MYRIAD"}},
     {"Range", V_2022_1, {"All"}},
     {"Reciprocal", V_2020_4, {"All"}},
@@ -871,7 +873,7 @@ bool DataOps::type_is_supported(const NodeArg* node_arg, bool is_initializer) {
   } else {
     auto dtype = type_proto->tensor_type().elem_type();
 
-    if (device_id_ == "MYRIAD" || device_id_ == "HDDL" || device_id_.find("HETERO") != std::string::npos ||
+    if (device_id_ == "MYRIAD" || device_id_ == "HDDL" || device_id_ == "VPUX" || device_id_.find("HETERO") != std::string::npos ||
         device_id_.find("MULTI") != std::string::npos || device_id_.find("AUTO") != std::string::npos) {
       for (auto const& var : supported_types_vpu_) {
         if ((var.first <= version_id_) &&

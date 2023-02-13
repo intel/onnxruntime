@@ -127,15 +127,21 @@ void BasicBackend::PopulateConfigValue(OVConfig& config, ov::AnyMap& device_conf
         config["MYRIAD_COPY_OPTIMIZATION"] = CONFIG_VALUE(NO);
       }
       //to check preprocessing inside model
-      #if defined (OPENVINO_2022_1) || (OPENVINO_2022_2) || (OPENVINO_2022_3)
+      #if defined (OPENVINO_2022_1) || (OPENVINO_2022_2) || (OPENVINO_2022_3) || (OPENVINO_2023_0)
         config["MYRIAD_CHECK_PREPROCESSING_INSIDE_MODEL"] = CONFIG_VALUE(NO);
       #endif
   }
+  /*
+  // This change might be required for VPUX with RPL-dKMB and is not needed for VPUX with MTL-VPU.
+  if (global_context_.device_type.find("VPUX") != std::string::npos) {
+      config["PERFORMANCE_HINT"] = "THROUGHPUT";
+  }
+  */
 }
 
 void BasicBackend::EnableCaching() {
   if (!global_context_.cache_dir.empty() && global_context_.is_wholly_supported_graph) {
-    #if defined (OPENVINO_2022_3)
+    #if defined (OPENVINO_2022_3) || (OPENVINO_2023_0)
       #if defined(_WIN32) || defined(WIN32) || defined(__CYGWIN__) || defined(__MINGW32__) || defined(__BORLANDC__)
       _putenv_s("OV_GPU_CACHE_MODEL", "1");
       #else
