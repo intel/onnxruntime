@@ -73,7 +73,7 @@ _check_python_version()
 
 
 def _openvino_verify_device_type(device_read):
-    choices = ["CPU_FP32", "CPU_FP16", "GPU_FP32", "GPU_FP16", "VAD-M_FP16", "MYRIAD_FP16", "VPUX_U8", "VAD-F_FP32"]
+    choices = ["CPU_FP32", "CPU_FP16", "GPU_FP32", "GPU_FP16", "VAD-M_FP16", "MYRIAD_FP16", "VPUX_FP32", "VPUX_FP16", "VPUX_U8", "VAD-F_FP32"]
 
     choices1 = [
         "CPU_FP32_NO_PARTITION",
@@ -82,6 +82,8 @@ def _openvino_verify_device_type(device_read):
         "GPU_FP16_NO_PARTITION",
         "VAD-M_FP16_NO_PARTITION",
         "MYRIAD_FP16_NO_PARTITION",
+        "VPUX_FP32_NO_PARTITION",
+        "VPUX_FP16_NO_PARTITION",
         "VPUX_U8_NO_PARTITION",
         "VAD-F_FP32_NO_PARTITION",
     ]
@@ -1057,7 +1059,9 @@ def generate_build_tree(
         cmake_args += [
             "-Donnxruntime_USE_OPENVINO=ON",
             "-Donnxruntime_USE_OPENVINO_MYRIAD=" + ("ON" if args.use_openvino == "MYRIAD_FP16" else "OFF"),
-            "-Donnxruntime_USE_OPENVINO_VPUX=" + ("ON" if args.use_openvino == "VPUX_U8" else "OFF"),
+            "-Donnxruntime_USE_OPENVINO_VPUX_FP32=" + ("ON" if args.use_openvino == "VPUX_FP32" else "OFF"),
+            "-Donnxruntime_USE_OPENVINO_VPUX_FP16=" + ("ON" if args.use_openvino == "VPUX_FP16" else "OFF"),
+            "-Donnxruntime_USE_OPENVINO_VPUX_U8=" + ("ON" if args.use_openvino == "VPUX_U8" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_GPU_FP32=" + ("ON" if args.use_openvino == "GPU_FP32" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_GPU_FP16=" + ("ON" if args.use_openvino == "GPU_FP16" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_CPU_FP32=" + ("ON" if args.use_openvino == "CPU_FP32" else "OFF"),
@@ -1066,9 +1070,13 @@ def generate_build_tree(
             "-Donnxruntime_USE_OPENVINO_VAD_F=" + ("ON" if args.use_openvino == "VAD-F_FP32" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_MYRIAD_NP="
             + ("ON" if args.use_openvino == "MYRIAD_FP16_NO_PARTITION" else "OFF"),
-            "-Donnxruntime_USE_OPENVINO_MYRIAD_NP="
-            + ("ON" if args.use_openvino == "VPUX_NO_PARTITION" else "OFF"),
-            "-Donnxruntime_USE_OPENVINO_VPUX_NP="
+            "-Donnxruntime_USE_OPENVINO_VPUX_FP32_NP="
+            + ("ON" if args.use_openvino == "VPUX_FP32_NO_PARTITION" else "OFF"),
+            "-Donnxruntime_USE_OPENVINO_VPUX_FP16_NP="
+            + ("ON" if args.use_openvino == "VPUX_FP16_NO_PARTITION" else "OFF"),
+            "-Donnxruntime_USE_OPENVINO_VPUX_U8_NP="
+            + ("ON" if args.use_openvino == "VPUX_U8_NO_PARTITION" else "OFF"),
+            "-Donnxruntime_USE_OPENVINO_GPU_FP32_NP="
             + ("ON" if args.use_openvino == "GPU_FP32_NO_PARTITION" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_GPU_FP16_NP="
             + ("ON" if args.use_openvino == "GPU_FP16_NO_PARTITION" else "OFF"),
