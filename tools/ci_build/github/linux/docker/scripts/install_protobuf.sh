@@ -40,7 +40,7 @@ case "$(uname -s)" in
 esac
 mkdir -p $INSTALL_PREFIX
 echo "Installing protobuf ..."
-protobuf_url=$(grep '^protobuf' $DEP_FILE_PATH | cut -d ';' -f 2 | sed 's/\.zip$/\.tar.gz/')
+protobuf_url=$(grep '^protobuf' $DEP_FILE_PATH | cut -d '=' -f 2 | sed 's/\.zip$/\.tar.gz/')
 curl -sSL --retry 5 --retry-delay 10 --create-dirs --fail -L -o protobuf_src.tar.gz $protobuf_url
 mkdir protobuf
 cd protobuf
