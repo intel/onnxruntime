@@ -62,8 +62,11 @@ RUN cd $WORKDIR && \
 RUN cd onnxruntime/onnxruntime/core/providers/openvino && mkdir scripts
 
 RUN cp ${IE_PLUGINS_PATH}/libopenvino.so /home/onnxruntimedev/onnxruntime/onnxruntime/core/providers/openvino/scripts/
+RUN cp ${IE_PLUGINS_PATH}/libopenvino.so.2230 /home/onnxruntimedev/onnxruntime/onnxruntime/core/providers/openvino/scripts/
 RUN cp ${IE_PLUGINS_PATH}/libopenvino_c.so /home/onnxruntimedev/onnxruntime/onnxruntime/core/providers/openvino/scripts/
+RUN cp ${IE_PLUGINS_PATH}/libopenvino_c.so.2230 /home/onnxruntimedev/onnxruntime/onnxruntime/core/providers/openvino/scripts/
 RUN cp ${IE_PLUGINS_PATH}/libopenvino_onnx_frontend.so /home/onnxruntimedev/onnxruntime/onnxruntime/core/providers/openvino/scripts/
+RUN cp ${IE_PLUGINS_PATH}/libopenvino_onnx_frontend.so.2230 /home/onnxruntimedev/onnxruntime/onnxruntime/core/providers/openvino/scripts/
 RUN cp ${IE_PLUGINS_PATH}/libopenvino_intel_cpu_plugin.so /home/onnxruntimedev/onnxruntime/onnxruntime/core/providers/openvino/scripts/
 RUN cp ${IE_PLUGINS_PATH}/libopenvino_intel_gpu_plugin.so /home/onnxruntimedev/onnxruntime/onnxruntime/core/providers/openvino/scripts/
 RUN cp ${IE_PLUGINS_PATH}/libopenvino_hetero_plugin.so /home/onnxruntimedev/onnxruntime/onnxruntime/core/providers/openvino/scripts/
@@ -73,6 +76,7 @@ RUN cp ${TBB_LIBS}/libtbb.so /home/onnxruntimedev/onnxruntime/onnxruntime/core/p
 RUN cp ${TBB_LIBS}/libtbb.so.2 /home/onnxruntimedev/onnxruntime/onnxruntime/core/providers/openvino/scripts/
 RUN cp ${TBB_LIBS}/libtbbmalloc.so /home/onnxruntimedev/onnxruntime/onnxruntime/core/providers/openvino/scripts/
 RUN cp ${TBB_LIBS}/libtbbmalloc.so.2 /home/onnxruntimedev/onnxruntime/onnxruntime/core/providers/openvino/scripts/
+
 RUN cd /home/onnxruntimedev/onnxruntime && git pull
 RUN if $ENABLE_TRAINING; then \
         ${PYTHON_EXE} ./onnxruntime/tools/ci_build/build.py \
