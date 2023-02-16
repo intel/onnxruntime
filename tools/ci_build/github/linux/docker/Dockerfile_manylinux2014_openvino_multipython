@@ -1,13 +1,15 @@
 FROM quay.io/pypa/manylinux2014_x86_64:latest
 
 ENV PATH /usr/local/gradle/bin:/opt/rh/devtoolset-10/root/usr/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ADD scripts /tmp/scripts
+RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_centos.sh && /tmp/scripts/manylinux/install_deps.sh && rm -rf /tmp/scripts
 
 ARG PYTHON_VER_PATH="cp39-cp39"
 ARG PYTHON_VERSION="3.9"
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev
 ARG OV_DEVICE_PRECISION="CPU_FP32"
-ARG ENABLE_TRAINING=false
+ARG ENABLE_TRAINING=true
 ARG ORT_BRANCH="rel-1.14.0"
 ARG OV_VERSION="2022.3.0"
 RUN adduser --uid $BUILD_UID $BUILD_USER
