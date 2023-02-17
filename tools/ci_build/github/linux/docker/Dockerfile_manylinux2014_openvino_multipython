@@ -6,6 +6,7 @@ RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_centos.sh && /tmp/scripts/
 
 ARG PYTHON_VER_PATH="cp39-cp39"
 ARG PYTHON_VERSION="3.9"
+ARG PYTHON_CONFIG_VERSION="3.9"
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev
 ARG OV_DEVICE_PRECISION="CPU_FP32"
@@ -16,7 +17,7 @@ RUN adduser --uid $BUILD_UID $BUILD_USER
 WORKDIR /home/$BUILD_USER
 ENV PYTHON_EXE="/opt/python/$PYTHON_VER_PATH/bin/python$PYTHON_VERSION"
 ENV PYTHON_INCLUDE_DIR="/opt/python/$PYTHON_VER_PATH/include/python$PYTHON_VERSION"
-ENV PYTHON_LIB_DIR="/opt/python/$PYTHON_VER_PATH/lib/python$PYTHON_VERSION/config-$PYTHON_VERSION-x86_64-linux-gnu/python.o"
+ENV PYTHON_LIB_DIR="/opt/python/$PYTHON_VER_PATH/lib/python$PYTHON_VERSION/config-$PYTHON_CONFIG_VERSION-x86_64-linux-gnu/python.o"
 
 RUN yum -y install wget git
 
@@ -47,7 +48,7 @@ RUN cd $WORKDIR && git clone https://github.com/openvinotoolkit/openvino.git && 
 
 RUN cd $WORKDIR && cd openvino && mkdir build && cd build && \
     cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS=-D_GLIBCXX_USE_CXX11_ABI=0 -DENABLE_PYTHON=ON -DPYTHON_EXECUTABLE=$PYTHON_EXE -DPYTHON_INCLUDE_DIR=$PYTHON_INCLUDE_DIR -DPYTHON_LIBRARY=$PYTHON_LIB_DIR -DCMAKE_INSTALL_PREFIX=/home/onnxruntimedev/openvino_$OV_VERSION && \
-    make -j8 && make install
+    make -j$(nproc) && make install
 
 ENV INTEL_OPENVINO_DIR /home/onnxruntimedev/openvino_$OV_VERSION
 ENV LD_LIBRARY_PATH $INTEL_OPENVINO_DIR/runtime/lib/intel64:$INTEL_OPENVINO_DIR/runtime/3rdparty/tbb/lib:/usr/local/openblas/lib:$LD_LIBRARY_PATH
