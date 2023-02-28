@@ -405,11 +405,8 @@ if is_manylinux:
             "libtbb.so.2",
             "libtbbmalloc.so.2",
             "libopenvino.so",
-            "libopenvino.so.2230",
             "libopenvino_c.so",
-            "libopenvino_c.so.2230",
             "libopenvino_onnx_frontend.so",
-            "libopenvino_onnx_frontend.so.2230",
         ]
         for x in ov_libs:
             y = "onnxruntime/capi/" + x
