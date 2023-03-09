@@ -171,7 +171,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"LogSoftMax", V_2022_1, {"All"}}, //VPUX is WIP
     {"Loop", V_2021_3, {"MYRIAD"}},
     //{"Loop", V_2021_4, {"All"}}, //Not yet started for VPUX
-    {"Loop", V_2021_4, {"CPU", "GPU"}}
+    {"Loop", V_2021_4, {"CPU", "GPU"}},
     {"LRN", V_2020_4, {"All"}},
     {"LSTM", V_2020_4, {"All"}},
     {"MatMul", V_2020_4, {"All"}},
