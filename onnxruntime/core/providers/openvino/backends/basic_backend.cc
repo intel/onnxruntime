@@ -37,22 +37,17 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   // Setting OpenCL queue throttling for GPU
   EnableGPUThrottling(device_config);
 
-  if ((subgraph_context.precision == InferenceEngine::Precision::FP16)||
-      (!global_context.is_wholly_supported_graph)){
-    try{
-      #ifndef NDEBUG
-        if (IsDebugEnabled()) {
-          std::string file_name = subgraph_context.subgraph_name + "_static.onnx";
-          std::fstream outfile(file_name, std::ios::out | std::ios::trunc | std::ios::binary);
-          model_proto.SerializeToOstream(outfile);
-        }
-      #endif
-      ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
-    } catch (std::string const & msg) {
-        throw msg;
+  #ifndef NDEBUG
+    if (IsDebugEnabled()) {
+      std::string file_name = subgraph_context.subgraph_name + "_static.onnx";
+      std::fstream outfile(file_name, std::ios::out | std::ios::trunc | std::ios::binary);
+      model_proto.SerializeToOstream(outfile);
     }
-
-      try {
+  #endif
+  try{
+    if ((subgraph_context.precision == InferenceEngine::Precision::FP16)||
+        (!global_context.is_wholly_supported_graph)){
+        ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
         if ((global_context.device_type.find("GPU") != std::string::npos)  &&
           (global_context_.context != nullptr) &&
           (openvino_ep::BackendManager::GetGlobalContext().is_wholly_supported_graph)) {
@@ -65,19 +60,19 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
         } else {
             exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, hw_target, device_config, subgraph_context_.subgraph_name);
         }
-      }catch (const char* msg) {
-          throw(msg);
-      }
-    LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
-  } else {
-    std::string model;
-    model_proto.SerializeToString(model);
-    exe_network_ = global_context_.ie_core.LoadNetwork(model, hw_target, device_config, subgraph_context_.subgraph_name);
-    LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
+      LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
+    } else {
+      std::string model;
+      model_proto.SerializeToString(model);
+      exe_network_ = global_context_.ie_core.LoadNetwork(model, hw_target, device_config, subgraph_context_.subgraph_name);
+      LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
+    }
+  }catch (const char* msg) {
+        throw(msg);
   }
 
-  // The infer_requests_ pool will be intialized with a default value of 8 infer_request's
-  // The nireq value can also be configured to any num_of_threads during runtime
+  //The infer_requests_ pool will be intialized with a default value of 8 infer_request's
+  //The nireq value can also be configured to any num_of_threads during runtime
   size_t nireq = global_context_.num_of_threads;
   LOGS_DEFAULT(INFO) << log_tag << "The value of nireq being used is: " << nireq;
 #ifndef NDEBUG
@@ -112,14 +107,16 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
 }
 
 void BasicBackend::EnableCaching() {
-  if (!global_context_.cache_dir.empty() && global_context_.is_wholly_supported_graph) {
-#if defined(OPENVINO_2022_3) || (OPENVINO_2023_0)
-#if defined(_WIN32) || defined(WIN32) || defined(__CYGWIN__) || defined(__MINGW32__) || defined(__BORLANDC__)
-    _putenv_s("OV_GPU_CACHE_MODEL", "1");
-#else
-    setenv("OV_GPU_CACHE_MODEL", "1", 1);
-#endif
-#endif
+  if (!global_context_.cache_dir.empty()){
+    if(global_context_.is_wholly_supported_graph) {
+      #if defined (OPENVINO_2022_3)
+        #if defined(_WIN32) || defined(WIN32) || defined(__CYGWIN__) || defined(__MINGW32__) || defined(__BORLANDC__)
+        _putenv_s("OV_GPU_CACHE_MODEL", "1");
+        #else
+        setenv("OV_GPU_CACHE_MODEL", "1", 1);
+        #endif
+      #endif
+    }
     LOGS_DEFAULT(INFO) << log_tag << "Enables Caching";
     global_context_.ie_core.SetCache(global_context_.cache_dir);
   }
