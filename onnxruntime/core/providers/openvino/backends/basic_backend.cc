@@ -47,26 +47,39 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
     }
   #endif
   try{
-    if ((subgraph_context.precision == InferenceEngine::Precision::FP16)||
-        (!global_context.is_wholly_supported_graph)){
-        ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
+    if (global_context.is_wholly_supported_graph){
+      #if defined(IO_BUFFER_ENABLED)
         if ((global_context.device_type.find("GPU") != std::string::npos)  &&
-          (global_context_.context != nullptr) &&
-          (openvino_ep::BackendManager::GetGlobalContext().is_wholly_supported_graph)) {
-          #if defined(IO_BUFFER_ENABLED)
-            LOGS_DEFAULT(INFO) << log_tag << "IO Buffering Enabled";
-            cl_context ctx = static_cast<cl_context>(global_context_.context);
-            remote_context_ = new ov::intel_gpu::ocl::ClContext(global_context_.ie_core.Get(), ctx);
-            exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, remote_context_, subgraph_context_.subgraph_name);
-          #endif
-        } else {
+          (global_context_.context != nullptr)){
+          LOGS_DEFAULT(INFO) << log_tag << "IO Buffering Enabled";
+          cl_context ctx = static_cast<cl_context>(global_context_.context);
+          remote_context_ = new ov::intel_gpu::ocl::ClContext(global_context_.ie_core.Get(), ctx);
+          ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
+          exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, remote_context_, subgraph_context_.subgraph_name);
+          LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
+        } else if (subgraph_context.precision == InferenceEngine::Precision::FP16){
+            ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
             exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, hw_target, config, device_config, subgraph_context_.subgraph_name);
+            LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
+          } else {
+            const std::string model = model_proto.SerializeAsString();
+            exe_network_ = global_context_.ie_core.LoadNetwork(model, hw_target, config, device_config, subgraph_context_.subgraph_name);
+            LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
+          }
+      #else
+        if (subgraph_context.precision == InferenceEngine::Precision::FP16){
+          ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
+          exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, hw_target, config, device_config, subgraph_context_.subgraph_name);
+          LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
+        } else {
+          const std::string model = model_proto.SerializeAsString();
+          exe_network_ = global_context_.ie_core.LoadNetwork(model, hw_target, config, device_config, subgraph_context_.subgraph_name);
+          LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
         }
-      LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
-    } else {
-      std::string model;
-      model_proto.SerializeToString(model);
-      exe_network_ = global_context_.ie_core.LoadNetwork(model, hw_target, config, device_config, subgraph_context_.subgraph_name);
+      #endif
+    } else{
+      ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
+      exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, hw_target, config, device_config, subgraph_context_.subgraph_name);
       LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
     }
   }catch (const char* msg) {
