@@ -125,7 +125,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"DequantizeLinear", V_2021_4, {"CPU", "GPU"}},
     {"DequantizeLinear", V_2023_0, {"VPUX"}},
     {"Div", V_2020_4, {"All"}},
-    {"Dropout", V_2020_4, {"All"}}, //// worked with VPUX in squeezenet model
+    {"Dropout", V_2020_4, {"All"}}, // worked with VPUX in squeezenet model
     //{"Dropout", V_2020_4, {"CPU", "GPU", "MYRIAD"}},
     {"Elu", V_2020_4, {"All"}},
     {"Equal", V_2020_4, {"All"}},
@@ -134,8 +134,8 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Expand", V_2021_1, {"MYRIAD"}},
     {"Expand", V_2022_1, {"CPU", "GPU"}},
     {"EyeLike", V_2022_1, {"CPU"}},
-    //{"Flatten", V_2020_4, {"All"}},
-    {"Flatten", V_2020_4, {"CPU", "GPU", "MYRIAD"}},
+    {"Flatten", V_2020_4, {"All"}}, // worked with VPUX in opset7\tf_inception_v4
+    //{"Flatten", V_2020_4, {"CPU", "GPU", "MYRIAD"}},
     {"Floor", V_2020_4, {"All"}},
     {"Gather", V_2020_4, {"All"}},
     {"GatherElements", V_2021_3, {"MYRIAD"}},
@@ -160,8 +160,8 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Identity", V_2020_4, {"CPU", "GPU", "MYRIAD"}},
     //{"If", V_2022_3, {"All"}},
     {"If", V_2022_3, {"CPU", "GPU", "MYRIAD"}},
-    //{"ImageScaler", V_2022_1, {"All"}},
-    {"ImageScaler", V_2022_1, {"CPU", "GPU", "MYRIAD"}},
+    {"ImageScaler", V_2022_1, {"All"}}, // worked with VPUX in opset7\test_tiny_yolov2 model
+    //{"ImageScaler", V_2022_1, {"CPU", "GPU", "MYRIAD"}},
     //{"InstanceNormalization", V_2020_4, {"All"}},
     {"InstanceNormalization", V_2020_4, {"CPU", "GPU", "MYRIAD"}},
     {"LeakyRelu", V_2020_4, {"All"}},
@@ -245,8 +245,8 @@ std::vector<SupportedOp> supported_op_mode = {
     {"ScatterNDUpdate", V_2023_0, {"VPUX"}},
     {"Selu", V_2020_4, {"CPU", "GPU"}},
     {"Selu", V_2023_0, {"VPUX"}},
-    //{"Shape", V_2020_4, {"All"}},
-    {"Shape", V_2020_4, {"CPU", "GPU", "MYRIAD"}},
+    {"Shape", V_2020_4, {"All"}}, // Works on VPUX with opset7\tf_inception_v1
+    //{"Shape", V_2020_4, {"CPU", "GPU", "MYRIAD"}},
     {"Shrink", V_2022_1, {"CPU", "GPU"}},
     {"Sigmoid", V_2020_4, {"All"}},
     {"Sign", V_2020_4, {"CPU"}},
