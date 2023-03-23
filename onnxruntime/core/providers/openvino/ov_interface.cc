@@ -29,14 +29,10 @@ namespace onnxruntime {
             }
     }
 
-    OVExeNetwork OVCore::LoadNetwork(std::shared_ptr<OVNetwork>& ie_cnn_network, std::string& hw_target, OVConfig& config, ov::AnyMap& device_config, std::string name) {
+    OVExeNetwork OVCore::LoadNetwork(std::shared_ptr<OVNetwork>& ie_cnn_network, std::string& hw_target, ov::AnyMap& device_config, std::string name) {
         ov::CompiledModel obj;
         try {
-            if (hw_target.find("MYRIAD")==std::string::npos || hw_target.find("VAD-M_FP16")==std::string::npos){
-                obj = oe.compile_model(ie_cnn_network, hw_target, device_config);
-            } else {
-                obj = oe.compile_model(ie_cnn_network, hw_target, config);
-            }
+            obj = oe.compile_model(ie_cnn_network, hw_target, device_config);
             OVExeNetwork exe(obj);
             return exe;
         } catch (const Exception& e) {
