@@ -1134,10 +1134,6 @@ if (onnxruntime_USE_OPENVINO)
     message(FATAL_ERROR "Unsupported OpenVINO version: ${INTEL_OPENVINO_DIR}")
   endif()
 
-  if (onnxruntime_USE_OPENVINO_MYRIAD)
-    add_definitions(-DOPENVINO_CONFIG_MYRIAD=1)
-  endif()
-
   if (onnxruntime_USE_OPENVINO_GPU_FP32)
     add_definitions(-DOPENVINO_CONFIG_GPU_FP32=1)
   endif()
@@ -1160,11 +1156,6 @@ if (onnxruntime_USE_OPENVINO)
 
   if (onnxruntime_USE_OPENVINO_VAD_F)
     add_definitions(-DOPENVINO_CONFIG_VAD_F=1)
-  endif()
-
-  if (onnxruntime_USE_OPENVINO_MYRIAD_NP)
-    add_definitions(-DOPENVINO_CONFIG_MYRIAD=1)
-    add_definitions(-DOPENVINO_DISABLE_GRAPH_PARTITION=1)
   endif()
 
   if (onnxruntime_USE_OPENVINO_GPU_FP32_NP)
