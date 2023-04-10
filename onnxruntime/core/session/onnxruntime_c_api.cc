@@ -2703,6 +2703,7 @@ static constexpr OrtApi ort_api_1_to_15 = {
     &OrtApis::Logger_LogMessage,
     &OrtApis::Logger_GetLoggingSeverityLevel,
     &OrtApis::KernelInfoGetConstantInput_tensor,
+    &OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO_V2,
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
