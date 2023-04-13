@@ -1307,6 +1307,7 @@ OrtOpenVINOProviderOptionsV2 OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOpti
   ov_options_converted.device_id = legacy_ov_options->device_id;
   ov_options_converted.num_of_threads = legacy_ov_options->num_of_threads;
   ov_options_converted.cache_dir = legacy_ov_options->cache_dir;
+  ov_options_converted.num_streams = legacy_ov_options->num_streams;
   ov_options_converted.context = legacy_ov_options->context;
   ov_options_converted.enable_opencl_throttling = legacy_ov_options->enable_opencl_throttling;
   ov_options_converted.enable_dynamic_shapes = legacy_ov_options->enable_dynamic_shapes;

@@ -58,6 +58,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVI
     params.device_id,
     params.num_of_threads,
     params.cache_dir,
+    params.num_streams,
     params.context,
     params.enable_opencl_throttling,
     params.enable_dynamic_shapes);
