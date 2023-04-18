@@ -69,6 +69,7 @@ typedef std::shared_ptr<OVTensor> OVTensorPtr;
         OVTensorPtr GetTensor(const std::string& name);
         void SetTensor(const std::string& name, OVTensorPtr& blob);
         void StartAsync();
+        void Infer();
         void WaitRequest();
         void QueryStatus();
         explicit OVInferRequest(ov::InferRequest obj) { ovInfReq = obj; }
