@@ -3,10 +3,15 @@
 
 #pragma once
 
-#include "backend_manager.h"
 #include <map>
 #include <algorithm>
 #include <iostream>
+#include <vector>
+#include <sstream>
+#include "core/providers/shared_library/provider_api.h"
+#include "contexts.h"
+#include "backend_manager.h"
+#include "ov_versions/capabilities.h"
 
 namespace onnxruntime {
 
@@ -176,6 +181,8 @@ class OpenVINOExecutionProvider : public IExecutionProvider {
   const void* GetExecutionHandle() const noexcept override {
     return nullptr;
   }
+
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 };
 
 }  // namespace onnxruntime

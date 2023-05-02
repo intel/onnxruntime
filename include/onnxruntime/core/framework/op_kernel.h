@@ -199,6 +199,14 @@ KernelCreateInfo BuildKernelCreateInfo();
 }  // namespace snpe
 }  // namespace contrib
 
+namespace contrib {
+namespace openvino_ep {
+template <typename T>
+KernelCreateInfo BuildKernelCreateInfo();
+}  // namespace openvino_ep
+}  // namespace contrib
+
+
 using BuildKernelCreateInfoFn = KernelCreateInfo (*)();
 
 // Naming convention for operator kernel classes

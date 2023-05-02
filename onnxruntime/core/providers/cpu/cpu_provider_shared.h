@@ -30,7 +30,18 @@ struct ProviderHostCPU {
   virtual Status NonMaxSuppressionBase__PrepareCompute(OpKernelContext* ctx, PrepareContext& pc) = 0;
   virtual Status NonMaxSuppressionBase__GetThresholdsFromInputs(const PrepareContext& pc, int64_t& max_output_boxes_per_class, float& iou_threshold, float& score_threshold) = 0;
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_OPENVINO)
+  // BeamSearch
+  virtual void BeamSearch__Init(contrib::transformers::BeamSearch* p, const OpKernelInfo& info) = 0;
+  virtual Status BeamSearch__Compute(const contrib::transformers::BeamSearch* p, OpKernelContext* ctx) = 0;
+  virtual Status BeamSearch__SetupSubgraphExecutionInfo(contrib::transformers::BeamSearch* p,
+                                                        const SessionState& session_state,
+                                                        const std::string& attribute_name,
+                                                        const SessionState& subgraph_session_state) = 0;
+
+#endif 
+
+#if defined(USE_CUDA) || defined(USE_ROCM) 
 
   // From cpu/tensor/size.h
   virtual Status Size__Compute(const Size* p, OpKernelContext* context) = 0;

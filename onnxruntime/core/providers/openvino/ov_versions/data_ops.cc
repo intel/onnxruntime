@@ -57,13 +57,14 @@ std::set<std::string> ops_supported_only_in_model = {
     "Slice",
     "Split",
     "Tile",
-    "TopK"};
+    "TopK",
+    "BeamSearch"};
 
 // Ops which are supported as functions (as composite ops)
 std::set<std::string> ops_supported_as_function = {
     "LessOrEqual",
     "GreaterOrEqual",
-};
+    "BeamSearch"};
 
 std::vector<SupportedOp> supported_op_mode = {
     {"Abs", V_2020_4, {"CPU", "GPU"}},

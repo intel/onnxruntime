@@ -44,7 +44,7 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
                   std::initializer_list<OrtValue> inputs,
                   std::vector<OrtValue>& feeds,
                   IAllocatorUniquePtr<char>& buffer);
-
+.
 template <typename T>
 void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
                    gsl::span<int32_t>& sequence_lengths,

@@ -4,8 +4,10 @@
 #pragma once
 
 #include <memory>
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+#endif
 #include "core/providers/cpu/controlflow/utils.h"
 #include "contrib_ops/cpu/transformers/beam_search_parameters.h"
 #include "contrib_ops/cpu/transformers/subgraph_gpt.h"

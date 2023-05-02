@@ -2,12 +2,17 @@
 // Licensed under the MIT License
 
 #include "core/providers/shared_library/provider_api.h"
+#include "backend_manager.h"
+#define ORT_API_MANUAL_INIT
 #include "openvino_execution_provider.h"
 #include "contexts.h"
 #include "backend_manager.h"
 #include "ov_versions/capabilities.h"
+#include "contrib_ops/openvino/openvino_contrib_kernels.h"
 
 #define MEMCPY_S(dest, src, destsz, srcsz) memcpy(dest, src, std::min(destsz, srcsz))
+
+using namespace onnxruntime::common;
 
 namespace onnxruntime {
 
@@ -188,4 +193,32 @@ common::Status OpenVINOExecutionProvider::Compile(
   return Status::OK();
 }
 
+namespace openvino_ep {
+static Status RegisterOpenVINOKernels(KernelRegistry& kernel_registry) {
+  ORT_RETURN_IF_ERROR(::onnxruntime::contrib::openvino_ep::RegisterOpenVINOContribKernels(kernel_registry));
+  return Status::OK();
+}
+}  // namespace openvino_ep
+
+static std::shared_ptr<KernelRegistry> o_kernel_registry;
+
+void InitializeRegistry() {
+  o_kernel_registry = KernelRegistry::Create();
+  ORT_THROW_IF_ERROR(openvino_ep::RegisterOpenVINOKernels(*o_kernel_registry));
+}
+
+void DeleteRegistry() {
+  o_kernel_registry.reset();
+}
+
+std::shared_ptr<KernelRegistry> OpenVINOExecutionProvider::GetKernelRegistry() const {
+  return o_kernel_registry;
+}
+
+
 }  // namespace onnxruntime
+
+
+
+
+

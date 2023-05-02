@@ -7,6 +7,10 @@
 #include "openvino_provider_factory_creator.h"
 
 namespace onnxruntime {
+
+void InitializeRegistry();
+void DeleteRegistry();
+
 struct OpenVINOProviderFactory : IExecutionProviderFactory {
   OpenVINOProviderFactory(const char* device_type, bool enable_vpu_fast_compile,
                           const char* device_id, size_t num_of_threads,
@@ -72,10 +76,12 @@ struct OpenVINO_Provider : Provider {
   }
 
   void Initialize() override {
+    InitializeRegistry();
   }
 
   void Shutdown() override {
     openvino_ep::BackendManager::ReleaseGlobalContext();
+    DeleteRegistry();
   }
 
 } g_provider;

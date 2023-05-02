@@ -75,6 +75,23 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
   Status NonMaxSuppressionBase__PrepareCompute(OpKernelContext* ctx, PrepareContext& pc) override { return NonMaxSuppressionBase::PrepareCompute(ctx, pc); }
   Status NonMaxSuppressionBase__GetThresholdsFromInputs(const PrepareContext& pc, int64_t& max_output_boxes_per_class, float& iou_threshold, float& score_threshold) override { return NonMaxSuppressionBase::GetThresholdsFromInputs(pc, max_output_boxes_per_class, iou_threshold, score_threshold); }
 
+#if defined(USE_OPENVINO)
+  void BeamSearch__Init(contrib::transformers::BeamSearch* p, const OpKernelInfo& info) override {
+    p->contrib::transformers::BeamSearch::Init(info);
+  }
+
+  Status BeamSearch__Compute(const contrib::transformers::BeamSearch* p, OpKernelContext* ctx) override {
+    return p->contrib::transformers::BeamSearch::Compute(ctx);
+  }
+
+  Status BeamSearch__SetupSubgraphExecutionInfo(contrib::transformers::BeamSearch* p, const SessionState& session_state,
+                                                const std::string& attribute_name,
+                                                const SessionState& subgraph_session_state) override {
+    return p->contrib::transformers::BeamSearch::SetupSubgraphExecutionInfo(session_state, attribute_name,
+                                                                            subgraph_session_state);
+  }
+#endif
+  
 #if defined(USE_CUDA) || defined(USE_ROCM)
   // From cpu/tensor/size.h (direct)
   Status Size__Compute(const Size* p, OpKernelContext* context) override { return p->Size::Compute(context); }
@@ -218,7 +235,7 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
                                     int sequence_length, int& past_sequence_length) override {
     return p->contrib::AttentionBase::GetPresent(context, past, batch_size, head_size,
                                                  sequence_length, past_sequence_length);
-  }
+  }.
 
   void BeamSearch__Init(contrib::transformers::BeamSearch* p, const OpKernelInfo& info) override {
     p->contrib::transformers::BeamSearch::Init(info);

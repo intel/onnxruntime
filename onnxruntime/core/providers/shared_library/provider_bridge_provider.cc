@@ -490,6 +490,21 @@ Status NonMaxSuppressionBase::GetThresholdsFromInputs(const PrepareContext& pc, 
 Status GatherBase::PrepareForCompute(OpKernelContext* context, GatherBase::Prepare& p) const { return g_host_cpu.GatherBase__PrepareForCompute(this, context, reinterpret_cast<GatherBase__Prepare&>(p)); }
 Status UnsqueezeBase::PrepareCompute(OpKernelContext* ctx, UnsqueezeBase::Prepare& p) const { return g_host_cpu.UnsqueezeBase__PrepareCompute(this, ctx, reinterpret_cast<UnsqueezeBase__Prepare&>(p)); }
 
+#if defined(USE_OPENVINO)
+namespace contrib {
+namespace transformers {
+void BeamSearch::Init(const OpKernelInfo& info) { g_host_cpu.BeamSearch__Init(this, info); }
+
+Status BeamSearch::Compute(OpKernelContext* ctx) const { return g_host_cpu.BeamSearch__Compute(this, ctx); }
+
+Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name,
+                                              const SessionState& subgraph_session_state) {
+  return g_host_cpu.BeamSearch__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state);
+}
+}  // namespace transformers
+}  // namespace contrib
+#endif 
+
 #if defined(USE_CUDA) || defined(USE_ROCM)
 bool TileOp::IsTileMemcpy(const TensorShape& input_shape, const int64_t* repeats, size_t rank, bool& is_batched_memcpy, size_t& num_of_elements_per_batch, size_t& num_of_copies_per_batch, size_t& num_of_batch_copies) {
   return g_host_cpu.TileOp__IsTileMemcpy(input_shape, repeats, rank, is_batched_memcpy, num_of_elements_per_batch, num_of_copies_per_batch, num_of_batch_copies);
