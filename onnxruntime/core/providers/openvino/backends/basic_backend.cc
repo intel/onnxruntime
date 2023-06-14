@@ -58,7 +58,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
         LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
       } else {
 #if defined(OPENVINO_2023_0)
-        if (global_context_.enable_dynamic_shapes == false && dev_prec!="CPU_FP16") {
+        if (!subgraph_context_.has_dynamic_input_shape && dev_prec!="CPU_FP16") {
           const std::string model = model_proto.SerializeAsString();
           exe_network_ = global_context_.ie_core.LoadNetwork(model, hw_target, device_config, subgraph_context_.subgraph_name);
           LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
@@ -74,7 +74,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
 #endif
 #else
 #if defined(OPENVINO_2023_0)
-      if (global_context_.enable_dynamic_shapes == false && dev_prec!="CPU_FP16") {
+      if (!subgraph_context_.has_dynamic_input_shape && dev_prec!="CPU_FP16") {
         const std::string model = model_proto.SerializeAsString();
         exe_network_ = global_context_.ie_core.LoadNetwork(model, hw_target, device_config, subgraph_context_.subgraph_name);
         LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
@@ -197,7 +197,6 @@ void BasicBackend::EnableGPUThrottling(ov::AnyMap& device_config) {
         }
         size_t batch_slice_idx = 0;
         if (subgraph_context_.has_dynamic_input_shape &&
-            global_context_.enable_dynamic_shapes == true &&
             (global_context_.device_type.find("CPU") != std::string::npos ||
              global_context_.device_type.find("GPU") != std::string::npos)) {
           auto tensor = context.GetInput(subgraph_context_.input_names.at(input_name));
