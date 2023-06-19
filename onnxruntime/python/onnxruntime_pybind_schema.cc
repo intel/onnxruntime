@@ -44,7 +44,7 @@ void addGlobalSchemaFunctions(pybind11::module& m) {
             onnxruntime::DnnlProviderFactoryCreator::Create(1),
 #endif
 #ifdef USE_OPENVINO
-            onnxruntime::OpenVINOProviderFactoryCreator::Create(OrtOpenVINOProviderOptions()),
+            onnxruntime::OpenVINOProviderFactoryCreator::Create(ProviderOptions{}, nullptr),
 #endif
 #ifdef USE_TENSORRT
             onnxruntime::TensorrtProviderFactoryCreator::Create(0),
