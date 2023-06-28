@@ -37,6 +37,11 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   // Setting OpenCL queue throttling for GPU
   EnableGPUThrottling(device_config);
 
+
+  // Enable streams; default=1 unless ovverriden by user config
+  EnableStreams();
+
+
 #ifndef NDEBUG
   if (IsDebugEnabled()) {
     std::string file_name = subgraph_context.subgraph_name + "_static.onnx";
@@ -170,6 +175,11 @@ void BasicBackend::EnableGPUThrottling(ov::AnyMap& device_config) {
     // device_config[GPU_CONFIG_KEY(PLUGIN_THROTTLE)] = "1";
   }
 }
+
+void BasicBackend::EnableStreams() {
+  global_context_.ie_core.SetStreams(global_context_.device_type, global_context_.num_streams);
+}
+
 
   // Starts an asynchronous inference request for data in slice indexed by batch_slice_idx on
   // an Infer Request indexed by infer_req_idx
