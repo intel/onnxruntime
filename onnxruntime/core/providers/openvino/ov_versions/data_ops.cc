@@ -128,7 +128,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Dropout", V_2023_0, {"VPUX"}},
     {"Elu", V_2020_4, {"CPU", "GPU"}},
     {"Elu", V_2023_0, {"VPUX"}},
-    // {"Einsum", V_2023_0, {"CPU", "GPU"}},
+    {"Einsum", V_2023_1, {"CPU", "GPU"}},
     {"Equal", V_2020_4, {"CPU", "GPU"}},
     {"Equal", V_2023_0, {"VPUX"}},  // Added for whisper decoder model.
     {"Erf", V_2020_4, {"CPU", "GPU"}},
@@ -603,7 +603,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"PRelu", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3, V_2023_0},
+    UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3, V_2023_0, V_2023_1},
                              [this](const Node* node, const InitializedTensorSet&) {
                                const auto& input_arg = node->InputDefs()[1];
                                auto shape = input_arg->Shape();
@@ -714,7 +714,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Squeeze", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3, V_2023_0},
+    UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3, V_2023_0, V_2023_1},
                              [this](const Node* node, const InitializedTensorSet&) {
                                // If the operator is unsqueeze
                                // If axes is an input, then we cannot produce a static graph. Conversion fails in convert_function_to_cnn_network.
@@ -728,7 +728,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Unsqueeze", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3, V_2023_0},
+    UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3, V_2023_0, V_2023_1},
                              [this](const Node* node, const InitializedTensorSet&) {
                                // check for attributes
                                auto& upsample_attr = node->GetAttributes();
