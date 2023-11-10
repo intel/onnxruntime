@@ -84,11 +84,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     status = create_not_supported_status();
 #endif
   } else if (strcmp(provider_name, "OpenVINO") == 0) {
-#if defined(USE_OPENVINO)
     options->provider_factories.push_back(OpenVINOProviderFactoryCreator::Create(&provider_options));
-#else
-    status = create_not_supported_status();
-#endif
   } else if (strcmp(provider_name, "SNPE") == 0) {
 #if defined(USE_SNPE)
     options->provider_factories.push_back(SNPEProviderFactoryCreator::Create(provider_options));
@@ -104,8 +100,10 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
   } else if (strcmp(provider_name, "WEBNN") == 0) {
 #if defined(USE_WEBNN)
     std::string deviceType = options->value.config_options.GetConfigOrDefault("deviceType", "cpu");
+    std::string numThreads = options->value.config_options.GetConfigOrDefault("numThreads", "0");
     std::string powerPreference = options->value.config_options.GetConfigOrDefault("powerPreference", "default");
     provider_options["deviceType"] = deviceType;
+    provider_options["numThreads"] = numThreads;
     provider_options["powerPreference"] = powerPreference;
     options->provider_factories.push_back(WebNNProviderFactoryCreator::Create(provider_options));
 #else
