@@ -71,7 +71,8 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
       }
 #else
 #if defined(OPENVINO_2023_0) || (OPENVINO_2023_1) || (OPENVINO_2023_2)
-      if (global_context_.disable_dynamic_shapes && dev_prec != "CPU_FP16") {
+      if (global_context_.disable_dynamic_shapes && dev_prec != "CPU_FP16" && 
+          (global_context.device_type.find("NPU") == std::string::npos)) {
         const std::string model = model_proto.SerializeAsString();
         exe_network_ = global_context_.ie_core.LoadNetwork(
             model, hw_target, device_config, subgraph_context_.subgraph_name);

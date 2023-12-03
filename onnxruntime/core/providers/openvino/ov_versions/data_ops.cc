@@ -194,6 +194,8 @@ std::vector<SupportedOp> supported_op_mode = {
     {"HardSigmoid", V_2020_4, {"CPU", "GPU"}},
     {"HardSigmoid", V_2023_1, {"NPU"}},
     {"HardMax", V_2022_1, {"CPU", "GPU"}},
+    {"LayerNormalization", V_2023_0, {"CPU", "GPU"}},
+    {"LayerNormalization", V_2023_0, {"NPU"}},
     {"LeakyRelu", V_2020_4, {"CPU", "GPU"}},
     {"LeakyRelu", V_2023_0, {"NPU"}},
     {"Less", V_2020_4, {"CPU", "GPU"}},
