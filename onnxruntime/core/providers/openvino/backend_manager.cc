@@ -13,21 +13,20 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
-static std::unique_ptr<GlobalContext> g_global_context;
 
 GlobalContext& BackendManager::GetGlobalContext() {
-  // This is not thread safe to call for the first time,
-  // but it is first called on the main thread by the constructor so it is safe.
-  if (!g_global_context)
-    g_global_context = std::make_unique<GlobalContext>();
-  return *g_global_context;
+  return *global_context_;
 }
 
 void BackendManager::ReleaseGlobalContext() {
-  g_global_context.reset();
+  global_context_.reset();
 }
 
-BackendManager::BackendManager(const onnxruntime::Node& fused_node,
+BackendManager::BackendManager() {
+  global_context_ = std::make_unique<GlobalContext>();
+}
+
+void BackendManager::Initialize(const onnxruntime::Node& fused_node,
                                const onnxruntime::GraphViewer& subgraph,
                                const logging::Logger& logger) {
   auto prec_str = GetGlobalContext().precision_str;

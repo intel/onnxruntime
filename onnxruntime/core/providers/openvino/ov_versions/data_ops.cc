@@ -12,7 +12,7 @@
 #include "../backend_utils.h"
 #include "../backend_manager.h"
 #include "data_ops.h"
-#include "capabilities.h"
+#include "capability.h"
 #include "utils.h"
 
 #if defined(_MSC_VER)
@@ -637,54 +637,54 @@ void DataOps::populate_op_mode_supported() {
                              }};
     op_list_.insert({"Pow", obj});
   }
-  {
-    UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
-                             [this](const Node* node, const InitializedTensorSet&) {
-                               // Max op with one input is not supporting for GPU_FP16
-                               if (device_id_.find("GPU") != std::string::npos) {
-                                 auto prec_str = openvino_ep::BackendManager::GetGlobalContext().precision_str;
-                                 if (prec_str == "FP16") {
-                                   if (node->InputDefs().size() == 1) {
-                                     return true;
-                                   }
-                                 }
-                               }
-                               return false;
-                             }};
-    op_list_.insert({"Max", obj});
-  }
-  {
-    UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
-                             [this](const Node* node, const InitializedTensorSet&) {
-                               // Min op with one input is not supporting for GPU_FP16
-                               if (device_id_.find("GPU") != std::string::npos) {
-                                 auto prec_str = openvino_ep::BackendManager::GetGlobalContext().precision_str;
-                                 if (prec_str == "FP16") {
-                                   if (node->InputDefs().size() == 1) {
-                                     return true;
-                                   }
-                                 }
-                               }
-                               return false;
-                             }};
-    op_list_.insert({"Min", obj});
-  }
-  {
-    UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
-                             [this](const Node* node, const InitializedTensorSet&) {
-                               // Sum op with one input is not supporting for GPU_FP16
-                               if (device_id_.find("GPU") != std::string::npos) {
-                                 auto prec_str = openvino_ep::BackendManager::GetGlobalContext().precision_str;
-                                 if (prec_str == "FP16") {
-                                   if (node->InputDefs().size() == 1) {
-                                     return true;
-                                   }
-                                 }
-                               }
-                               return false;
-                             }};
-    op_list_.insert({"Sum", obj});
-  }
+  // {
+  //   UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
+  //                            [this](const Node* node, const InitializedTensorSet&) {
+  //                              // Max op with one input is not supporting for GPU_FP16
+  //                              if (device_id_.find("GPU") != std::string::npos) {
+  //                                auto prec_str = openvino_ep::BackendManager::GetGlobalContext().precision_str;
+  //                                if (prec_str == "FP16") {
+  //                                  if (node->InputDefs().size() == 1) {
+  //                                    return true;
+  //                                  }
+  //                                }
+  //                              }
+  //                              return false;
+  //                            }};
+  //   op_list_.insert({"Max", obj});
+  // }
+  // {
+  //   UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
+  //                            [this](const Node* node, const InitializedTensorSet&) {
+  //                              // Min op with one input is not supporting for GPU_FP16
+  //                              if (device_id_.find("GPU") != std::string::npos) {
+  //                                auto prec_str = openvino_ep::BackendManager::GetGlobalContext().precision_str;
+  //                                if (prec_str == "FP16") {
+  //                                  if (node->InputDefs().size() == 1) {
+  //                                    return true;
+  //                                  }
+  //                                }
+  //                              }
+  //                              return false;
+  //                            }};
+  //   op_list_.insert({"Min", obj});
+  // }
+  // {
+  //   UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
+  //                            [this](const Node* node, const InitializedTensorSet&) {
+  //                              // Sum op with one input is not supporting for GPU_FP16
+  //                              if (device_id_.find("GPU") != std::string::npos) {
+  //                                auto prec_str = openvino_ep::BackendManager::GetGlobalContext().precision_str;
+  //                                if (prec_str == "FP16") {
+  //                                  if (node->InputDefs().size() == 1) {
+  //                                    return true;
+  //                                  }
+  //                                }
+  //                              }
+  //                              return false;
+  //                            }};
+  //   op_list_.insert({"Sum", obj});
+  // }
   {
     UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
                              [this](const Node* node, const InitializedTensorSet& initializers) {
