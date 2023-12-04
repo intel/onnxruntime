@@ -193,6 +193,7 @@ class OpenVINOExecutionProvider : public IExecutionProvider {
   const void* GetExecutionHandle() const noexcept override {
     return nullptr;
   }
+  std::shared_ptr<openvino_ep::BackendManager> backend_manager_;
 };
 
 }  // namespace onnxruntime

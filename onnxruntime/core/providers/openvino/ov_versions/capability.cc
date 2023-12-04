@@ -4,7 +4,7 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "../backend_utils.h"
 #include "../backend_manager.h"
-#include "capabilities.h"
+#include "capability.h"
 #include "utils.h"
 
 #if defined(_MSC_VER)
@@ -111,7 +111,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
     if (backend_utils::IsCILogEnabled()) {
       std::cout << "Model is fully supported on OpenVINO" << std::endl;
     }
-    openvino_ep::BackendManager::GetGlobalContext().is_wholly_supported_graph = true;
+    is_wholly_supported_graph_ = true;
 
   } else {                                     // unsupported_nodes_idx.empty()
 #if defined(OPENVINO_DISABLE_GRAPH_PARTITION)  // disables graph partition at build time
