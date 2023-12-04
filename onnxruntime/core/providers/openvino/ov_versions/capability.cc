@@ -26,6 +26,9 @@ namespace openvino_ep {
 GetCapability::GetCapability(const GraphViewer& graph_viewer_param, std::string device_type_param,
                              const std::string version_param)
     : graph_viewer_(graph_viewer_param), device_type_(device_type_param) {
+  if(device_type_.find("NPU")!=std::string::npos){
+    device_type_ = "CPU_FP32";
+  }
   if (version_param == "V_2022_3") {
     data_ops_ = new DataOps(graph_viewer_, V_2022_3, device_type_);
   } else if (version_param == "V_2023_0") {

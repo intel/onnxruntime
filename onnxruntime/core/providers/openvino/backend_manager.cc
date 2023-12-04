@@ -99,7 +99,24 @@ BackendManager::BackendManager(const onnxruntime::Node& fused_node,
                                                       GetGlobalContext(),
                                                       subgraph_context_);
     } catch (std::string const& msg) {
-      throw msg;
+      std::string device_type = openvino_ep::BackendManager::GetGlobalContext().device_type;
+      if (device_type.find("NPU")!= std::string::npos){
+        LOGS_DEFAULT(WARNING) << msg;
+        openvino_ep::BackendManager::GetGlobalContext().device_type = "CPU";
+        openvino_ep::BackendManager::GetGlobalContext().precision_str = "FP32";
+        try {
+          std::cout << " Create another backend for cpu FP32 " << std::endl;
+          concrete_backend_ = BackendFactory::MakeBackend(*model_proto_,
+                                                          GetGlobalContext(),
+                                                          subgraph_context_);
+        }catch (std::string const& msg) {
+          LOGS_DEFAULT(WARNING) << msg;
+          throw msg;
+        }
+      }
+      else {
+        throw msg;
+      }
     }
   }
 }
@@ -262,7 +279,8 @@ void BackendManager::Compute(OrtKernelContext* context) {
   }
 #endif
   bool use_dynamic_backend = true;
-  if (!GetGlobalContext().disable_dynamic_shapes && subgraph_context_.has_dynamic_input_shape &&
+  if (subgraph_context_.has_dynamic_input_shape &&
+      !GetGlobalContext().disable_dynamic_shapes &&
       (GetGlobalContext().device_type.find("CPU") != std::string::npos ||
        GetGlobalContext().device_type.find("GPU") != std::string::npos)) {
     concrete_backend_->Infer(context);
