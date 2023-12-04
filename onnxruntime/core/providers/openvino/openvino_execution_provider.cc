@@ -116,19 +116,23 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
 
 #if defined(OPENVINO_2022_3)
   openvino_ep::GetCapability obj(graph_viewer,
-                                 backend_manager_->GetGlobalContext().device_type, "V_2022_3");
+                                 backend_manager_->GetGlobalContext().device_type,
+                                 backend_manager_->GetGlobalContext().precision_str, "V_2022_3");
   result = obj.Execute();
 #elif defined(OPENVINO_2023_0)
   openvino_ep::GetCapability obj(graph_viewer,
-                                 backend_manager_->GetGlobalContext().device_type, "V_2023_0");
+                                 backend_manager_->GetGlobalContext().device_type,
+                                 backend_manager_->GetGlobalContext().precision_str, "V_2023_0");
   result = obj.Execute();
 #elif defined(OPENVINO_2023_1)
   openvino_ep::GetCapability obj(graph_viewer,
-                                 backend_manager_->GetGlobalContext().device_type, "V_2023_1");
+                                 backend_manager_->GetGlobalContext().device_type,
+                                 backend_manager_->GetGlobalContext().precision_str, "V_2023_1");
   result = obj.Execute();
 #elif defined(OPENVINO_2023_2)
   openvino_ep::GetCapability obj(graph_viewer,
-                                 backend_manager_->GetGlobalContext().device_type, "V_2023_2");
+                                 backend_manager_->GetGlobalContext().device_type,
+                                 backend_manager_->GetGlobalContext().precision_str, "V_2023_2");
   result = obj.Execute();
 #endif
 
