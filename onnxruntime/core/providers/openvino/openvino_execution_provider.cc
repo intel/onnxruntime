@@ -15,24 +15,23 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
     : IExecutionProvider{onnxruntime::kOpenVINOExecutionProvider} {
   InitProviderOrtApi();
 
-  backend_manager_ = std::make_shared<openvino_ep::BackendManager>();
-
-  backend_manager_->GetGlobalContext().device_type = info.device_type_;
-  backend_manager_->GetGlobalContext().precision_str = info.precision_;
-  backend_manager_->GetGlobalContext().enable_npu_fast_compile = info.enable_npu_fast_compile_;
-  backend_manager_->GetGlobalContext().cache_dir = info.cache_dir_;
-  backend_manager_->GetGlobalContext().num_streams = info.num_streams_;
-  backend_manager_->GetGlobalContext().context = info.context_;
-  backend_manager_->GetGlobalContext().enable_opencl_throttling = info.enable_opencl_throttling_;
-  backend_manager_->GetGlobalContext().disable_dynamic_shapes = info.disable_dynamic_shapes_;
-  backend_manager_->GetGlobalContext().num_of_threads = info.num_of_threads_;
+  global_context_ = std::make_unique<openvino_ep::GlobalContext>();
+  global_context_->device_type = info.device_type_;
+  global_context_->precision_str = info.precision_;
+  global_context_->enable_npu_fast_compile = info.enable_npu_fast_compile_;
+  global_context_->cache_dir = info.cache_dir_;
+  global_context_->num_streams = info.num_streams_;
+  global_context_->context = info.context_;
+  global_context_->enable_opencl_throttling = info.enable_opencl_throttling_;
+  global_context_->disable_dynamic_shapes = info.disable_dynamic_shapes_;
+  global_context_->num_of_threads = info.num_of_threads_;
 
   // to check if target device is available
   // using ie_core capability GetAvailableDevices to fetch list of devices plugged in
   if (info.cache_dir_.empty()) {
     bool device_found = false;
     bool device_id_found = false;
-    auto available_devices = backend_manager_->GetGlobalContext().ie_core.GetAvailableDevices();
+    auto available_devices = global_context_->ie_core.GetAvailableDevices();
     // Checking for device_type configuration
     if (info.device_type_ != "") {
       if (info.device_type_.find("HETERO") != std::string::npos ||
@@ -91,7 +90,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
       }
     }
   }
-  backend_manager_->GetGlobalContext().device_id = info.device_id_;
+  global_context_->device_id = info.device_id_;
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>
@@ -102,41 +101,41 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   if (!(GetEnvironmentVar("ORT_OPENVINO_ENABLE_CI_LOG").empty())) {
     std::cout << "In the OpenVINO EP" << std::endl;
   }
-  backend_manager_->GetGlobalContext().onnx_model_name = graph_viewer.Name();
+  global_context_->onnx_model_name = graph_viewer.Name();
 #ifdef _WIN32
   std::wstring onnx_path = graph_viewer.ModelPath().ToPathString();
-  backend_manager_->GetGlobalContext().onnx_model_path_name =
+  global_context_->onnx_model_path_name =
       std::string(onnx_path.begin(), onnx_path.end());
 #else
-  backend_manager_->GetGlobalContext().onnx_model_path_name =
+  global_context_->onnx_model_path_name =
       graph_viewer.ModelPath().ToPathString();
 #endif
-  backend_manager_->GetGlobalContext().onnx_opset_version =
+  global_context_->onnx_opset_version =
       graph_viewer.DomainToVersionMap().at(kOnnxDomain);
 
 #if defined(OPENVINO_2022_3)
   openvino_ep::GetCapability obj(graph_viewer,
-                                 backend_manager_->GetGlobalContext().device_type,
-                                 backend_manager_->GetGlobalContext().precision_str, "V_2022_3");
+                                 global_context_->device_type,
+                                 global_context_->precision_str, "V_2022_3");
   result = obj.Execute();
 #elif defined(OPENVINO_2023_0)
   openvino_ep::GetCapability obj(graph_viewer,
-                                 backend_manager_->GetGlobalContext().device_type,
-                                 backend_manager_->GetGlobalContext().precision_str, "V_2023_0");
+                                 global_context_->device_type,
+                                 global_context_->precision_str, "V_2023_0");
   result = obj.Execute();
 #elif defined(OPENVINO_2023_1)
   openvino_ep::GetCapability obj(graph_viewer,
-                                 backend_manager_->GetGlobalContext().device_type,
-                                 backend_manager_->GetGlobalContext().precision_str, "V_2023_1");
+                                 global_context_->device_type,
+                                 global_context_->precision_str, "V_2023_1");
   result = obj.Execute();
 #elif defined(OPENVINO_2023_2)
   openvino_ep::GetCapability obj(graph_viewer,
-                                 backend_manager_->GetGlobalContext().device_type,
-                                 backend_manager_->GetGlobalContext().precision_str, "V_2023_2");
+                                 global_context_->device_type,
+                                 global_context_->precision_str, "V_2023_2");
   result = obj.Execute();
 #endif
 
-  backend_manager_->GetGlobalContext().is_wholly_supported_graph = obj.IsWhollySupportedGraph();
+  global_context_->is_wholly_supported_graph = obj.IsWhollySupportedGraph();
 
   return result;
 }
@@ -150,17 +149,18 @@ common::Status OpenVINOExecutionProvider::Compile(
 
     NodeComputeInfo compute_info;
 
-    backend_manager_->GetGlobalContext().use_api_2 = true;
+    global_context_->use_api_2 = true;
 
-    backend_manager_->Initialize(fused_node, graph_body_viewer, *GetLogger());
+    std::shared_ptr<openvino_ep::BackendManager> backend_manager =
+        std::make_shared<openvino_ep::BackendManager>(*global_context_, fused_node, graph_body_viewer, *GetLogger());
 
     compute_info.create_state_func =
-        [this](ComputeContext* context, FunctionState* state) {
+        [backend_manager](ComputeContext* context, FunctionState* state) {
           OpenVINOEPFunctionState* p = new OpenVINOEPFunctionState();
           p->allocate_func = context->allocate_func;
           p->destroy_func = context->release_func;
           p->allocator_handle = context->allocator_handle;
-          p->backend_manager = backend_manager_;
+          p->backend_manager = backend_manager;
           *state = static_cast<FunctionState>(p);
           return 0;
         };
