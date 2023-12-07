@@ -13,22 +13,16 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
-
 GlobalContext& BackendManager::GetGlobalContext() {
-  return *global_context_;
+  return global_context_;
 }
 
-void BackendManager::ReleaseGlobalContext() {
-  global_context_.reset();
-}
-
-BackendManager::BackendManager() {
-  global_context_ = std::make_unique<GlobalContext>();
-}
-
-void BackendManager::Initialize(const onnxruntime::Node& fused_node,
+BackendManager::BackendManager(const GlobalContext& global_context,
+                               const onnxruntime::Node& fused_node,
                                const onnxruntime::GraphViewer& subgraph,
                                const logging::Logger& logger) {
+  global_context_ = global_context;
+
   auto prec_str = GetGlobalContext().precision_str;
   if (prec_str == "FP32") {
     subgraph_context_.precision = "FP32";
