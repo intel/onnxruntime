@@ -74,7 +74,7 @@ def _openvino_verify_device_type(device_read):
         "GPU_FP32_NO_PARTITION",
         "GPU_FP16_NO_PARTITION",
         "NPU_FP16_NO_PARTITION",
-        "NPU_U8_NO_PARTITION"
+        "NPU_U8_NO_PARTITION",
     ]
     status_hetero = True
     res = False
