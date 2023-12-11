@@ -12,7 +12,7 @@
 #include "../backend_utils.h"
 #include "../backend_manager.h"
 #include "data_ops.h"
-#include "capabilities.h"
+#include "capability.h"
 #include "utils.h"
 
 #if defined(_MSC_VER)
@@ -642,8 +642,7 @@ void DataOps::populate_op_mode_supported() {
                              [this](const Node* node, const InitializedTensorSet&) {
                                // Max op with one input is not supporting for GPU_FP16
                                if (device_id_.find("GPU") != std::string::npos) {
-                                 auto prec_str = openvino_ep::BackendManager::GetGlobalContext().precision_str;
-                                 if (prec_str == "FP16") {
+                                 if (device_precision_ == "FP16") {
                                    if (node->InputDefs().size() == 1) {
                                      return true;
                                    }
@@ -658,8 +657,7 @@ void DataOps::populate_op_mode_supported() {
                              [this](const Node* node, const InitializedTensorSet&) {
                                // Min op with one input is not supporting for GPU_FP16
                                if (device_id_.find("GPU") != std::string::npos) {
-                                 auto prec_str = openvino_ep::BackendManager::GetGlobalContext().precision_str;
-                                 if (prec_str == "FP16") {
+                                 if (device_precision_ == "FP16") {
                                    if (node->InputDefs().size() == 1) {
                                      return true;
                                    }
@@ -674,8 +672,7 @@ void DataOps::populate_op_mode_supported() {
                              [this](const Node* node, const InitializedTensorSet&) {
                                // Sum op with one input is not supporting for GPU_FP16
                                if (device_id_.find("GPU") != std::string::npos) {
-                                 auto prec_str = openvino_ep::BackendManager::GetGlobalContext().precision_str;
-                                 if (prec_str == "FP16") {
+                                 if (device_precision_ == "FP16") {
                                    if (node->InputDefs().size() == 1) {
                                      return true;
                                    }
