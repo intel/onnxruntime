@@ -12,7 +12,7 @@
 #include "../backend_utils.h"
 #include "../backend_manager.h"
 #include "data_ops.h"
-#include "capabilities.h"
+#include "capability.h"
 #include "utils.h"
 #include "../ov_interface.h"
 
@@ -145,6 +145,8 @@ std::vector<SupportedOp> supported_op_mode = {
     {"InstanceNormalization", V_2020_4, {"CPU", "GPU"}},
     {"HardSigmoid", V_2020_4, {"CPU", "GPU"}},
     {"HardMax", V_2022_1, {"CPU", "GPU"}},
+    {"LayerNormalization", V_2023_0, {"CPU", "GPU"}},
+    {"LayerNormalization", V_2023_0, {"NPU"}},
     {"LeakyRelu", V_2020_4, {"CPU", "GPU"}},
     {"Less", V_2020_4, {"CPU", "GPU"}},
     {"LessOrEqual", V_2022_1, {"CPU", "GPU"}},
@@ -515,8 +517,7 @@ void DataOps::populate_op_mode_supported() {
                              [this](const Node* node, const InitializedTensorSet&) {
                                // Max op with one input is not supporting for GPU_FP16
                                if (device_id_.find("GPU") != std::string::npos) {
-                                 auto prec_str = openvino_ep::BackendManager::GetGlobalContext().precision_str;
-                                 if (prec_str == "FP16") {
+                                 if (device_precision_ == "FP16") {
                                    if (node->InputDefs().size() == 1) {
                                      return true;
                                    }
@@ -531,8 +532,7 @@ void DataOps::populate_op_mode_supported() {
                              [this](const Node* node, const InitializedTensorSet&) {
                                // Min op with one input is not supporting for GPU_FP16
                                if (device_id_.find("GPU") != std::string::npos) {
-                                 auto prec_str = openvino_ep::BackendManager::GetGlobalContext().precision_str;
-                                 if (prec_str == "FP16") {
+                                 if (device_precision_ == "FP16") {
                                    if (node->InputDefs().size() == 1) {
                                      return true;
                                    }
@@ -547,8 +547,7 @@ void DataOps::populate_op_mode_supported() {
                              [this](const Node* node, const InitializedTensorSet&) {
                                // Sum op with one input is not supporting for GPU_FP16
                                if (device_id_.find("GPU") != std::string::npos) {
-                                 auto prec_str = openvino_ep::BackendManager::GetGlobalContext().precision_str;
-                                 if (prec_str == "FP16") {
+                                 if (device_precision_ == "FP16") {
                                    if (node->InputDefs().size() == 1) {
                                      return true;
                                    }

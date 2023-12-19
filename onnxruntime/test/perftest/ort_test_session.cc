@@ -253,7 +253,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           ORT_THROW(
               "[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. "
               "Select from 'CPU_FP32', 'CPU_FP16', 'GPU_FP32', 'GPU.0_FP32', 'GPU.1_FP32', 'GPU_FP16', "
-              "'GPU.0_FP16', 'GPU.1_FP16', 'NPU_FP16', 'NPU_U8' or from"
+              "'GPU.0_FP16', 'GPU.1_FP16', 'NPU_FP16', 'NPU_U8', or from"
               " HETERO/MULTI/AUTO options available. \n");
         }
       } else if (key == "device_id") {
