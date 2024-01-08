@@ -28,16 +28,16 @@ GetCapability::GetCapability(const GraphViewer& graph_viewer_param,
                              const std::string device_precision,
                              const std::string version_param)
     : graph_viewer_(graph_viewer_param), device_type_(device_type_param), device_precision_(device_precision) {
-  if (version_param == "V_2022_3") {
-    data_ops_ = new DataOps(graph_viewer_, V_2022_3, device_type_, device_precision_);
-  } else if (version_param == "V_2023_0") {
+  if (version_param == "V_2023_0") {
     data_ops_ = new DataOps(graph_viewer_, V_2023_0, device_type_, device_precision_);
   } else if (version_param == "V_2023_1") {
     data_ops_ = new DataOps(graph_viewer_, V_2023_1, device_type_, device_precision_);
   } else if (version_param == "V_2023_2") {
     data_ops_ = new DataOps(graph_viewer_, V_2023_2, device_type_, device_precision_);
+  } else if (version_param == "V_2023_3") {
+    data_ops_ = new DataOps(graph_viewer_, V_2023_3, device_type_, device_precision_);
   } else {
-    data_ops_ = new DataOps(graph_viewer_, V_2023_2, device_type_, device_precision_);
+    data_ops_ = new DataOps(graph_viewer_, V_2023_3, device_type_, device_precision_);
   }
 }
 
