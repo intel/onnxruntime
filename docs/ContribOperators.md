@@ -1599,14 +1599,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Inputs (1 - &#8734;)
 
 <dl>
-<dt><tt>inputs</tt> (variadic) : T</dt>
+<dt><tt>inputs</tt> (variadic, heterogeneous) : T</dt>
 <dd>List of tensors for inputs</dd>
 </dl>
 
 #### Outputs (1 - &#8734;)
 
 <dl>
-<dt><tt>outputs</tt> (variadic) : T</dt>
+<dt><tt>outputs</tt> (variadic, heterogeneous) : T</dt>
 <dd>One or more outputs, list of tensors for outputs</dd>
 </dl>
 
@@ -2385,7 +2385,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   Group Query Self/Cross Attention.
   
-  Supports different number of heads for q and kv.
+  Supports different number of heads for q and kv. Only supports causal or local attention.
 
 #### Version
 
@@ -2396,6 +2396,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>kv_num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for k and v</dd>
+<dt><tt>local_window_size</tt> : int</dt>
+<dd>left_window_size for local attention (like Mistral). Default value is -1 meaning unused.</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for q</dd>
 <dt><tt>scale</tt> : float</dt>
@@ -2647,8 +2649,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T1</tt> : tensor(float), tensor(float16)</dt>
-<dd>Constrain input and output types to float/half_float tensors.</dd>
+<dt><tt>T1</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain input and output types to float/half_float/brain_float tensors.</dd>
 <dt><tt>T2</tt> : tensor(uint8)</dt>
 <dd>Constrain quantized weight types to uint8.</dd>
 </dl>
@@ -2822,6 +2824,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>size of each input feature</dd>
 <dt><tt>N</tt> : int (required)</dt>
 <dd>size of each output feature</dd>
+<dt><tt>accuracy_level</tt> : int</dt>
+<dd>The minimum accuracy level of input A, can be: 0(unset), 1(fp32), 2(fp16), 3(bf16), or 4(int8) (default unset). It is used to control how input A is quantized or downcast internally while doing computation, for example: 0 means input A will not be quantized or downcast while doing computation. 4 means input A can be quantized with the same block_size to int8 internally from type T1.</dd>
 <dt><tt>bits</tt> : int (required)</dt>
 <dd>number of bits used for weight quantization (default 4)</dd>
 <dt><tt>block_size</tt> : int (required)</dt>
@@ -5021,7 +5025,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>input</tt> : T</dt>
-<dd>3D tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dd>3D tensor with shape (batch_size, sequence_length, hidden_size) or 4D with shape (batch_size, num_heads, sequence_length, head_size)</dd>
 <dt><tt>position_ids</tt> : M</dt>
 <dd>1D tensor with shape (1) or 2D tensor with shape (batch_size, sequence_length)</dd>
 <dt><tt>cos_cache</tt> : T</dt>
@@ -5034,7 +5038,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>output</tt> : T</dt>
-<dd>3D tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dd>tensor with same shape as input.</dd>
 </dl>
 
 #### Type Constraints

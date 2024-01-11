@@ -87,6 +87,7 @@ option(onnxruntime_USE_QNN "Build with QNN support" OFF)
 option(onnxruntime_USE_SNPE "Build with SNPE support" OFF)
 option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
+option(onnxruntime_USE_JBLAS "Build MLAS with JBLAS support" ON)
 option(onnxruntime_USE_JSEP "Build with JavaScript implemented kernels support" OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
 option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
@@ -1166,6 +1167,17 @@ if (onnxruntime_USE_DNNL)
   add_compile_definitions(DNNL_OPENMP)
 endif()
 
+set(USE_JBLAS FALSE)
+if (onnxruntime_USE_JBLAS AND NOT onnxruntime_MINIMAL_BUILD)
+  if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" AND onnxruntime_target_platform STREQUAL "x86_64")
+    add_compile_definitions(MLAS_JBLAS)
+    set(USE_JBLAS TRUE)
+  elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC" AND onnxruntime_target_platform STREQUAL "x64")
+    add_compile_definitions(MLAS_JBLAS)
+    set(USE_JBLAS TRUE)
+  endif()
+endif()
+
 # TVM EP
 if (onnxruntime_USE_TVM)
   if (NOT TARGET tvm)
@@ -1602,6 +1614,13 @@ set(VERSION_STRING       "Internal Build" CACHE STRING "String representation of
 if (WIN32)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${SYS_PATH_LIB})
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES debug Dbghelp)
+  # In a onecore build the umbrella libs already contains references to the APIs in advapi32, so in onecore build we do not need to link to advapi32
+  # In a non-onecore build, usually we also do not need to link to advapi32 because VC++ by default should have provide everything we need, except when the build target is Windows ARM32.
+  # In the future we will add a build option to allow users disabling all API uses from advapi32 because some Windows environments do not have these APIs. For example, some Windows do not have
+  # Windows Registry so we cannot query Registry values.
+  if(onnxruntime_target_platform STREQUAL "ARM" AND CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES advapi32)
+  endif()
 else()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES nsync::nsync_cpp)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${ICONV_LIB} ${CMAKE_DL_LIBS} Threads::Threads)
@@ -1790,4 +1809,9 @@ if(TARGET onnxruntime)
     "${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
     "${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
     DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}")
+endif()
+
+if(DEFINED BUILD_AS_ARM64X)
+  set(ARM64X_TARGETS onnxruntime)
+  include("${CMAKE_SOURCE_DIR}/arm64x.cmake")
 endif()

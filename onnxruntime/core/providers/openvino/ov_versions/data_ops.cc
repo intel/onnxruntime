@@ -16,7 +16,6 @@
 #include "utils.h"
 #include "../ov_interface.h"
 
-
 #if defined(_MSC_VER)
 #pragma warning(disable : 4244 4245 5208)
 #elif __GNUC__
@@ -250,6 +249,8 @@ void DataOps::populate_types_supported() {
   supported_types_initializer_.insert(
       std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64));
   supported_types_initializer_.insert(
+      std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16));
+  supported_types_initializer_.insert(
       std::make_pair(V_2021_1, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16));
   supported_types_initializer_.insert(
       std::make_pair(V_2021_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8));
@@ -267,6 +268,8 @@ void DataOps::populate_types_supported() {
   supported_types_npu_.insert(
       std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16));
   supported_types_npu_.insert(
+      std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16));
+  supported_types_npu_.insert(
       std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32));
   supported_types_npu_.insert(
       std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64));
@@ -281,6 +284,8 @@ void DataOps::populate_types_supported() {
       std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32));
   supported_types_cpu_.insert(
       std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16));
+  supported_types_cpu_.insert(
+      std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16));
   supported_types_cpu_.insert(
       std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8));
   supported_types_cpu_.insert(
@@ -322,6 +327,7 @@ void DataOps::populate_op_mode_supported() {
   no_dimension_supported_.push_back({"Loop", V_2021_4, {"All"}});
   no_dimension_supported_.push_back({"Min", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Mul", V_2020_4, {"All"}});
+  no_dimension_supported_.push_back({"Pow", V_2023_0, {"All"}});
   no_dimension_supported_.push_back({"QuantizeLinear", V_2021_4, {"All"}});
   no_dimension_supported_.push_back({"Range", V_2021_2, {"All"}});
   no_dimension_supported_.push_back({"ReduceMax", V_2021_4, {"All"}});
@@ -935,8 +941,7 @@ bool DataOps::dimension_unsupported(const Node* node) {
   return true;
 }
 
-bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string>>& op_map,
-                                const NodeIndex node_idx) {
+bool DataOps::node_is_supported(const NodeIndex node_idx) {
   const auto& node = graph_viewer_.GetNode(node_idx);
   const auto& optype = node->OpType();
 
@@ -1049,43 +1054,22 @@ bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string
     return false;
   }
 
-  // Check 3b
-  const auto opset = op_map.find(domain);
-  const auto op_fun = ops_supported_as_function.find(node->OpType());
-  if (opset == op_map.end()) {
-#ifndef NDEBUG
-    if (openvino_ep::backend_utils::IsDebugEnabled()) {
-      std::cout << "Failed in Unsupported onnx model domain" << std::endl;
-    }
-#endif
-    return false;
-  }
-  if (opset->second.find(optype) == opset->second.end() && op_fun == ops_supported_as_function.end()) {
-#ifndef NDEBUG
-    if (openvino_ep::backend_utils::IsDebugEnabled()) {
-      std::cout << "The operator is not available in OpenVINO ngraph operators list"
-                << "nor the operator is a special ONNX function"
-                << std::endl;
-    }
-#endif
-    return false;
-  }
   return true;
 }
 
 std::vector<NodeIndex> DataOps::GetUnsupportedNodeIndices(std::unordered_set<std::string>& ng_required_initializers) {
-  const auto ng_supported_ops = GetNgSupportedOps(GetOnnxOpSet(graph_viewer_));
 
   std::vector<NodeIndex> unsupported_nodes_idx;
 
   for (const auto& node_idx : graph_viewer_.GetNodesInTopologicalOrder()) {
-    if (node_is_supported(ng_supported_ops, node_idx)) {
+    if (node_is_supported(node_idx)) {
       // Collect inputs that are initializers
       graph_viewer_.GetNode(node_idx)->ForEachDef([&ng_required_initializers, this](const NodeArg& node_arg,
                                                                                     bool is_input) {
             if (is_input && this->graph_viewer_.GetAllInitializedTensors().count(node_arg.Name())) {
                 ng_required_initializers.insert(node_arg.Name());
-              } }, true);
+              } },
+                                                  true);
     } else {
       unsupported_nodes_idx.push_back(node_idx);
     }

@@ -196,7 +196,7 @@ try:
                     "libcublasLt.so.11",
                     "libcublasLt.so.12",
                     "libcudart.so.11.0",
-                    "libcudart.so.12.0",
+                    "libcudart.so.12",
                     "libcudnn.so.8",
                     "libcufft.so.10",
                     "libcufft.so.11",
@@ -398,7 +398,6 @@ packages = [
     "onnxruntime",
     "onnxruntime.backend",
     "onnxruntime.capi",
-    "onnxruntime.capi.training",
     "onnxruntime.datasets",
     "onnxruntime.tools",
     "onnxruntime.tools.mobile_helpers",
@@ -409,6 +408,8 @@ packages = [
     "onnxruntime.quantization",
     "onnxruntime.quantization.operators",
     "onnxruntime.quantization.CalTableFlatBuffers",
+    "onnxruntime.quantization.fusions",
+    "onnxruntime.quantization.execution_providers.qnn",
     "onnxruntime.transformers",
     "onnxruntime.transformers.models.bart",
     "onnxruntime.transformers.models.bert",
@@ -487,7 +488,7 @@ if enable_training or enable_training_apis:
         )
 
         package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor"] = ["*.cc"]
-        package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils"] = ["*.cc"]
+        package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils"] = ["*.cc", "*.h"]
         package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator"] = ["*.cc"]
         package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops"] = [
             "*.cpp",
