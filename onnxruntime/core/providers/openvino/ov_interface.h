@@ -42,7 +42,7 @@ class OVCore {
                            std::string& hw_target,
                            ov::AnyMap& device_config,
                            std::string name);
-  OVExeNetwork LoadNetwork(const std::string& model_stream,
+  OVExeNetwork LoadNetwork(const std::string model_path,
                            std::string& hw_target,
                            ov::AnyMap& device_config,
                            std::string name);
