@@ -40,7 +40,6 @@ struct SubGraphContext {
   bool enable_batching = false;
   bool set_npu_config = false;
   bool is_constant = false;
-  bool npu_model_has_dynamic_inputs = false;
   void* context = 0;
   std::string subgraph_name;
   std::vector<int> input_indexes;

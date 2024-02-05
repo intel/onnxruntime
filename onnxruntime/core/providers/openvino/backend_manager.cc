@@ -66,9 +66,6 @@ BackendManager::BackendManager(const GlobalContext& global_context,
   if (ModelHasSymbolicInputDims(subgraph)) {
     subgraph_context_.has_dynamic_input_shape = true;
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims";
-    if (device_type.find("NPU")!= std::string::npos){
-        subgraph_context_.npu_model_has_dynamic_inputs = true;
-    }
     if (GetGlobalContext().device_type.find("CPU") != std::string::npos ||
         GetGlobalContext().device_type.find("GPU") != std::string::npos) {
       if (!GetGlobalContext().disable_dynamic_shapes) {
@@ -277,7 +274,6 @@ void BackendManager::Compute(OrtKernelContext* context) {
 #endif
   bool use_dynamic_backend = true;
   if (subgraph_context_.has_dynamic_input_shape &&
-      !subgraph_context_.npu_model_has_dynamic_inputs &&
       !GetGlobalContext().disable_dynamic_shapes &&
       (GetGlobalContext().device_type.find("CPU") != std::string::npos ||
        GetGlobalContext().device_type.find("GPU") != std::string::npos)) {
