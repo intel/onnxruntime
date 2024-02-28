@@ -42,7 +42,6 @@ struct static_cast_int64 {
 
 std::shared_ptr<OVNetwork>
 CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context,
-              const SubGraphContext& subgraph_context,
               std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map) {
   if (IsCILogEnabled()) {
     std::cout << "CreateNgraphFunc" << std::endl;

@@ -59,12 +59,12 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
         LOGS_DEFAULT(INFO) << log_tag << "IO Buffering Enabled";
         cl_context ctx = static_cast<cl_context>(global_context_.context);
         remote_context_ = new ov::intel_gpu::ocl::ClContext(global_context_.ie_core.Get(), ctx);
-        ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
+        ie_cnn_network_ = CreateOVModel(model_proto, global_context_, const_outputs_map_);
         exe_network_ = global_context_.ie_core.LoadNetwork(
             ie_cnn_network_, remote_context_, subgraph_context_.subgraph_name);
         LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
       } else {
-        ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
+        ie_cnn_network_ = CreateOVModel(model_proto, global_context_, const_outputs_map_);
         exe_network_ = global_context_.ie_core.LoadNetwork(
             ie_cnn_network_, hw_target, device_config, subgraph_context_.subgraph_name);
         LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
@@ -78,14 +78,14 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
                                                            subgraph_context_.subgraph_name);
         LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
       } else {
-        ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
+        ie_cnn_network_ = CreateOVModel(model_proto, global_context_, const_outputs_map_);
         exe_network_ = global_context_.ie_core.LoadNetwork(
             ie_cnn_network_, hw_target, device_config, subgraph_context_.subgraph_name);
         LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
       }
 #endif
     } else {
-      ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
+      ie_cnn_network_ = CreateOVModel(model_proto, global_context_, const_outputs_map_);
       exe_network_ = global_context_.ie_core.LoadNetwork(
           ie_cnn_network_, hw_target, device_config, subgraph_context_.subgraph_name);
       LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
