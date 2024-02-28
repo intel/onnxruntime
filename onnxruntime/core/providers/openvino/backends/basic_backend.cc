@@ -71,8 +71,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
       }
 #else
       if (!subgraph_context_.has_dynamic_input_shape &&
-          global_context_.onnx_model_path_name != "" &&
-          dev_prec != "CPU_FP16") {
+          global_context_.onnx_model_path_name != "") {
         exe_network_ = global_context_.ie_core.LoadNetwork(global_context_.onnx_model_path_name,
                                                            hw_target,
                                                            device_config,
@@ -111,7 +110,7 @@ bool BasicBackend::ValidateSubgraph(std::map<std::string, std::shared_ptr<ov::No
 void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
   device_config = {};
   // Set inference precision based on device precision for OV backend
-  if (global_context_.precision_str.find("FP16") != std::string::npos && global_context_.device_type == "GPU") {
+  if (global_context_.precision_str.find("FP16") != std::string::npos && global_context_.device_type != "NPU") {
     device_config.emplace(ov::hint::inference_precision("f16"));
   }
   if (global_context_.precision_str.find("FP32") != std::string::npos) {
