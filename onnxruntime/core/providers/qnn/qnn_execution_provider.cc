@@ -318,6 +318,7 @@ QNNExecutionProvider::~QNNExecutionProvider() {
     if (!cache) continue;
     ORT_IGNORE_RETURN_VALUE(cache->erase(this));
   }
+  return supported;
 }
 
 bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,

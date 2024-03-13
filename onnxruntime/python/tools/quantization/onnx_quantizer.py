@@ -250,6 +250,23 @@ class ONNXQuantizer(BaseQuantizer):
             f"the default weight type, usually `onnx.TensorProto.FLOAT`."
         )
 
+    def _get_default_tensor_type(self, tensor_name):
+        if "DefaultTensorType" in self.extra_options:
+            logging.info(
+                "get_tensor_type returns DefaultTensorType for tensor name %r, use %d",
+                tensor_name,
+                self.extra_options["DefaultTensorType"],
+            )
+            return self.extra_options["DefaultTensorType"]
+        raise RuntimeError(
+            f"Unable to find data type for weight_name={tensor_name!r}. "
+            f"shape_inference failed to return a type probably this node is "
+            f"from a different domain or using an input produced by such an operator. "
+            f"This may happen if you quantize a model already quantized. "
+            f"You may use extra_options `DefaultTensorType` to indicate "
+            f"the default weight type, usually `onnx.TensorProto.FLOAT`."
+        )
+
     def get_tensor_type(self, tensor_name, mandatory=False):
         weight = find_by_name(tensor_name, self.model.initializer())
         if weight is not None:

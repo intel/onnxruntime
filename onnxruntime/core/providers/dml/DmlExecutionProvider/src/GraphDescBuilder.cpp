@@ -192,21 +192,21 @@ namespace Dml::GraphDescBuilder
 
         // Map from ORT subgraph input names to indices
         std::unordered_map<std::string_view, uint32_t> subgraphInputNameToIndexMap;
-        
+
         // - Map from ORT node's output names to DmlGraph <NodeAndIndex>.
         // - Once a given ORT node (or operator) will be transformed into a operatorDmlGraph,
         //   then ORT node's output names will become output edges for the operatorDmlGraph.
         // - This map will be populated for those output edges.
         std::unordered_map<std::string, NodeAndIndex> dmlGraphNodeOutputNameToNodeAndIndexMap;
-        
+
         // This map will be used to re-index an subGraphInputIndex to sequential input index
         // for DmlGraph
         std::unordered_map<uint32_t, uint32_t> subGraphInputIndexToDmlGraphInputIndex;
-        
+
         // Iterate through each node and create a corresponding node in the new graph
         // We can iterate the nodes in any order because the edge connectivity will take care of the topological order
         std::unordered_map<std::string, std::vector<uint32_t>> inferredOutputShapes;
-        
+
         std::vector<DmlSerializedGraphNode> dmlGraphNodes;
         std::vector<DmlInputSerializedGraphEdge> dmlGraphInputEdges;
         std::vector<DmlIntermediateSerializedGraphEdge> dmlGraphIntermediateEdges;
@@ -309,8 +309,8 @@ namespace Dml::GraphDescBuilder
             for (int i = 0; i < node.OutputDefs().size(); ++i)
             {
                 inferredOutputShapes[node.OutputDefs()[i]->Name()] = outputShapes.GetShape(i);
-            }            
-            
+            }
+
             // Algorithm:
             //  1. Create constant nodes by iterating through operatorDmlGraph's input edges and keep a map of it,
             //     because there would be an intermediate edge from the constantNode and source of the intermediate edge
@@ -319,7 +319,7 @@ namespace Dml::GraphDescBuilder
             //  3. Iterate through operatorDmlGraph's intermediate edges to create mainGraph's intermediate edges.
             //  4. Iterate through operatorDmlGraph's output edges to populate outputEdgeNameToDmlGraphNodeAndIndex
             //  5. While performing step 2, 3, and 4, insert operatorDmlGraphNode to the mainDmlGraphNode list.
-            
+
             for (auto& operatorDmlGraphInputEdge : operatorDmlGraphCreateInfo.inputEdges)
             {
                 const onnxruntime::NodeArg* arg = node.InputDefs()[operatorDmlGraphInputEdge.GraphInputIndex];
@@ -333,8 +333,8 @@ namespace Dml::GraphDescBuilder
                         DmlSerializedGraphNode constantNode = {};
                         constantNode.Name = arg->Name();
 
-                        // This is a highly inefficient approach to generating constant nodes.  It duplicates constant data 
-                        // across the graph input as well as every consumer's unique constant node.  However it is currently 
+                        // This is a highly inefficient approach to generating constant nodes.  It duplicates constant data
+                        // across the graph input as well as every consumer's unique constant node.  However it is currently
                         // only used for small inputs.
                         auto& operatorDmlGraphInputNode = operatorDmlGraphCreateInfo.nodes[operatorDmlGraphInputEdge.ToNodeIndex];
                         std::vector<DmlBufferTensorDesc*> toNodeInputTensorDescs = operatorDmlGraphInputNode->GetInputTensors();
@@ -393,10 +393,10 @@ namespace Dml::GraphDescBuilder
                     if (iter != subgraphInputNameToIndexMap.end())
                     {
                         const uint32_t subgraphInputIndex = iter->second;
-                        
+
                         // Either this edge will be
-                        //  a constant input, then it will be an intermediate edge and 
-                        //  set the OWNED_BY_DML flag if it is large constant 
+                        //  a constant input, then it will be an intermediate edge and
+                        //  set the OWNED_BY_DML flag if it is large constant
                         //  or,
                         //  a non-constant input, then it will be a mainDmlGraphInputEdge.
                         if (subgraphInputIndex < isConstGpuGraphInputCount &&
@@ -478,7 +478,7 @@ namespace Dml::GraphDescBuilder
                 edge.Name = "nodeIdx:" + std::to_string(shiftedFromNodeIndex) + "-outputIdx:" + std::to_string(operatorGraphIntermediateEdge.FromNodeOutputIndex);
                 dmlGraphIntermediateEdges.push_back(edge);
             }
-            
+
             // populate nameToNodeAndIndexMap (which will be used by above loop) for operatorGraphOutputEdges
             for (auto& operatorGraphOutputEdge : operatorDmlGraphCreateInfo.outputEdges)
             {

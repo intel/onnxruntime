@@ -20,6 +20,7 @@ class NodeArg;
 namespace coreml {
 class ModelBuilder;
 
+namespace coreml {
 // Try to see if we can map explicit padding to auto padding for Conv/Pool
 // Since usually use auto padding is more efficient
 Status HandleAutoPad(const std::vector<int64_t> input_shape,
