@@ -63,7 +63,6 @@ struct OpenVINOExecutionProviderInfo {
   std::string device_type_;
   std::string precision_;
   bool enable_npu_fast_compile_;
-  std::string device_id_;
   size_t num_of_threads_;
   std::string cache_dir_;
   int num_streams_;
@@ -72,12 +71,11 @@ struct OpenVINOExecutionProviderInfo {
   bool disable_dynamic_shapes_;
   bool export_ep_ctx_blob_;
 
-  explicit OpenVINOExecutionProviderInfo(std::string dev_type, bool enable_npu_fast_compile, std::string dev_id,
+  explicit OpenVINOExecutionProviderInfo(std::string dev_type, bool enable_npu_fast_compile,
                                          size_t num_of_threads, std::string cache_dir, int num_streams,
                                          void* context, bool enable_opencl_throttling,
                                          bool disable_dynamic_shapes, bool export_ep_ctx_blob)
       : enable_npu_fast_compile_(enable_npu_fast_compile),
-        device_id_(dev_id),
         num_of_threads_(num_of_threads),
         cache_dir_(cache_dir),
         num_streams_(num_streams),
@@ -162,7 +160,7 @@ struct OpenVINOExecutionProviderInfo {
                        << "Choosing Device: " << device_type_ << " , Precision: " << precision_;
   }
   OpenVINOExecutionProviderInfo() {
-    OpenVINOExecutionProviderInfo("", false, "", 0, "", 1, NULL, false, false, false);
+    OpenVINOExecutionProviderInfo("", false, 0, "", 1, NULL, false, false, false);
   }
 };
 

@@ -9,7 +9,7 @@
 namespace onnxruntime {
 struct OpenVINOProviderFactory : IExecutionProviderFactory {
   OpenVINOProviderFactory(const char* device_type, bool enable_npu_fast_compile,
-                          const char* device_id, size_t num_of_threads,
+                          size_t num_of_threads,
                           const char* cache_dir, int num_streams, void* context,
                           bool enable_opencl_throttling, bool disable_dynamic_shapes,
                           bool export_ep_ctx_blob)
@@ -21,7 +21,6 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
         disable_dynamic_shapes_(disable_dynamic_shapes),
         export_ep_ctx_blob_(export_ep_ctx_blob) {
     device_type_ = (device_type == nullptr) ? "" : device_type;
-    device_id_ = (device_id == nullptr) ? "" : device_id;
     cache_dir_ = (cache_dir == nullptr) ? "" : cache_dir;
   }
   ~OpenVINOProviderFactory() override {
@@ -32,7 +31,6 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
  private:
   std::string device_type_;
   bool enable_npu_fast_compile_;
-  std::string device_id_;
   size_t num_of_threads_;
   std::string cache_dir_;
   int num_streams_;
@@ -43,7 +41,7 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
 };
 
 std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
-  OpenVINOExecutionProviderInfo info(device_type_, enable_npu_fast_compile_, device_id_, num_of_threads_,
+  OpenVINOExecutionProviderInfo info(device_type_, enable_npu_fast_compile_, num_of_threads_,
                                      cache_dir_, num_streams_, context_, enable_opencl_throttling_,
                                      disable_dynamic_shapes_, export_ep_ctx_blob_);
   return std::make_unique<OpenVINOExecutionProvider>(info);
@@ -69,7 +67,6 @@ struct OpenVINO_Provider : Provider {
                                             //   with these values at runtime.
     bool enable_npu_fast_compile = false;   // [enable_npu_fast_compile]: Fast-compile may be optionally enabled to
                                             // speeds up the model's compilation to NPU device specific format.
-    const char* device_id = "";             // [device_id]: Selects a particular hardware device for inference.
     int num_of_threads = 0;                 // [num_of_threads]: Overrides the accelerator default value of number of
                                             //  threads with this value at runtime.
     const char* cache_dir = "";             // [cache_dir]: specify the path to
@@ -101,9 +98,6 @@ struct OpenVINO_Provider : Provider {
             "'GPU.0_FP16', 'GPU.1_FP16', 'NPU' or from"
             " HETERO/MULTI/AUTO options available. \n");
       }
-    }
-    if (provider_options_map.find("device_id") != provider_options_map.end()) {
-      device_id = provider_options_map.at("device_id").c_str();
     }
     if (provider_options_map.find("cache_dir") != provider_options_map.end()) {
       cache_dir = provider_options_map.at("cache_dir").c_str();
@@ -181,7 +175,6 @@ struct OpenVINO_Provider : Provider {
     }
     return std::make_shared<OpenVINOProviderFactory>(const_cast<char*>(device_type.c_str()),
                                                      enable_npu_fast_compile,
-                                                     device_id,
                                                      num_of_threads,
                                                      cache_dir,
                                                      num_streams,

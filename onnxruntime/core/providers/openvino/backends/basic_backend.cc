@@ -25,10 +25,8 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
                            const SubGraphContext& subgraph_context,
                            EPCtxHandler& ep_ctx_handle)
     : global_context_(global_context), subgraph_context_(subgraph_context) {
-  std::string& hw_target = (global_context_.device_id != "") ? global_context_.device_id : global_context_.device_type;
-
+  std::string& hw_target = global_context_.device_type;
   is_ep_ctx_graph_ = ep_ctx_handle.IsValidOVEPCtxGraph();
-
   if (ValidateSubgraph(const_outputs_map_))
     return;
 
@@ -516,8 +514,7 @@ void BasicBackend::Infer(OrtKernelContext* ctx) {
 #ifndef IO_BUFFER_ENABLED  // Printing performance counts is disabled when IO_BUFFER_ENABLED
     if (openvino_ep::backend_utils::IsDebugEnabled()) {
       inferRequestsQueue_->printstatus();  // Printing the elements of infer_requests_ vector pool only in debug mode
-      std::string& hw_target =
-          (global_context_.device_id != "") ? global_context_.device_id : global_context_.device_type;
+      std::string& hw_target = global_context_.device_type;
       printPerformanceCounts(infer_request, std::cout, hw_target);
     }
 #endif
