@@ -85,7 +85,7 @@ struct OpenVINOExecutionProviderInfo {
         disable_dynamic_shapes_(disable_dynamic_shapes),
         export_ep_ctx_blob_(export_ep_ctx_blob) {
     std::set<std::string> ov_supported_device_types = {"CPU", "GPU",
-                                                         "GPU.0", "GPU.1", "NPU"};
+                                                       "GPU.0", "GPU.1", "NPU"};
     if (dev_type == "") {
       LOGS_DEFAULT(INFO) << "[OpenVINO-EP]"
                          << "No runtime device selection option provided.";

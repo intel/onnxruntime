@@ -135,7 +135,7 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
   if (global_context_.precision_str.find("FP32") != std::string::npos) {
     device_config.emplace(ov::hint::inference_precision("f32"));
   }
-  if(global_context_.precision_str.find("ACCURACY") != std::string::npos && global_context_.device_type == "GPU"){
+  if (global_context_.precision_str.find("ACCURACY") != std::string::npos && global_context_.device_type == "GPU") {
     device_config.emplace(ov::hint::inference_precision(ov::element::undefined));
     device_config.emplace(ov::hint::execution_mode(ov::hint::ExecutionMode::ACCURACY));
   }

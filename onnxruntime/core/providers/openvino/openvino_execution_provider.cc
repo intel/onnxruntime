@@ -63,7 +63,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
         }
       }
     }
-    if(!device_found){
+    if (!device_found) {
       ORT_THROW("[ERROR] [OpenVINO] Specified device - " + info.device_type_ + " is not available");
     }
   }
@@ -98,12 +98,12 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   global_context_->onnx_model_name = onnx_model_wd.replace_extension();
   global_context_->onnx_opset_version =
       graph_viewer.DomainToVersionMap().at(kOnnxDomain);
-    auto input_type = graph_viewer.GetInputs()[0]->TypeAsProto()->tensor_type().elem_type();
-    std::string precision_str=global_context_->precision_str;
-  if(global_context_->precision_str=="ACCURACY" && global_context_->device_type=="GPU"){
-    if(input_type==ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT){
+  auto input_type = graph_viewer.GetInputs()[0]->TypeAsProto()->tensor_type().elem_type();
+  std::string precision_str = global_context_->precision_str;
+  if (global_context_->precision_str == "ACCURACY" && global_context_->device_type == "GPU") {
+    if (input_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
       precision_str = "FP32";
-    } else if(input_type==ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16){
+    } else if (input_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {
       precision_str = "FP16";
     }
   }

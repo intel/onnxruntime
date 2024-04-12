@@ -919,7 +919,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         if (option.first == "device_type") {
           OV_provider_options_map[option.first] = option.second;
           continue;
-        } else if(option.first == "precision") {
+        } else if (option.first == "precision") {
           OV_provider_options_map[option.first] = option.second;
           continue;
         } else if (option.first == "enable_npu_fast_compile") {

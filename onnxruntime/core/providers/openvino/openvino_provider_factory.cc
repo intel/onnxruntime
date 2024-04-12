@@ -94,16 +94,16 @@ struct OpenVINO_Provider : Provider {
       std::set<std::string> ov_supported_device_types = {"CPU", "GPU",
                                                          "GPU.0", "GPU.1", "NPU"};
       std::set<std::string> deprecated_device_types = {"CPU_FP32", "GPU_FP32",
-                                                         "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
-                                                         "GPU.0_FP16", "GPU.1_FP16"};
-      if(deprecated_device_types.find(device_type) != deprecated_device_types.end()) {
-          std::string deprecated_device = device_type;
-          int delimit = device_type.find("_");
-          device_type = deprecated_device.substr(0, delimit);
-          precision = deprecated_device.substr(delimit + 1);
-          LOGS_DEFAULT(WARNING) << "[OpenVINO] Selected 'device_type' "+ deprecated_device +" is deprecated. \n"
-                                << "Update the 'device_type' to specified types 'CPU', 'GPU', 'GPU.0', 'GPU.1', 'NPU' or from"
-                                << " HETERO/MULTI/AUTO options and set 'precision' seperately. \n";
+                                                       "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
+                                                       "GPU.0_FP16", "GPU.1_FP16"};
+      if (deprecated_device_types.find(device_type) != deprecated_device_types.end()) {
+        std::string deprecated_device = device_type;
+        int delimit = device_type.find("_");
+        device_type = deprecated_device.substr(0, delimit);
+        precision = deprecated_device.substr(delimit + 1);
+        LOGS_DEFAULT(WARNING) << "[OpenVINO] Selected 'device_type' " + deprecated_device + " is deprecated. \n"
+                              << "Update the 'device_type' to specified types 'CPU', 'GPU', 'GPU.0', 'GPU.1', 'NPU' or from"
+                              << " HETERO/MULTI/AUTO options and set 'precision' seperately. \n";
       }
       if (!((ov_supported_device_types.find(device_type) != ov_supported_device_types.end()) ||
             (device_type.find("HETERO:") == 0) ||
@@ -118,23 +118,23 @@ struct OpenVINO_Provider : Provider {
     if (provider_options_map.find("precision") != provider_options_map.end()) {
       precision = provider_options_map.at("precision").c_str();
     }
-    if (device_type=="CPU"){
-      if(precision=="" || precision=="ACCURACY" || precision=="FP32"){
+    if (device_type == "CPU") {
+      if (precision == "" || precision == "ACCURACY" || precision == "FP32") {
         precision = "FP32";
-      }else {
+      } else {
         ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. CPU only supports FP32 . \n");
       }
-    }else if (device_type=="NPU"){
-      if(precision=="" || precision=="ACCURACY" || precision=="FP16"){
+    } else if (device_type == "NPU") {
+      if (precision == "" || precision == "ACCURACY" || precision == "FP16") {
         precision = "FP16";
-      } else{
-          ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. NPU only supported FP16. \n");
+      } else {
+        ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. NPU only supported FP16. \n");
       }
-    }else if (device_type=="GPU"){
-      if(precision==""){
+    } else if (device_type == "GPU") {
+      if (precision == "") {
         precision = "FP16";
       }
-      if(precision!="ACCURACY" && precision!="FP16" && precision!="FP32"){
+      if (precision != "ACCURACY" && precision != "FP16" && precision != "FP32") {
         std::cout << " precision = " << precision << std::endl;
         ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. GPU only supports FP32 / FP16. \n");
       }
