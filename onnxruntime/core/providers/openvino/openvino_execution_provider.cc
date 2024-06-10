@@ -2,6 +2,7 @@
 // Licensed under the MIT License
 #include <filesystem>
 #include <utility>
+#include <vector>
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/openvino_execution_provider.h"
@@ -33,6 +34,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   global_context_->OpenVINO_Version = {OPENVINO_VERSION_MAJOR, OPENVINO_VERSION_MINOR};
   global_context_->export_ep_ctx_blob = info.export_ep_ctx_blob_;
   global_context_->enable_qdq_optimizer = info.enable_qdq_optimizer_;
+  global_context_->enable_npu_to_ov_cpu_fallback = info.enable_npu_to_ov_cpu_fallback_;
 
   // to check if target device is available
   // using ie_core capability GetAvailableDevices to fetch list of devices plugged in
@@ -60,6 +62,12 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
             }
             if (info.device_type_.find("NPU") != std::string::npos) {
               device_found = true;
+              bool cpu_available = std::find(available_devices.begin(),
+                                             available_devices.end(),
+                                             "CPU")!= available_devices.end();
+              if(!cpu_available){
+                global_context_->enable_npu_to_ov_cpu_fallback = false;
+              }
               break;
             }
           }

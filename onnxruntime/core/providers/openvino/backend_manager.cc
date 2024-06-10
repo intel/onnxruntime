@@ -105,7 +105,8 @@ BackendManager::BackendManager(const GlobalContext& global_context,
                                                       subgraph_context_,
                                                       ep_ctx_handle_);
     } catch (const OnnxRuntimeException& ex) {
-      if (device_type.find("NPU") != std::string::npos) {
+      if (device_type.find("NPU") != std::string::npos &&
+          GetGlobalContext().enable_npu_to_ov_cpu_fallback) {
         LOGS_DEFAULT(WARNING) << ex.what();
         LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU."
                               << "Falling back to OV CPU for execution";
@@ -419,7 +420,8 @@ void BackendManager::Compute(OrtKernelContext* context) {
                                                       subgraph_context_,
                                                       ep_ctx_handle_);
       } catch (const OnnxRuntimeException& ex) {
-        if (GetGlobalContext().device_type.find("NPU") != std::string::npos) {
+        if (GetGlobalContext().device_type.find("NPU") != std::string::npos &&
+            GetGlobalContext().enable_npu_to_ov_cpu_fallback) {
           LOGS_DEFAULT(WARNING) << ex.what();
           LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU."
                                 << "Falling back to OV CPU for execution";
