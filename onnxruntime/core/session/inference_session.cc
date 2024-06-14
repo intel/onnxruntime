@@ -43,6 +43,7 @@
 #include "core/optimizer/layout_transformation/layout_transformation.h"
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/optimizer/qdq_transformer/ensure_unique_dq_for_node_unit.h"
+#include "core/optimizer/qdq_transformer/qdq_final_cleanup.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
 #include "core/optimizer/transformer_memcpy.h"
@@ -1199,6 +1200,14 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     return transformer.Apply(graph, modified, logger);
   };
 
+#if defined(USE_OPENVINO)
+  const bool enable_quant_qdq_cleanup =
+      session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableQuantQDQCleanup, "0") == "1";
+  // Need early removal of QDQ node pairs for OVEP
+  QDQFinalCleanupTransformer qdq_cleanup_transform(enable_quant_qdq_cleanup);
+  ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(qdq_cleanup_transform, *session_logger_, graph));
+#endif
+
   // ensure potential QDQ node units have unique DQ nodes
   if (const bool disable_quant_qdq =
           session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
@@ -1209,6 +1218,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
 
   // apply execution provider independent level 1 graph optimizations.
   ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.ApplyTransformers(graph, TransformerLevel::Level1, *session_logger_));
+
 
   // if saving model to ORT format we only assign nodes a custom EP can handle and don't compile them.
   // we do this to preserve the original nodes in the model but prevent optimizers from changing them.
