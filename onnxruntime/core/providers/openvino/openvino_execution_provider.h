@@ -21,10 +21,10 @@ static void print_build_options() {
             << "you want to build"
             << std::endl;
   std::cout << "The different hardware devices that can be added with HETERO/MULTI/AUTO build "
-            << "are ['CPU','GPU','NPU']"
+            << "are ['CPU','GPU','GPU.0','GPU.1','NPU']"
             << std::endl;
   std::cout << "An example of how to specify the HETERO or MULTI or AUTO build type. "
-            << "Ex: HETERO:GPU,CPU  Ex: MULTI:GPU,CPU Ex: AUTO:GPU,CPU"
+            << "Ex: HETERO:GPU,CPU  Ex: MULTI:GPU,CPU Ex: AUTO:GPU,CPU Ex: AUTO:GPU.0,CPU Ex: AUTO:GPU.1,CPU"
             << std::endl;
 }
 
@@ -49,8 +49,8 @@ static std::vector<std::string> parseDevices(const std::string& device_string) {
     print_build_options();
     ORT_THROW("Invalid device string: " + device_string);
   }
-  std::vector<std::string> dev_options = {"CPU", "GPU", "NPU"};
-  for (std::string dev : devices) {
+  std::vector<std::string> dev_options = {"CPU", "GPU", "GPU.0", "GPU.1", "NPU"};
+  for (const std::string& dev : devices) {
     if (!std::count(dev_options.begin(), dev_options.end(), dev)) {
       print_build_options();
       ORT_THROW("Invalid device string: " + device_string);
@@ -75,8 +75,8 @@ struct OpenVINOExecutionProviderInfo {
 
   OpenVINOExecutionProviderInfo() = delete;
 
-  explicit OpenVINOExecutionProviderInfo(std::string dev_type, std::string precision, bool enable_npu_fast_compile,
-                                         size_t num_of_threads, std::string cache_dir, std::string model_priority,
+  explicit OpenVINOExecutionProviderInfo(const std::string& dev_type, const std::string& precision, bool enable_npu_fast_compile,
+                                         size_t num_of_threads, const std::string& cache_dir, const std::string& model_priority,
                                          int num_streams, void* context, bool enable_opencl_throttling,
                                          bool disable_dynamic_shapes, bool export_ep_ctx_blob)
       : precision_(precision),
