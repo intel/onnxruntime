@@ -8,6 +8,13 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/backend_utils.h"
 
+#if defined(_MSC_VER)
+#pragma warning(disable : 4702) // Disable unreachable code warning
+#elif __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#endif
+
 using Exception = ov::Exception;
 
 namespace onnxruntime {
