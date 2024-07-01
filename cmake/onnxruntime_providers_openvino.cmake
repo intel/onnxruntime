@@ -25,6 +25,40 @@
     unset(CMAKE_MAP_IMPORTED_CONFIG_RELWITHDEBINFO)
   endif()
 
+  # Get the INTEL_OPENVINO_DIR environment variable
+  file(TO_CMAKE_PATH "$ENV{INTEL_OPENVINO_DIR}" OpenVINO_BASE_DIR)
+
+  # Combine the base directory with the suffix path
+  file(TO_CMAKE_PATH "${OpenVINO_BASE_DIR}/${OPENVINO_SUFFIX_PATH}" OPENVINO_STATIC_LIB_DIR)
+
+  # Check if the combined directory exists, If the directory exists, proceed with setting up the static libraries
+  if(IS_DIRECTORY "${OPENVINO_STATIC_LIB_DIR}")
+    # Initialize an empty list to hold the found static libraries
+    set(OPENVINO_FOUND_STATIC_LIBS)
+
+    # Use the appropriate file extension for static libraries based on the host operating system
+    if(CMAKE_HOST_WIN32)
+      set(OPENVINO_STATIC_LIB_EXT "*.lib")
+    elseif(CMAKE_HOST_UNIX)
+      set(OPENVINO_STATIC_LIB_EXT "*.a")
+    endif()
+
+    # Use GLOB_RECURSE to find all static library files in the specified directory based on the OS
+    file(GLOB_RECURSE OPENVINO_POSSIBLE_LIBS "${OPENVINO_STATIC_LIB_DIR}/${OPENVINO_STATIC_LIB_EXT}")
+
+    # Iterate over each possible library and check if it exists before appending
+    foreach(lib ${OPENVINO_POSSIBLE_LIBS})
+      if(EXISTS "${lib}")
+        list(APPEND OPENVINO_FOUND_STATIC_LIBS "${lib}")
+      endif()
+    endforeach()
+
+    # Append the found static library files to the OPENVINO_LIB_LIST
+    list(APPEND OPENVINO_LIB_LIST ${OPENVINO_FOUND_STATIC_LIBS})
+  else()
+    message(FATAL_ERROR "The specified OpenVINO static library directory does not exist: ${OPENVINO_STATIC_LIB_DIR}")
+  endif()
+
   list(APPEND OPENVINO_LIB_LIST openvino::frontend::onnx openvino::runtime ${PYTHON_LIBRARIES})
   if ((DEFINED ENV{OPENCL_LIBS}) AND (DEFINED ENV{OPENCL_INCS}))
     add_definitions(-DIO_BUFFER_ENABLED=1)
