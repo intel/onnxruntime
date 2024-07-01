@@ -22,10 +22,10 @@ static void print_build_options() {
             << "you want to build"
             << std::endl;
   std::cout << "The different hardware devices that can be added with HETERO/MULTI/AUTO build "
-            << "are ['CPU','GPU','NPU']"
+            << "are ['CPU','GPU','NPU','GPU.x'] where x = 0,1,2 and so on"
             << std::endl;
   std::cout << "An example of how to specify the HETERO or MULTI or AUTO build type. "
-            << "Ex: HETERO:GPU,CPU  Ex: MULTI:GPU,CPU Ex: AUTO:GPU,CPU"
+            << "Ex: HETERO:GPU,CPU  Ex: MULTI:GPU,CPU Ex: AUTO:GPU,CPU Ex: AUTO:GPU.0,CPU Ex: AUTO:GPU.1,CPU"
             << std::endl;
 }
 
@@ -50,8 +50,17 @@ static std::vector<std::string> parseDevices(const std::string& device_string) {
     print_build_options();
     ORT_THROW("Invalid device string: " + device_string);
   }
-  std::vector<std::string> dev_options = {"CPU", "GPU", "NPU"};
-  for (std::string dev : devices) {
+  std::set<std::string> dev_options = {"CPU", "GPU", "NPU"};
+  std::unique_ptr<openvino_ep::GlobalContext> global_context = std::make_unique<openvino_ep::GlobalContext>();
+  std::vector<std::string> available_devices = global_context->ie_core.GetAvailableDevices();
+
+  for (auto& device : available_devices) {
+    if (dev_options.find(device) == dev_options.end()) {
+      auto dev_options_update = dev_options.emplace(device);
+    }
+  }
+
+  for (const std::string& dev : devices) {
     if (!std::count(dev_options.begin(), dev_options.end(), dev)) {
       print_build_options();
       ORT_THROW("Invalid device string: " + device_string);
@@ -79,8 +88,9 @@ struct OpenVINOExecutionProviderInfo {
 
   OpenVINOExecutionProviderInfo() = delete;
 
-  explicit OpenVINOExecutionProviderInfo(std::string dev_type, std::string precision, bool enable_npu_fast_compile,
-                                         size_t num_of_threads, std::string cache_dir, std::string model_priority,
+  explicit OpenVINOExecutionProviderInfo(const std::string& dev_type, const std::string& precision,
+                                         bool enable_npu_fast_compile, size_t num_of_threads,
+                                         const std::string& cache_dir, const std::string& model_priority,
                                          int num_streams, void* context, bool enable_opencl_throttling,
                                          bool disable_dynamic_shapes, bool export_ep_ctx_blob,
                                          bool enable_qdq_optimizer, bool disable_cpu_fallback,
@@ -100,6 +110,15 @@ struct OpenVINOExecutionProviderInfo {
         so_epctx_embed_mode_{so_epctx_embed_mode} {
     std::set<std::string> ov_supported_device_types = {"CPU", "GPU",
                                                        "GPU.0", "GPU.1", "NPU"};
+    std::unique_ptr<openvino_ep::GlobalContext> global_context = std::make_unique<openvino_ep::GlobalContext>();
+    std::vector<std::string> available_devices = global_context->ie_core.GetAvailableDevices();
+
+    for (auto& device : available_devices) {
+      if (ov_supported_device_types.find(device) == ov_supported_device_types.end()) {
+        auto ov_supported_device_types_update = ov_supported_device_types.emplace(device);
+      }
+    }
+
     if (dev_type == "") {
       LOGS_DEFAULT(INFO) << "[OpenVINO-EP]"
                          << "No runtime device selection option provided.";
