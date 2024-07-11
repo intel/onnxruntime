@@ -7,6 +7,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/backend_utils.h"
+#include "core/providers/openvino/openvino_execution_provider.h"
 
 using Exception = ov::Exception;
 
@@ -72,10 +73,14 @@ std::shared_ptr<OVNetwork> OVCore::ReadModel(const std::string& model, const std
 }
 
 OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_network,
-                                  std::string hw_target,
+                                  const std::string& hw_target,
                                   const ov::AnyMap& device_config,
-                                  std::string name) {
+                                  const std::string& name) {
   ov::CompiledModel obj;
+
+  // Validate the target device(s)
+  ValidateDevicePlugins(hw_target);
+
   try {
     obj = oe.compile_model(ie_cnn_network, hw_target, device_config);
 #ifndef NDEBUG
@@ -91,12 +96,16 @@ OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_netwo
 }
 
 OVExeNetwork OVCore::CompileModel(const std::string& onnx_model,
-                                  std::string hw_target,
-                                  std::string precision,
-                                  std::string cache_dir,
+                                  const std::string& hw_target,
+                                  const std::string& precision,
+                                  const std::string& cache_dir,
                                   const ov::AnyMap& device_config,
-                                  std::string name) {
+                                  const std::string& name) {
   ov::CompiledModel obj;
+
+  // Validate the target device(s)
+  ValidateDevicePlugins(hw_target);
+
   try {
     if (hw_target == "AUTO:GPU,CPU") {
       obj = oe.compile_model(onnx_model, ov::Tensor(),
@@ -120,11 +129,13 @@ OVExeNetwork OVCore::CompileModel(const std::string& onnx_model,
 }
 
 OVExeNetwork OVCore::ImportModel(std::shared_ptr<std::istringstream> model_stream,
-                                 std::string hw_target,
+                                 const std::string& hw_target,
                                  const ov::AnyMap& device_config,
                                  bool embed_mode,
-                                 std::string name) {
+                                 const std::string& name) {
   try {
+    // Validate the target device(s)
+    ValidateDevicePlugins(hw_target);
     ov::CompiledModel obj;
     if (embed_mode) {
       obj = oe.import_model(*model_stream, hw_target, device_config);
@@ -147,7 +158,7 @@ OVExeNetwork OVCore::ImportModel(std::shared_ptr<std::istringstream> model_strea
   }
 }
 
-void OVCore::SetCache(std::string cache_dir_path, std::string device_type) {
+void OVCore::SetCache(const std::string& cache_dir_path, const std::string& device_type) {
   if (device_type != "AUTO:GPU,CPU") {
     oe.set_property(ov::cache_dir(cache_dir_path));
   }
@@ -192,6 +203,43 @@ std::vector<std::string> OVCore::GetAvailableDevices() {
 
 void OVCore::SetStreams(const std::string& device_type, int num_streams) {
   oe.set_property(device_type, {ov::num_streams(num_streams)});
+}
+
+void OVCore::ValidateDevicePlugins(const std::string& device_type) {
+  try {
+    const auto& versions = oe.get_versions(device_type);
+
+    std::vector<std::string> devices;
+    if (device_type.find("AUTO:") == 0 || device_type.find("MULTI:") == 0 || device_type.find("HETERO:") == 0) {
+      std::string comma_separated_devices = device_type.substr(device_type.find(':') + 1);
+      devices = split(comma_separated_devices, ',');
+    } else {
+      devices.emplace_back(device_type);
+    }
+
+    for (const std::string& device : devices) {
+      auto it = versions.find(device);
+      if (it != versions.end()) {
+        std::string description = it->second.description;
+        if (std::search(description.begin(), description.end(), device.begin(), device.end(),
+            [](char ch1, char ch2) { return std::tolower(ch1) == std::tolower(ch2); }) != description.end()) {
+            LOGS_DEFAULT(INFO) << log_tag + "SUCCESS: Requested Device: " << device << " Loaded OpenVINO" <<
+            " Device Plugin: " << description << std::endl;
+          } else {
+            std::cerr << log_tag + "FATAL_ERROR: Requested Device: " << device << " Loaded OpenVINO" <<
+            " Device Plugin: " << description << std::endl;
+            throw std::logic_error("FATAL_ERROR: Invalid OpenVINO Device Plugin Loaded");
+        }
+      } else {
+        // Device not found in the versions map
+        throw std::runtime_error("Device not supported: " + device);
+      }
+    }
+  } catch (const Exception& e) {
+    ORT_THROW(log_tag + " Invalid OpenVINO Device Plugin Loaded: " + e.what());
+  } catch (...) {
+    ORT_THROW(log_tag + " Invalid OpenVINO Device Plugin Loaded");
+  }
 }
 
 OVInferRequest OVExeNetwork::CreateInferRequest() {

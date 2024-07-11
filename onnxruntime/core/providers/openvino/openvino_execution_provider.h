@@ -29,15 +29,15 @@ static void print_build_options() {
             << std::endl;
 }
 
-static std::vector<std::string> split(const std::string& s, char delim) {
-  std::vector<std::string> result;
-  std::stringstream ss(s);
-  std::string item;
+static std::vector<std::string> split(const std::string& str, char delimiter) {
+  std::vector<std::string> string_tokens_vector;
+  std::istringstream token_stream(str);
+  std::string token;
 
-  while (getline(ss, item, delim)) {
-    result.push_back(item);
+  while (std::getline(token_stream, token, delimiter)) {
+    string_tokens_vector.emplace_back(std::move(token));
   }
-  return result;
+  return string_tokens_vector;
 }
 
 static std::vector<std::string> parseDevices(const std::string& device_string) {
