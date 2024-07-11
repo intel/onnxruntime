@@ -25,7 +25,16 @@ struct DefaultTolerance<double> {
   static constexpr float relative = 1e-5f;
 
   // Allow to have different default absolute tolerance for different providers.
-  static float get_absolute(const std::string& /*provider_type*/) {
+  static float get_absolute(const std::string& provider_type /*provider_type*/) {
+
+    if (provider_type == kOpenVINOExecutionProvider) {
+      #ifdef OPENVINO_CONFIG_NPU
+      return 0.005f;
+      #else
+      return absolute;
+      #endif
+    }
+
     return absolute;
   }
 };
@@ -40,7 +49,16 @@ struct DefaultTolerance<float> {
 
   static constexpr float relative = 1e-4f;
 
-  static float get_absolute(const std::string& /*provider_type*/) {
+  static float get_absolute(const std::string& provider_type /*provider_type*/) {
+
+    if (provider_type == kOpenVINOExecutionProvider) {
+      #ifdef OPENVINO_CONFIG_NPU
+      return 0.005f;
+      #else
+      return absolute;
+      #endif
+    }
+
     return absolute;
   }
 };

@@ -59,12 +59,11 @@ std::shared_ptr<OVNetwork> OVCore::ReadModel(const std::string& model, const std
     ov::AnyVector params{&modelStream, model_path};
 
     FE = manager.load_by_model(params);
-    if (FE) {
+    if(FE) {
       inputModel = FE->load(params);
       return FE->convert(inputModel);
     } else {
       ORT_THROW(log_tag + "[OpenVINO-EP] Unknown exception while Reading network");
-      return NULL;
     }
   } catch (const Exception& e) {
     ORT_THROW(log_tag + "[OpenVINO-EP] Exception while Reading network: " + std::string(e.what()));
@@ -224,11 +223,11 @@ void OVCore::ValidateDevicePlugins(const std::string& device_type) {
         std::string description = it->second.description;
         if (std::search(description.begin(), description.end(), device.begin(), device.end(),
             [](char ch1, char ch2) { return std::tolower(ch1) == std::tolower(ch2); }) != description.end()) {
-            LOGS_DEFAULT(INFO) << log_tag + "SUCCESS: Requested Device: " << device << " Loaded OpenVINO" +
+            LOGS_DEFAULT(INFO) << log_tag + "SUCCESS: Requested Device: " << device << " Loaded OpenVINO" <<
             " Device Plugin: " << description << std::endl;
           } else {
-            std::cerr << log_tag + "FATAL_ERROR: Requested Device: " << device << " Loaded OpenVINO" +
-            "Device Plugin: " << description << std::endl;
+            std::cerr << log_tag + "FATAL_ERROR: Requested Device: " << device << " Loaded OpenVINO" <<
+            " Device Plugin: " << description << std::endl;
             throw std::logic_error("FATAL_ERROR: Invalid OpenVINO Device Plugin Loaded");
         }
       } else {
