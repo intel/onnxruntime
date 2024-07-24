@@ -544,6 +544,9 @@ def parse_arguments():
         type=_openvino_verify_device_type,
         help="Build with OpenVINO for specific hardware.",
     )
+    parser.add_argument("--use_openvino_static_libs", type=str, default="",
+                        help="Build with OpenVINO built as Static Library."
+                        "Specify the device(s) to use in the format [CPU,GPU,NPU]")
     parser.add_argument(
         "--dnnl_aarch64_runtime", action="store", default="", type=str.lower, help="e.g. --dnnl_aarch64_runtime acl"
     )
@@ -1230,6 +1233,22 @@ def generate_build_tree(
             "-Donnxruntime_USE_OPENVINO_MULTI=" + ("ON" if args.use_openvino.startswith("MULTI") else "OFF"),
             "-Donnxruntime_USE_OPENVINO_AUTO=" + ("ON" if args.use_openvino.startswith("AUTO") else "OFF"),
         ]
+        if args.use_openvino_static_libs:
+            cmake_args += ["-Donnxruntime_USE_OPENVINO_STATIC_LIBS=ON"]
+            devices_str = args.use_openvino_static_libs.strip('[]')
+            devices = re.split(r',\s*', devices_str)
+
+            valid_devices = {'CPU', 'GPU', 'NPU'}
+            if not all(device in valid_devices for device in devices):
+                raise ValueError("Invalid device specified. Valid devices are: CPU, GPU, NPU")
+
+            for device in devices:
+                if device == 'CPU':
+                    cmake_args.append("-Donnxruntime_USE_OPENVINO_CPU_DEVICE=ON")
+                if device == 'GPU':
+                    cmake_args.append("-Donnxruntime_USE_OPENVINO_GPU_DEVICE=ON")
+                if device == 'NPU':
+                    cmake_args.append("-Donnxruntime_USE_OPENVINO_NPU_DEVICE=ON")
 
     # VitisAI and OpenVINO providers currently only support full_protobuf option.
     if args.use_full_protobuf or args.use_openvino or args.use_vitisai or args.gen_doc:
