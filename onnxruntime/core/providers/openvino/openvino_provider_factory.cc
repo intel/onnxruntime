@@ -192,6 +192,10 @@ struct OpenVINO_Provider : Provider {
     }
 
     if (provider_options_map.find("num_of_threads") != provider_options_map.end()) {
+      if (!std::all_of(provider_options_map.at("num_of_threads").begin(),
+                 provider_options_map.at("num_of_threads").end(), ::isdigit)) {
+        ORT_THROW("[ERROR] [OpenVINO-EP] Number of threads should be a number. \n");
+      }
       num_of_threads = std::stoi(provider_options_map.at("num_of_threads"));
       if (num_of_threads <= 0) {
         num_of_threads = 1;
