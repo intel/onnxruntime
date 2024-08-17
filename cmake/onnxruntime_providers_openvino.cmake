@@ -25,6 +25,73 @@
     unset(CMAKE_MAP_IMPORTED_CONFIG_RELWITHDEBINFO)
   endif()
 
+  if(onnxruntime_USE_OPENVINO_STATIC_LIBS)
+    # Get the INTEL_OPENVINO_DIR environment variable
+    file(TO_CMAKE_PATH "$ENV{INTEL_OPENVINO_DIR}" OpenVINO_BASE_DIR)
+
+    # Define the suffix path
+    set(OPENVINO_SUFFIX_PATH "runtime/lib/intel64/Release")
+
+    # Combine the base directory with the suffix path
+    file(TO_CMAKE_PATH "${OpenVINO_BASE_DIR}/${OPENVINO_SUFFIX_PATH}" OPENVINO_STATIC_LIB_DIR)
+
+    # Check if the combined directory exists, If the directory exists, proceed with setting up the static libraries
+    if(IS_DIRECTORY "${OPENVINO_STATIC_LIB_DIR}")
+      # Initialize an empty list to hold the found static libraries
+      set(OPENVINO_FOUND_STATIC_LIBS)
+
+      # Use the appropriate file extension for static libraries based on the host operating system
+      if(CMAKE_HOST_WIN32)
+        set(OPENVINO_STATIC_LIB_EXT "*.lib")
+      elseif(CMAKE_HOST_UNIX)
+        set(OPENVINO_STATIC_LIB_EXT "*.a")
+      endif()
+
+      # Use GLOB_RECURSE to find all static library files in the specified directory based on the OS
+      file(GLOB_RECURSE OPENVINO_POSSIBLE_LIBS "${OPENVINO_STATIC_LIB_DIR}/${OPENVINO_STATIC_LIB_EXT}")
+
+      # Copy all libraries to OPENVINO_COMMON_LIBS
+      set(OPENVINO_COMMON_LIBS ${OPENVINO_POSSIBLE_LIBS})
+
+      # Define the patterns for device-specific libraries
+      set(OPENVINO_DEVICE_PATTERNS "cpu" "gpu" "npu")
+
+      # Filter out device-specific libraries from OPENVINO_COMMON_LIBS
+      foreach(device_pattern IN LISTS OPENVINO_DEVICE_PATTERNS)
+        foreach(lib IN LISTS OPENVINO_COMMON_LIBS)
+          string(FIND "${lib}" "${device_pattern}" device_pos)
+          if(NOT device_pos EQUAL -1)
+            list(REMOVE_ITEM OPENVINO_COMMON_LIBS "${lib}")
+          endif()
+        endforeach()
+      endforeach()
+
+      # Iterate over each possible common library and check if it exists before appending
+      foreach(lib ${OPENVINO_COMMON_LIBS})
+        if(EXISTS "${lib}")
+          list(APPEND OPENVINO_FOUND_STATIC_LIBS "${lib}")
+        endif()
+      endforeach()
+
+      # Iterate over each possible library for the specified device and check if it exists before appending
+      foreach(lib ${OPENVINO_POSSIBLE_LIBS})
+        if(EXISTS "${lib}")
+          # Check device-specific variables and append only the required libraries
+          if((DEFINED onnxruntime_USE_OPENVINO_CPU_DEVICE AND onnxruntime_USE_OPENVINO_CPU_DEVICE AND lib MATCHES ".*cpu.*") OR
+            (DEFINED onnxruntime_USE_OPENVINO_GPU_DEVICE AND onnxruntime_USE_OPENVINO_GPU_DEVICE AND lib MATCHES ".*gpu.*") OR
+            (DEFINED onnxruntime_USE_OPENVINO_NPU_DEVICE AND onnxruntime_USE_OPENVINO_NPU_DEVICE AND lib MATCHES ".*npu.*"))
+            list(APPEND OPENVINO_FOUND_STATIC_LIBS "${lib}")
+          endif()
+        endif()
+      endforeach()
+
+      # Append the found static library files to the OPENVINO_LIB_LIST
+      list(APPEND OPENVINO_LIB_LIST ${OPENVINO_FOUND_STATIC_LIBS})
+    else()
+      message(FATAL_ERROR "The specified OpenVINO static library directory does not exist: ${OPENVINO_STATIC_LIB_DIR}")
+    endif()
+  endif()
+
   list(APPEND OPENVINO_LIB_LIST openvino::frontend::onnx openvino::runtime ${PYTHON_LIBRARIES})
   if ((DEFINED ENV{OPENCL_LIBS}) AND (DEFINED ENV{OPENCL_INCS}))
     add_definitions(-DIO_BUFFER_ENABLED=1)
@@ -38,6 +105,8 @@
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/)
   set_target_properties(onnxruntime_providers_openvino PROPERTIES LINKER_LANGUAGE CXX)
   set_target_properties(onnxruntime_providers_openvino PROPERTIES FOLDER "ONNXRuntime")
+  set_target_properties(onnxruntime_providers_openvino PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE ON INTERPROCEDURAL_OPTIMIZATION_DEBUG ON INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ON)
+
   if(NOT MSVC)
     target_compile_options(onnxruntime_providers_openvino PRIVATE "-Wno-parentheses")
   endif()
