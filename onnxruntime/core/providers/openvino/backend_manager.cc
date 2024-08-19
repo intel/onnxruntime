@@ -151,52 +151,99 @@ Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVie
     ORT_THROW(exception_str);
   }
 
-  std::string model_blob_str;
-  auto compiled_model = concrete_backend_->GetOVCompiledModel();
+  std::ostringstream model_blob_stream;
   std::string graph_name = "";
+
   // Epctx file path from SO is mapped to cache_dir variable for OVEP for readability
-  if (global_context_.cache_dir != "") {
-    graph_name = global_context_.cache_dir;
+  if (!global_context_.cache_dir.empty()) {
+      graph_name = global_context_.cache_dir;
   } else {
-    graph_name = global_context_.onnx_model_path_name;
-    // Remove extension so we can append suffix to form the complete name of output graph
-    graph_name = [&]() {
+      graph_name = global_context_.onnx_model_path_name;
       size_t dot = graph_name.find_last_of(".");
-      if (dot == std::string::npos) return graph_name;
-      return graph_name.substr(0, dot);
-    }();
-    graph_name = graph_name + "_ctx.onnx";
+      if (dot != std::string::npos) {
+          graph_name = graph_name.substr(0, dot);
+      }
+      graph_name += "_ctx.onnx";
   }
-  // If embed_mode, then pass on the serialized blob
-  // If not embed_mode, dump the blob here and only pass on the path to the blob
   if (global_context_.ep_context_embed_mode) {
-    std::ostringstream model_blob_stream;
-    compiled_model.export_model(model_blob_stream);
-    model_blob_str = model_blob_stream.str();
-    ORT_ENFORCE(model_blob_str.size() != 0);
+      concrete_backend_->GetOVCompiledModel().export_model(model_blob_stream);
+      if (model_blob_stream.str().empty()) {
+          ORT_THROW("Model blob stream is empty after exporting the compiled model.");
+      }
   } else {
-    // Remove extension so we can append suffix to form the complete name of output graph
-    auto blob_name = [&]() {
-      size_t dot = graph_name.find_last_of(".");
-      if (dot == std::string::npos) return graph_name;
-      return graph_name.substr(0, dot);
-    }();
-    std::ofstream blob_file(blob_name + ".blob",
-                            std::ios::out | std::ios::trunc | std::ios::binary);
-    if (!blob_file) {
-      ORT_THROW("Unable to open file for epctx model dump.");
-    }
-    compiled_model.export_model(blob_file);
-    model_blob_str = blob_name + ".blob";
+      std::string blob_name = graph_name.substr(0, graph_name.find_last_of("."));
+      std::ofstream blob_file(blob_name + ".blob", std::ios::out | std::ios::trunc | std::ios::binary);
+      if (!blob_file) {
+          ORT_THROW("Unable to open file for epctx model dump.");
+      }
+      concrete_backend_->GetOVCompiledModel().export_model(blob_file);
+      model_blob_stream.str(blob_name + ".blob");
   }
 
-  ORT_RETURN_IF_ERROR(ep_ctx_handle_.ExportEPCtxModel(graph_body_viewer,
-                                                      graph_name,
-                                                      logger,
-                                                      global_context_.ep_context_embed_mode,
-                                                      model_blob_str,
-                                                      openvino_sdk_version_));
+  std::unique_ptr<onnxruntime::Model> model_build = graph_body_viewer.CreateModel(logger);
+  onnxruntime::Graph& graph_build = model_build->MainGraph();
 
+  std::vector<onnxruntime::NodeArg*> inputs;
+  std::vector<onnxruntime::NodeArg*> outputs;
+  inputs.reserve(graph_body_viewer.GetInputs().size());
+  outputs.reserve(graph_body_viewer.GetOutputs().size());
+
+  for (const onnxruntime::NodeArg* input : graph_body_viewer.GetInputs()) {
+      inputs.emplace_back(&graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto()));
+  }
+  for (const onnxruntime::NodeArg* output : graph_body_viewer.GetOutputs()) {
+      outputs.emplace_back(&graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto()));
+  }
+
+  std::unique_ptr<ONNX_NAMESPACE::NodeAttributes> node_attributes = ONNX_NAMESPACE::NodeAttributes::Create();
+  node_attributes->reserve(4);
+  {
+    // Create EP context node attributes
+    std::unique_ptr<ONNX_NAMESPACE::AttributeProto> embed_mode_attr = ONNX_NAMESPACE::AttributeProto::Create();
+    embed_mode_attr->set_name(EMBED_MODE);
+    embed_mode_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+    embed_mode_attr->set_i(global_context_.ep_context_embed_mode);
+    node_attributes->emplace(EMBED_MODE, std::move(*embed_mode_attr));
+
+    std::unique_ptr<ONNX_NAMESPACE::AttributeProto> ep_cache_context_attr = ONNX_NAMESPACE::AttributeProto::Create();
+    ep_cache_context_attr->set_name(EP_CACHE_CONTEXT);
+    ep_cache_context_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
+    ep_cache_context_attr->set_s(model_blob_stream.str());
+    node_attributes->emplace(EP_CACHE_CONTEXT, std::move(*ep_cache_context_attr));
+
+    std::unique_ptr<ONNX_NAMESPACE::AttributeProto> sdk_version_attr = ONNX_NAMESPACE::AttributeProto::Create();
+    sdk_version_attr->set_name(EP_SDK_VER);
+    sdk_version_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
+    sdk_version_attr->set_s(openvino_sdk_version_);
+    node_attributes->emplace(EP_SDK_VER, std::move(*sdk_version_attr));
+
+    std::unique_ptr<ONNX_NAMESPACE::AttributeProto> source_attr = ONNX_NAMESPACE::AttributeProto::Create();
+    source_attr->set_name(SOURCE);
+    source_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
+    source_attr->set_s(kOpenVINOExecutionProvider);
+    node_attributes->emplace(SOURCE, std::move(*source_attr));
+  }
+
+  graph_build.AddNode(graph_name, EPCONTEXT_OP, "", inputs, outputs, std::move(node_attributes.get()), kMSDomain);
+  ORT_ENFORCE(graph_build.Resolve().IsOK());
+
+  {
+    // Serialize modelproto to file
+    std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto = model_build->ToProto();
+    model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+
+    std::ofstream epctx_onnx_model(graph_name, std::ios::out | std::ios::trunc | std::ios::binary);
+    if (!epctx_onnx_model) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unable to create epctx onnx model file");
+    }
+    if (!model_proto->SerializeToOstream(epctx_onnx_model)) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to serialize model to file");
+    }
+
+    // Explicitly close the file stream
+    epctx_onnx_model.close();
+  }
+  LOGS_DEFAULT(VERBOSE) << "[OpenVINO EP] Export blob as EPContext Node";
   return Status::OK();
 }
 
