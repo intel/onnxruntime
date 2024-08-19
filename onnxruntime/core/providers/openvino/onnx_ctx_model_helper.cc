@@ -4,6 +4,7 @@
 #include <string>
 #include <fstream>
 #include <vector>
+#include <utility>
 
 #include "core/providers/openvino/onnx_ctx_model_helper.h"
 
@@ -20,68 +21,72 @@ Status EPCtxHandler::ExportEPCtxModel(const GraphViewer& graph_viewer,
                                       const bool& ep_context_embed_mode,
                                       const std::string& model_blob_str,
                                       const std::string& openvino_sdk_version) const {
-  auto model_build = graph_viewer.CreateModel(logger);
-  auto& graph_build = model_build->MainGraph();
+  std::unique_ptr<onnxruntime::Model> model_build = graph_viewer.CreateModel(logger);
+  onnxruntime::Graph& graph_build = model_build->MainGraph();
 
-  // Get graph inputs and outputs
+  // Reserve space for inputs and outputs to avoid reallocations
   std::vector<onnxruntime::NodeArg*> inputs, outputs;
-  for (auto input : graph_viewer.GetInputs()) {
-    auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
-    inputs.push_back(&n_input);
+  inputs.reserve(graph_viewer.GetInputs().size());
+  outputs.reserve(graph_viewer.GetOutputs().size());
+
+  for (const onnxruntime::NodeArg* input : graph_viewer.GetInputs()) {
+      inputs.emplace_back(&graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto()));
   }
-  for (auto output : graph_viewer.GetOutputs()) {
-    auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
-    outputs.push_back(&n_output);
+  for (const onnxruntime::NodeArg* output : graph_viewer.GetOutputs()) {
+      outputs.emplace_back(&graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto()));
   }
 
-  // Create EP context node attributes
-  auto attr_0 = ONNX_NAMESPACE::AttributeProto::Create();
-  auto attr_1 = ONNX_NAMESPACE::AttributeProto::Create();
-  auto attr_2 = ONNX_NAMESPACE::AttributeProto::Create();
-  auto attr_3 = ONNX_NAMESPACE::AttributeProto::Create();
-
-  // embed mode
-  attr_0->set_name(EMBED_MODE);
-  attr_0->set_type(onnx::AttributeProto_AttributeType_INT);
-  attr_0->set_i(ep_context_embed_mode);
-  // ep context
-  attr_1->set_name(EP_CACHE_CONTEXT);
-  attr_1->set_type(onnx::AttributeProto_AttributeType_STRING);
-  attr_1->set_s(model_blob_str);
-  // sdk version
-  attr_2->set_name(EP_SDK_VER);
-  attr_2->set_type(onnx::AttributeProto_AttributeType_STRING);
-  attr_2->set_s(openvino_sdk_version);
-  // source
-  attr_3->set_name(SOURCE);
-  attr_3->set_type(onnx::AttributeProto_AttributeType_STRING);
-  attr_3->set_s(kOpenVINOExecutionProvider);
-
-  auto node_attributes = ONNX_NAMESPACE::NodeAttributes::Create();
+  std::unique_ptr<ONNX_NAMESPACE::NodeAttributes> node_attributes = ONNX_NAMESPACE::NodeAttributes::Create();
   node_attributes->reserve(4);
-  node_attributes->emplace(EMBED_MODE, *attr_0);
-  node_attributes->emplace(EP_CACHE_CONTEXT, *attr_1);
-  node_attributes->emplace(EP_SDK_VER, *attr_2);
-  node_attributes->emplace(SOURCE, *attr_3);
+
+  {
+    // Create EP context node attributes
+    std::unique_ptr<ONNX_NAMESPACE::AttributeProto> embed_mode_attr = ONNX_NAMESPACE::AttributeProto::Create();
+    embed_mode_attr->set_name(EMBED_MODE);
+    embed_mode_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+    embed_mode_attr->set_i(ep_context_embed_mode);
+    node_attributes->emplace(EMBED_MODE, std::move(*embed_mode_attr));
+
+    std::unique_ptr<ONNX_NAMESPACE::AttributeProto> ep_cache_context_attr = ONNX_NAMESPACE::AttributeProto::Create();
+    ep_cache_context_attr->set_name(EP_CACHE_CONTEXT);
+    ep_cache_context_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
+    ep_cache_context_attr->set_s(model_blob_str);
+    node_attributes->emplace(EP_CACHE_CONTEXT, std::move(*ep_cache_context_attr));
+
+    std::unique_ptr<ONNX_NAMESPACE::AttributeProto> sdk_version_attr = ONNX_NAMESPACE::AttributeProto::Create();
+    sdk_version_attr->set_name(EP_SDK_VER);
+    sdk_version_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
+    sdk_version_attr->set_s(openvino_sdk_version);
+    node_attributes->emplace(EP_SDK_VER, std::move(*sdk_version_attr));
+
+    std::unique_ptr<ONNX_NAMESPACE::AttributeProto> source_attr = ONNX_NAMESPACE::AttributeProto::Create();
+    source_attr->set_name(SOURCE);
+    source_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
+    source_attr->set_s(kOpenVINOExecutionProvider);
+    node_attributes->emplace(SOURCE, std::move(*source_attr));
+  }
 
   // Create EP context node
-  graph_build.AddNode(graph_name, EPCONTEXT_OP, "", inputs, outputs, node_attributes.get(), kMSDomain);
+  graph_build.AddNode(graph_name, EPCONTEXT_OP, "", inputs, outputs, std::move(node_attributes.get()), kMSDomain);
   ORT_ENFORCE(graph_build.Resolve().IsOK());
 
-  // Serialize modelproto to string
-  auto new_graph_viewer = graph_build.CreateGraphViewer();
-  auto model = new_graph_viewer->CreateModel(logger);
-  auto model_proto = model->ToProto();
-  new_graph_viewer->ToProto(*model_proto->mutable_graph(), true, true);
-  model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  {
+    // Serialize modelproto to file
+    std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto = model_build->ToProto();
+    model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
-  // Finally, dump the model
-  std::ofstream epctx_onnx_model(graph_name,
-                                 std::ios::out | std::ios::trunc | std::ios::binary);
-  if (!epctx_onnx_model) {
-    ORT_THROW("Unable to create epctx onnx model file ");
+    std::ofstream epctx_onnx_model(graph_name, std::ios::out | std::ios::trunc | std::ios::binary);
+    if (!epctx_onnx_model) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unable to create epctx onnx model file");
+    }
+
+    if (!model_proto->SerializeToOstream(epctx_onnx_model)) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to serialize model to file");
+    }
+
+    // Explicitly close the file stream
+    epctx_onnx_model.close();
   }
-  model_proto->SerializeToOstream(epctx_onnx_model);
 
   LOGS_DEFAULT(VERBOSE) << "[OpenVINO EP] Export blob as EPContext Node";
 
