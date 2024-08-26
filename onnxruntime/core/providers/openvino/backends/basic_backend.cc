@@ -94,7 +94,9 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
                  hw_target.find("NPU") != std::string::npos) {
         std::shared_ptr<ov::Model> ov_model;
         {
-          const std::string model = model_proto.SerializeAsString();
+          auto dnn_proto = ExternalWeightsModel(global_context_.onnx_model_path_name, std::move(model_proto));
+          const std::string model = dnn_proto.SerializeAsString();
+          // const std::string model = model_proto.SerializeAsString();
           ov_model = global_context_.ie_core.Get().read_model(model, ov::Tensor());
         }
         exe_network_ = OVExeNetwork(global_context_.ie_core.Get().compile_model(ov_model, hw_target, device_config));

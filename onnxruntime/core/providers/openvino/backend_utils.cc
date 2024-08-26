@@ -18,6 +18,29 @@ namespace onnxruntime {
 namespace openvino_ep {
 namespace backend_utils {
 
+std::unique_ptr<ONNX_NAMESPACE::ModelProto> ExternalWeightsModel(const std::string& model_path, ONNX_NAMESPACE::ModelProto&& model_proto) {
+  onnxruntime::Status status = Model::Load(onnxruntime::ToPathString(model_path), model_proto);
+
+  if (!status.IsOK()) {
+    ORT_THROW(log_tag + "[OpenVINO-EP] Failed to load model: " + status.ErrorMessage());
+  }
+
+  const logging::Logger* logger = nullptr;
+  std::unique_ptr<Model> ort_model = Model::Create(std::move(model_proto),
+                                    onnxruntime::ToPathString(model_path), nullptr, *logger);
+
+  std::filesystem::path external_file_name = "external_initializers.data";
+  std::filesystem::path file_path = model_path;
+  size_t initializer_size_threshold = 1024;
+
+  std::unique_ptr<ONNX_NAMESPACE::ModelProto> modified_model_proto = ort_model->
+                                ToGraphProtoWithExternalInitializers(external_file_name, file_path, initializer_size_threshold);
+
+  // const std::string dnn_model = model_proto.SerializeAsString();
+
+  return modified_model_proto;
+}
+
 bool IsDebugEnabled() {
   const std::string env_name = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_ENABLE_DEBUG");
   if (!env_name.empty()) {

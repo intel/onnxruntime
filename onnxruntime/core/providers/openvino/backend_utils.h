@@ -29,6 +29,8 @@ namespace openvino_ep {
 namespace backend_utils {
 const std::string log_tag = "[OpenVINO-EP] ";
 
+std::unique_ptr<ONNX_NAMESPACE::ModelProto> ExternalWeightsModel(const std::string& model_path, ONNX_NAMESPACE::ModelProto&& model_proto);
+
 bool IsDebugEnabled();
 
 // Internal diagnostic function.
