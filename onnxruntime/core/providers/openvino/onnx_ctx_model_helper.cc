@@ -71,7 +71,10 @@ Status EPCtxHandler::ExportEPCtxModel(const GraphViewer& graph_viewer,
   }
   // Create EP context node
   graph_build.AddNode(graph_name, EPCONTEXT_OP, "", inputs, outputs, std::move(*node_attributes), kMSDomain);
+
+#ifndef NDEBUG
   ORT_ENFORCE(graph_build.Resolve().IsOK());
+#endif
 
   {
     // Serialize modelproto to string
