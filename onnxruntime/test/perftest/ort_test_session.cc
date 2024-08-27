@@ -754,13 +754,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
             ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. CPU only supports FP32 . \n");
           }
         }
-      } else if (key == "enable_npu_fast_compile") {
-        if (value == "true" || value == "True" ||
-            value == "false" || value == "False") {
-          ov_options[key] = value;
-        } else {
-          ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_npu_fast_compile' should be a boolean i.e. true or false. Default value is false.\n");
-        }
       } else if (key == "enable_opencl_throttling") {
         if (value == "true" || value == "True" ||
             value == "false" || value == "False") {
@@ -802,17 +795,11 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         } else {
           ov_options[key] = value;
         }
-      } else if (key == "export_ep_ctx_blob") {
-        if (value == "true" || value == "True" ||
-            value == "false" || value == "False") {
-          ov_options[key] = value;
-        } else {
-          ORT_THROW(
-              "[ERROR] [OpenVINO] The value for the key 'export_ep_ctx_blob' "
-              "should be a boolean i.e. true or false. Default value is false.\n");
-        }
       } else {
-        ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_npu_fast_compile', 'num_of_threads', 'cache_dir', 'num_streams', 'enable_opencl_throttling', 'disable_dynamic_shapes'] \n");
+        ORT_THROW(
+            "[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO."
+            "['device_type', 'precision', 'num_of_threads', 'cache_dir', 'num_streams', 'enable_opencl_throttling', 'disable_dynamic_shapes',"
+            "'enable_qdq_optimizer', 'model_priority' ] \n");
       }
     }
     session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);

@@ -9,7 +9,7 @@
 namespace onnxruntime {
 struct OpenVINOProviderFactory : IExecutionProviderFactory {
   OpenVINOProviderFactory(const char* device_type, const char* precision,
-                          bool enable_npu_fast_compile, size_t num_of_threads,
+                          size_t num_of_threads,
                           const char* cache_dir, const char* model_priority,
                           int num_streams, void* context,
                           bool enable_opencl_throttling, bool disable_dynamic_shapes,
@@ -17,7 +17,6 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
                           bool disable_cpu_fallback,
                           bool so_epctx_embed_mode)
       : precision_(precision),
-        enable_npu_fast_compile_(enable_npu_fast_compile),
         num_of_threads_(num_of_threads),
         model_priority_(model_priority),
         num_streams_(num_streams),
@@ -40,7 +39,6 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
  private:
   std::string device_type_;
   std::string precision_;
-  bool enable_npu_fast_compile_;
   size_t num_of_threads_;
   std::string cache_dir_;
   std::string model_priority_;
@@ -55,7 +53,7 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
 };
 
 std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
-  OpenVINOExecutionProviderInfo info(device_type_, precision_, enable_npu_fast_compile_, num_of_threads_,
+  OpenVINOExecutionProviderInfo info(device_type_, precision_, num_of_threads_,
                                      cache_dir_, model_priority_, num_streams_, context_, enable_opencl_throttling_,
                                      disable_dynamic_shapes_, export_ep_ctx_blob_, enable_qdq_optimizer_,
                                      disable_cpu_fallback_,
@@ -86,8 +84,6 @@ struct OpenVINO_Provider : Provider {
                                              // Not setting precision will execute with optimized precision for
                                              // best inference latency. set Precision=ACCURACY for executing models
                                              // with input precision for best accuracy.
-    bool enable_npu_fast_compile = false;    // [enable_npu_fast_compile]: Fast-compile may be optionally enabled to
-                                             // speeds up the model's compilation to NPU device specific format.
     int num_of_threads = 0;                  // [num_of_threads]: Overrides the accelerator default value of number of
                                              //  threads with this value at runtime.
     std::string cache_dir = "";              // [cache_dir]: specify the path to
@@ -102,16 +98,16 @@ struct OpenVINO_Provider : Provider {
                                              // with this value at runtime.
     bool enable_opencl_throttling = false;   // [enable_opencl_throttling]: Enables OpenCL queue throttling for GPU
                                              // device (Reduces CPU Utilization when using GPU)
-    bool export_ep_ctx_blob = false;         // Whether to export the pre-compiled blob as an EPContext model.
+    bool export_ep_ctx_blob = false;         // [Internal] Its linked to session_options.ep_context_enable
+                                             // Whether to export the pre-compiled blob as an EPContext model.
+    bool so_epctx_embed_mode = true;         // [Internal] Its linked to session_options.ep_context_filepath
+    void* context = nullptr;                 // Address for IO Buffer
 
-    void* context = nullptr;
+    bool enable_qdq_optimizer = false;  // Enables QDQ pruning for efficient inference latency with NPU
 
-    bool enable_qdq_optimizer = false;
+    bool disable_cpu_fallback = false;  // Disable automatic fallback from NPU to CPU during compilation failures
 
-    bool disable_cpu_fallback = false;
-
-    bool so_epctx_embed_mode = true;
-
+    std::string bool_flag = "";
     if (provider_options_map.find("device_type") != provider_options_map.end()) {
       device_type = provider_options_map.at("device_type").c_str();
 
@@ -224,16 +220,6 @@ struct OpenVINO_Provider : Provider {
                               << "Executing with num_streams=1";
       }
     }
-    std::string bool_flag = "";
-    if (provider_options_map.find("enable_npu_fast_compile") != provider_options_map.end()) {
-      bool_flag = provider_options_map.at("enable_npu_fast_compile");
-      if (bool_flag == "true" || bool_flag == "True")
-        enable_npu_fast_compile = true;
-      else if (bool_flag == "false" || bool_flag == "False")
-        enable_npu_fast_compile = false;
-      bool_flag = "";
-    }
-
     if (provider_options_map.find("enable_opencl_throttling") != provider_options_map.end()) {
       bool_flag = provider_options_map.at("enable_opencl_throttling");
       if (bool_flag == "true" || bool_flag == "True")
@@ -271,6 +257,7 @@ struct OpenVINO_Provider : Provider {
           disable_dynamic_shapes = false;
         }
       }
+      bool_flag = "";
     }
     if (provider_options_map.find("so_export_ep_ctx_blob") != provider_options_map.end()) {
       bool_flag = provider_options_map.at("so_export_ep_ctx_blob");
@@ -321,7 +308,6 @@ struct OpenVINO_Provider : Provider {
 
     return std::make_shared<OpenVINOProviderFactory>(const_cast<char*>(device_type.c_str()),
                                                      const_cast<char*>(precision.c_str()),
-                                                     enable_npu_fast_compile,
                                                      num_of_threads,
                                                      const_cast<char*>(cache_dir.c_str()),
                                                      model_priority,
