@@ -111,7 +111,8 @@ BackendManager::BackendManager(const GlobalContext& global_context,
       ORT_THROW(ex.what());
 #else
       if (device_type.find("NPU") != std::string::npos &&
-          !GetGlobalContext().disable_cpu_fallback) {
+          !GetGlobalContext().disable_cpu_fallback &&
+          !ep_ctx_handle_.IsValidOVEPCtxGraph()) {
         LOGS_DEFAULT(WARNING) << ex.what();
         LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU."
                               << "Falling back to OV CPU for execution";
