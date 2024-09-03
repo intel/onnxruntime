@@ -109,12 +109,12 @@ BackendManager::BackendManager(const GlobalContext& global_context,
                                                       ep_ctx_handle_);
     } catch (const OnnxRuntimeException& ex) {
       std::string exception_str = ex.what();
+      bool enable_cpu_fallback = !GetGlobalContext().disable_cpu_fallback;
 #if defined(OPENVINO_DISABLE_NPU_FALLBACK)
-      ORT_THROW(exception_str);
-#else
+      enable_cpu_fallback = false;
+#endif
       if (device_type.find("NPU") != std::string::npos &&
-          !GetGlobalContext().disable_cpu_fallback &&
-          !ep_ctx_handle_.IsValidOVEPCtxGraph()) {
+          enable_cpu_fallback && !ep_ctx_handle_.IsValidOVEPCtxGraph()) {
         LOGS_DEFAULT(WARNING) << exception_str;
         LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU."
                               << "Falling back to OV CPU for execution";
@@ -147,9 +147,8 @@ BackendManager::BackendManager(const GlobalContext& global_context,
         }
         throw std::runtime_error(error_message + ", " + error_code + "\nModel needs to be recompiled\n");
       } else {
-        ORT_THROW(ex.what());
+        ORT_THROW(exception_str);
       }
-#endif
     }
   }
   if (global_context_.export_ep_ctx_blob && !ep_ctx_handle_.IsValidOVEPCtxGraph()) {
