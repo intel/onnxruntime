@@ -8,17 +8,20 @@
 
 namespace onnxruntime {
 struct OpenVINOProviderFactory : IExecutionProviderFactory {
-  OpenVINOProviderFactory(const char* device_type, const char* precision,
+  OpenVINOProviderFactory(const std::string& device_type, const std::string& precision,
                           bool enable_npu_fast_compile, size_t num_of_threads,
-                          const char* cache_dir, const char* model_priority,
-                          int num_streams, void* context,
+                          const std::string& load_config, const std::string& cache_dir,
+                          const std::string& model_priority, int num_streams, void* context,
                           bool enable_opencl_throttling, bool disable_dynamic_shapes,
                           bool export_ep_ctx_blob, bool enable_qdq_optimizer,
                           bool disable_cpu_fallback,
                           bool so_epctx_embed_mode)
-      : precision_(precision),
+      : device_type_(device_type),
+        precision_(precision),
         enable_npu_fast_compile_(enable_npu_fast_compile),
         num_of_threads_(num_of_threads),
+        load_config_(load_config),
+        cache_dir_(cache_dir),
         model_priority_(model_priority),
         num_streams_(num_streams),
         context_(context),
@@ -27,13 +30,9 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
         export_ep_ctx_blob_(export_ep_ctx_blob),
         enable_qdq_optimizer_(enable_qdq_optimizer),
         disable_cpu_fallback_(disable_cpu_fallback),
-        so_epctx_embed_mode_(so_epctx_embed_mode) {
-    device_type_ = (device_type == nullptr) ? "" : device_type;
-    cache_dir_ = (cache_dir == nullptr) ? "" : cache_dir;
-  }
+        so_epctx_embed_mode_(so_epctx_embed_mode) {}
 
-  ~OpenVINOProviderFactory() override {
-  }
+  ~OpenVINOProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
@@ -42,6 +41,7 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
   std::string precision_;
   bool enable_npu_fast_compile_;
   size_t num_of_threads_;
+  std::string load_config_;
   std::string cache_dir_;
   std::string model_priority_;
   int num_streams_;
@@ -55,7 +55,7 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
 };
 
 std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
-  OpenVINOExecutionProviderInfo info(device_type_, precision_, enable_npu_fast_compile_, num_of_threads_,
+  OpenVINOExecutionProviderInfo info(device_type_, precision_, enable_npu_fast_compile_, num_of_threads_, load_config_,
                                      cache_dir_, model_priority_, num_streams_, context_, enable_opencl_throttling_,
                                      disable_dynamic_shapes_, export_ep_ctx_blob_, enable_qdq_optimizer_,
                                      disable_cpu_fallback_,
@@ -90,10 +90,11 @@ struct OpenVINO_Provider : Provider {
                                              // speeds up the model's compilation to NPU device specific format.
     int num_of_threads = 0;                  // [num_of_threads]: Overrides the accelerator default value of number of
                                              //  threads with this value at runtime.
+    std::string load_config = "";            // Path to JSON file to load custom OV parameters.
     std::string cache_dir = "";              // [cache_dir]: specify the path to
                                              // dump and load the blobs for the model caching/kernel caching (GPU)
                                              // feature. If blob files are already present, it will be directly loaded.
-    const char* model_priority = "DEFAULT";  // High-level OpenVINO model priority hint
+    std::string model_priority = "DEFAULT";  // High-level OpenVINO model priority hint
                                              // Defines what model should be provided with more performant
                                              // bounded resource first
     int num_streams = 1;                     // [num_streams]: Option that specifies the number of parallel inference
@@ -183,6 +184,10 @@ struct OpenVINO_Provider : Provider {
 
     if (provider_options_map.find("cache_dir") != provider_options_map.end()) {
       cache_dir = provider_options_map.at("cache_dir");
+    }
+
+    if (provider_options_map.find("load_config") != provider_options_map.end()) {
+      load_config = provider_options_map.at("load_config");
     }
 
     if (provider_options_map.find("context") != provider_options_map.end()) {
@@ -319,11 +324,12 @@ struct OpenVINO_Provider : Provider {
       }
     }
 
-    return std::make_shared<OpenVINOProviderFactory>(const_cast<char*>(device_type.c_str()),
-                                                     const_cast<char*>(precision.c_str()),
+    return std::make_shared<OpenVINOProviderFactory>(device_type,
+                                                     precision,
                                                      enable_npu_fast_compile,
                                                      num_of_threads,
-                                                     const_cast<char*>(cache_dir.c_str()),
+                                                     load_config,
+                                                     cache_dir,
                                                      model_priority,
                                                      num_streams,
                                                      context,

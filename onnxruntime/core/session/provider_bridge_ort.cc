@@ -1810,6 +1810,7 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
   // Add new provider option below
   ov_options_converted_map["num_streams"] = "1";
   ov_options_converted_map["export_ep_ctx_blob"] = "false";
+  ov_options_converted_map["load_config"] = "";
   ov_options_converted_map["model_priority"] = "DEFAULT";
   ov_options_converted_map["enable_qdq_optimizer"] = "false";
   return ov_options_converted_map;
@@ -2104,7 +2105,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_MIGraphX, _In
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO, _In_ OrtSessionOptions* options, _In_ const OrtOpenVINOProviderOptions* provider_options) {
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO, _In_ OrtSessionOptions* options,
+                    _In_ const OrtOpenVINOProviderOptions* provider_options) {
   API_IMPL_BEGIN
   auto factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(provider_options);
   if (!factory) {
