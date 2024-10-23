@@ -502,6 +502,12 @@ void BackendManager::Compute(OrtKernelContext* context) {
 
     dynamic_backend->Infer(context);
   } else {
+    if (dynamic_workload_type == "EFFICIENT") {
+      auto ov_execution_network = concrete_backend_->GetOVCompiledModel();
+      ov_execution_network.set_property({{"WORKLOAD_TYPE", "EFFICIENT"}});
+      LOGS_DEFAULT(VERBOSE) << "[OpenVINO-EP]" <<" OV WORKLOAD_TYPE property is set to EFFICIENT mode for OV inference";
+
+    }
     concrete_backend_->Infer(context);
   }
 #ifdef OPENVINO_FIL_ENABLED
