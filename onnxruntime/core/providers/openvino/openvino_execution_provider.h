@@ -58,7 +58,7 @@ static std::vector<std::string> parseDevices(const std::string& device_string,
     print_build_options();
     ORT_THROW("Invalid device string: " + device_string);
   }
-  std::set<std::string> dev_options = {"CPU", "GPU", "NPU"};
+  std::set<std::string> dev_options = {"CPU", "GPU", "NPU", "GPU.1", "GPU.0"};
 
   for (auto& device : available_devices) {
     if (dev_options.find(device) == dev_options.end()) {
