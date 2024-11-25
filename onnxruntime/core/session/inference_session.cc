@@ -1720,6 +1720,31 @@ common::Status InferenceSession::Initialize() {
 
     // Verify that there are no external initializers in the graph if external data is disabled.
     onnxruntime::Graph& graph = model_->MainGraph();
+
+#ifdef USE_OPENVINO
+    /// Move initializers from the MainGraph to subgraphs
+    std::unordered_set<std::string> initializer_names_to_preserve;
+    for (auto& node: graph.Nodes()) {
+
+      // Preserve implicitInputDefs in the subgraphs
+      for (auto& def : node.ImplicitInputDefs())
+        initializer_names_to_preserve.insert(def->Name());
+
+      for(auto& entry: node.GetAttributeNameToMutableSubgraphMap()) {
+        Graph *subgraph = entry.second;
+
+        for(const auto& parent_graph_initializer: graph.GetAllInitializedTensors()) {
+          if (initializer_names_to_preserve.find(parent_graph_initializer.first) != initializer_names_to_preserve.cend())
+            subgraph->AddInitializedTensor(*parent_graph_initializer.second);
+      }
+    }
+  }
+
+  // Now remove those initializers from the MainGraph
+  for(auto& name: initializer_names_to_preserve)
+    graph.RemoveInitializedTensor(name);
+#endif
+
 #ifdef DISABLE_EXTERNAL_INITIALIZERS
     const InitializedTensorSet& initializers = graph.GetAllInitializedTensors();
     for (const auto& it : initializers) {
