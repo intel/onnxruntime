@@ -48,6 +48,16 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
   // Set the inference_num_threads property of the CPU
   SetNumThreads(device_config);
 
+  auto npuw_status =
+      std::any_of(device_config.begin(), device_config.end(), [&](const std::pair<std::string, ov::Any>& pair) {
+        return (pair.first.find("NPU_USE_NPUW") != std::string::npos) && (pair.second.is<std::string>()) &&
+               (pair.second.as<std::string>() == "YES");
+      });
+
+  if (npuw_status) {
+    LOGS_DEFAULT(INFO) << log_tag << "NPUW Enabled during compilation";
+  }
+
   try {
     std::string dev_prec = global_context.device_type + "_" + global_context_.precision_str;
 
@@ -183,6 +193,33 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
   if (!global_context_.load_config.empty()) {
     const std::map<std::string, ov::AnyMap>& target_config = global_context_.load_config;
 
+    if (global_context_.device_type.find("NPU") != std::string::npos) {
+      auto npuw_config = target_config.at("NPU");
+
+      // Check if "NPU_USE_NPUW" exists and is set to "YES"
+      auto npu_use_npuw_it = npuw_config.find("NPU_USE_NPUW");
+      if (npu_use_npuw_it != npuw_config.end() &&
+          npu_use_npuw_it->second.is<std::string>() &&
+          npu_use_npuw_it->second.as<std::string>() == "YES") {
+        // Only add NPUW-related keys if NPU_USE_NPUW is "YES"
+        for (const auto& [key, value] : npuw_config) {
+          if (key.find("NPUW") != std::string::npos) {
+            if (!value.is<std::string>()) {
+              LOGS_DEFAULT(ERROR) << "Invalid value type for key: " << key;
+              continue;
+            }
+            device_config[key] = value;
+          }
+        }
+      } else {
+        // Check if there are any "NPUW" keys and log a warning
+        if (std::any_of(npuw_config.begin(), npuw_config.end(),
+                        [&](const auto& pair) { return pair.first.find("NPUW") != std::string::npos; })) {
+          LOGS_DEFAULT(WARNING) << "Skipping NPUW-related configurations as NPU_USE_NPUW is not set to 'YES'.";
+        }
+      }
+    }
+
     // Parse device types like "AUTO:CPU,GPU" and extract individual devices
     auto parse_individual_devices = [&](const std::string& device_type) -> std::vector<std::string> {
       std::vector<std::string> devices;
@@ -212,6 +249,9 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
     auto set_target_properties = [&](const std::string& device, const ov::AnyMap& config_options,
                                      const std::vector<ov::PropertyName>& supported_properties) {
       for (const auto& [key, value] : config_options) {
+        if (key.find("NPUW") != std::string::npos) {
+          continue;
+        }
         if (is_supported_and_mutable(key, supported_properties)) {
           global_context_.ie_core.Get().set_property(device, ov::AnyMap{{key, value}});
         } else {
