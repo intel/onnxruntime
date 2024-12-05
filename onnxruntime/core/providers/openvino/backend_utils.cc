@@ -39,7 +39,7 @@ struct static_cast_int64 {
   int64_t operator()(const T1& x) const { return static_cast<int64_t>(x); }
 };
 
-std::shared_ptr<OVNetwork>
+std::shared_ptr<const OVNetwork>
 CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context,
               std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map) {
   if (IsCILogEnabled()) {
