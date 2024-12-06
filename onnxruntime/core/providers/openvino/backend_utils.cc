@@ -39,7 +39,7 @@ struct static_cast_int64 {
   int64_t operator()(const T1& x) const { return static_cast<int64_t>(x); }
 };
 
-std::shared_ptr<OVNetwork>
+std::shared_ptr<const OVNetwork>
 CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context,
               std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map) {
   if (IsCILogEnabled()) {
@@ -47,24 +47,8 @@ CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext
   }
   const std::string model = model_proto.SerializeAsString();
   try {
-    auto cnn_network = global_context.ie_core.ReadModel(model, global_context.onnx_model_path_name);
+    auto ov_model = global_context.ie_core.ReadModel(model, global_context.onnx_model_path_name);
 
-    // Check for Constant Folding
-    if (!global_context.is_wholly_supported_graph) {
-      ov::pass::ConstantFolding pass_const_obj;
-      pass_const_obj.run_on_model(cnn_network);
-      auto& results = const_cast<ov::ResultVector&>(cnn_network.get()->get_results());
-      size_t index = results.size() - 1;
-
-      for (auto it = results.rbegin(); it != results.rend(); ++it) {
-        if (auto const_node =
-                std::dynamic_pointer_cast<ov::op::v0::Constant>((*it)->input_value(0).get_node_shared_ptr())) {
-          const_outputs_map[(*it)->get_friendly_name()] = const_node;
-          results.erase(results.begin() + index);
-        }
-        --index;
-      }
-    }
 #ifndef NDEBUG
     if (IsDebugEnabled()) {
       std::string name = cnn_network->get_friendly_name();
@@ -72,7 +56,7 @@ CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext
       serializer.run_on_model(cnn_network);
     }
 #endif
-    return cnn_network;
+    return ov_model;
   } catch (std::string const& msg) {
     ORT_THROW(msg);
   }
