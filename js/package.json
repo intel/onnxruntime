@@ -20,7 +20,7 @@
     "fs-extra": "^11.1.1",
     "global-agent": "^3.0",
     "jszip": "^3.10.1",
-    "mocha": "^10.2.0",
+    "mocha": "^10.8.2",
     "npmlog": "^7.0.1",
     "prettier": "^3.3.3",
     "terser": "^5.31.0",
