@@ -16,11 +16,21 @@ namespace openvino_ep {
 static const std::string log_tag = "[OpenVINO-EP] ";
 static std::unique_ptr<ov::Core> g_core;
 
+<<<<<<< HEAD
 void OVCore::Initialize() {
   g_core = std::make_unique<ov::Core>();
 }
 
 void OVCore::Teardown() {
+=======
+void OVCore::Initialize()
+{
+  g_core = std::make_unique<ov::Core>();
+}
+
+void OVCore::Teardown()
+{
+>>>>>>> 84fd32549 (Openvino/ep weight sharing (#548))
   g_core.reset();
 }
 
