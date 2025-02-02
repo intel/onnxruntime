@@ -306,13 +306,7 @@ void BasicBackend::EnableCaching(ov::AnyMap& device_config) {
 
   if (!session_context_.cache_dir.empty() && !session_context_.so_context_enable) {
     LOGS_DEFAULT(INFO) << log_tag << "Enables Caching";
-    if (session_context_.device_type.find("AUTO:GPU") != std::string::npos) {
-      std::pair<std::string, ov::Any> device_property;
-      device_property = std::make_pair("CACHE_DIR", session_context_.cache_dir);
-      device_config.emplace(ov::device::properties("GPU", device_property));
-    } else {
-      OVCore::SetCache(session_context_.cache_dir.string());
-    }
+    OVCore::SetCache(session_context_.cache_dir.string());
   }
 }
 
