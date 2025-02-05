@@ -36,7 +36,7 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
   PopulateConfigValue(device_config);
 
   // Enable caching
-  EnableCaching(device_config);
+  EnableCaching();
 
   // Setting OpenCL queue throttling for GPU
   EnableGPUThrottling(device_config);
@@ -300,7 +300,7 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
   }
 }
 
-void BasicBackend::EnableCaching(ov::AnyMap& device_config) {
+void BasicBackend::EnableCaching() {
   // cache_dir argument has no effect when working with an embed-mode EPContext Graph
   if (subgraph_context_.is_ep_ctx_graph) return;
 
