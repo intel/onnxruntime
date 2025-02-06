@@ -36,7 +36,7 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
   PopulateConfigValue(device_config);
 
   // Enable caching
-  EnableCaching(device_config);
+  EnableCaching();
 
   // Setting OpenCL queue throttling for GPU
   EnableGPUThrottling(device_config);
@@ -114,7 +114,7 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
         if (!subgraph_context.has_dynamic_input_shape) {
           delete model_proto.release();
         }
-        ov_model = CreateOVModel(model, session_context_, const_outputs_map_);
+        ov_model = CreateOVModel(std::move(model), session_context_, const_outputs_map_);
       }
       exe_network_ = OVCore::CompileModel(
           ov_model, hw_target, device_config, subgraph_context_.subgraph_name);
@@ -141,7 +141,7 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
       }
     };
   }
-  inferRequestsQueue_ = std::unique_ptr<InferRequestsQueue>(new InferRequestsQueue(exe_network_, num_infer_req, initializer));
+  inferRequestsQueue_ = std::unique_ptr<InferRequestsQueue>(new InferRequestsQueue(exe_network_, num_infer_req, std::move(initializer)));
 }
 
 bool BasicBackend::ValidateSubgraph(std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map) {
@@ -300,19 +300,13 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
   }
 }
 
-void BasicBackend::EnableCaching(ov::AnyMap& device_config) {
+void BasicBackend::EnableCaching() {
   // cache_dir argument has no effect when working with an embed-mode EPContext Graph
   if (subgraph_context_.is_ep_ctx_graph) return;
 
   if (!session_context_.cache_dir.empty() && !session_context_.so_context_enable) {
     LOGS_DEFAULT(INFO) << log_tag << "Enables Caching";
-    if (session_context_.device_type.find("AUTO:GPU") != std::string::npos) {
-      std::pair<std::string, ov::Any> device_property;
-      device_property = std::make_pair("CACHE_DIR", session_context_.cache_dir);
-      device_config.emplace(ov::device::properties("GPU", device_property));
-    } else {
-      OVCore::SetCache(session_context_.cache_dir.string());
-    }
+    OVCore::SetCache(session_context_.cache_dir.string());
   }
 }
 

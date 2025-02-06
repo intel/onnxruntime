@@ -74,6 +74,7 @@ std::string ParseDeviceType(const ProviderOptions& provider_options, std::string
           "Select from 'CPU', 'GPU', 'NPU', 'GPU.x' where x = 0,1,2 and so on or from"
           " HETERO/MULTI/AUTO options available. \n");
     }
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Choosing Device: " << selected_device;
     return selected_device;
   } else {
     std::string default_device;
@@ -160,7 +161,7 @@ void ParseProviderOptions([[maybe_unused]] ProviderInfo& result, [[maybe_unused]
 
 struct OpenVINOProviderFactory : IExecutionProviderFactory {
   OpenVINOProviderFactory(ProviderInfo provider_info, SharedContext& shared_context)
-      : provider_info_(provider_info), shared_context_(shared_context) {}
+      : provider_info_(std::move(provider_info)), shared_context_(shared_context) {}
 
   ~OpenVINOProviderFactory() override {}
 
@@ -333,7 +334,7 @@ struct OpenVINO_Provider : Provider {
     if (pi.so_share_ep_contexts) {
       ov::AnyMap map;
       map["NPU_COMPILATION_MODE_PARAMS"] = "enable-wd-blockarg-input=true compute-layers-with-higher-precision=Sqrt,Power,ReduceSum";
-      pi.load_config["NPU"] = map;
+      pi.load_config["NPU"] = std::move(map);
     }
 
     return std::make_shared<OpenVINOProviderFactory>(pi, shared_context_);
