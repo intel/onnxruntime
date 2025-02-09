@@ -11,6 +11,8 @@
 #include <memory>
 #include "core/common/common.h"
 #include "core/providers/openvino/ov_interface.h"
+#include "core/providers/shared_library/provider_api.h"
+
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -66,6 +68,7 @@ class SharedContext : public WeakSingleton<SharedContext> {
 };
 
 using config_t = std::map<std::string, ov::AnyMap>;
+using shape_t = std::map<std::string, ov::PartialShape>;
 
 struct ProviderInfo {
   std::string device_type{""};             // [device_type]: Overrides the accelerator hardware type and
@@ -79,6 +82,7 @@ struct ProviderInfo {
   uint32_t num_of_threads{0};              // [num_of_threads]: Overrides the accelerator default value of
                                            // number of threads with this value at runtime.
   config_t load_config{};                  // JSON config map to load custom OV parameters.
+  shape_t shape{};                         // Used for reshaping ov tensors to a particular lower and upper bound
   fs::path cache_dir{""};                  // [cache_dir]: specify the path to
                                            // dump and load the blobs for the model caching/kernel caching
                                            // (GPU) feature. If blob files are already present,

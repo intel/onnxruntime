@@ -5,6 +5,95 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
+
+shape_t OpenVINOParserUtils::ParseInputShape(const std::string& reshape_input_definition) {
+  shape_t parsed_shape_map;
+  std::string unparsed_definition = reshape_input_definition;
+
+  while (!unparsed_definition.empty()) {
+    // Find the next shape definition brakcet
+    auto shape_start_bracket = unparsed_definition.find_first_of('[');
+    if (shape_start_bracket == std::string::npos) {
+      ORT_THROW("Malformed input: missing opening bracket '[' in: " + unparsed_definition);
+    }
+    // Extract the tensor name
+    std::string tensor_name = unparsed_definition.substr(0, shape_start_bracket);
+    // Remove the leading/trailing whitespaces
+    tensor_name.erase(0, tensor_name.find_first_not_of("\t"));
+    tensor_name.erase(tensor_name.find_last_not_of("\t") + 1);
+
+    if (tensor_name.empty()) {
+      ORT_THROW("Empty tensor name provided in rehsape_input parameter");
+    }
+
+    // Closing bracket for current shape definition
+    auto shape_end_bracket = unparsed_definition.find_first_of(']', shape_start_bracket);
+
+    if (shape_end_bracket == std::string::npos || shape_end_bracket < shape_start_bracket) {
+      ORT_THROW("Missing closing bracket ']' for tensor: " + tensor_name);
+    }
+
+    // Extract shape dimensions string
+    std::string shape_dimension_str = unparsed_definition.substr(shape_start_bracket + 1,
+                                                                 shape_end_bracket - shape_start_bracket - 1);
+    std::vector<ov::Dimension> dimension_values;
+    std::stringstream dimension_stream(shape_dimension_str);
+    std::string dimension_token;
+
+    while (std::getline(dimension_stream, dimension_token, ',')) {
+      // Remove leading/trailing whitespaces
+      dimension_token.erase(0, dimension_token.find_first_not_of("\t"));
+      dimension_token.erase(dimension_token.find_last_not_of("\t") + 1);
+
+      // Check if dimension is a range
+      size_t range_separator_pos = dimension_token.find("..");
+      if (range_separator_pos != std::string::npos) {
+        std::string range_start_str = dimension_token.substr(0, range_separator_pos);
+        std::string range_end_str = dimension_token.substr(range_separator_pos + 2);
+
+        // Remove leading/trailing spaced
+        range_start_str.erase(0, range_start_str.find_first_not_of("\t"));
+        range_start_str.erase(range_start_str.find_last_not_of("\t") + 1);
+        range_end_str.erase(0, range_end_str.find_first_not_of("\t"));
+        range_end_str.erase(range_end_str.find_last_not_of("\t") + 1);
+
+        if (range_start_str.empty() || range_end_str.empty() ||
+            !std::all_of(range_start_str.begin(), range_start_str.end(), ::isdigit) ||
+            !std::all_of(range_end_str.begin(), range_end_str.end(), ::isdigit)) {
+          ORT_THROW("Invalid dimension range format: " + dimension_token + " for tensor: " + tensor_name);
+        }
+
+        int range_start = std::stoi(range_start_str);
+        int range_end = std::stoi(range_end_str);
+
+        if (range_start > range_end) {
+          ORT_THROW("Invalid dimension range (start > end) for tensor: " + tensor_name);
+        }
+
+        dimension_values.emplace_back(ov::Dimension(range_start, range_end));
+      } else {
+        // Handle single dimension value
+        if (dimension_token.empty() ||
+            !std::all_of(dimension_token.begin(), dimension_token.end(), ::isdigit)) {
+          ORT_THROW("Invalid dimension value: " + dimension_token + " for tensor: " + tensor_name);
+        }
+        dimension_values.emplace_back(std::stoi(dimension_token));
+      }
+    }
+
+    // Store parsed shape in result map
+    parsed_shape_map[tensor_name] = ov::PartialShape(dimension_values);
+    // Update reminaing unparsed string
+    unparsed_definition = unparsed_definition.substr(shape_end_bracket + 1);
+    if (!unparsed_definition.empty() && unparsed_definition.front() == ',') {
+      unparsed_definition = unparsed_definition.substr(1);
+    }
+    // Remove leading whitespaces
+    unparsed_definition.erase(0, unparsed_definition.find_first_not_of("\t"));
+  }
+  return parsed_shape_map;
+}
+
 std::string OpenVINOParserUtils::ParsePrecision(const ProviderOptions& provider_options,
                                                 std::string& device_type,
                                                 const std::string& option_name) {
