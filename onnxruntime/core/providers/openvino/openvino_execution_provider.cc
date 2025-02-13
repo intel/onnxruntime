@@ -93,21 +93,30 @@ common::Status OpenVINOExecutionProvider::Compile(
     std::vector<NodeComputeInfo>& node_compute_funcs) {
   auto& logger = *GetLogger();
   Status status = Status::OK();
-
+  auto &sb = shared_context_.shared_weights.shared_bin_file;
   if (!fused_nodes.empty()) {
     // Assume these properties are constant for all the model subgraphs, otherwise move to SubGraphContext
     const auto& graph_body_viewer_0 = fused_nodes[0].filtered_graph.get();
     session_context_.onnx_model_path_name = graph_body_viewer_0.ModelPath().string();
     session_context_.onnx_opset_version =
         graph_body_viewer_0.DomainToVersionMap().at(kOnnxDomain);
+
+    if (session_context_.so_share_ep_contexts){
+      if(session_context_.so_context_file_path.empty()) {
+        sb.shared_bin_filename = session_context_.onnx_model_path_name.parent_path() / "metadata.bin";
+      } else {
+        sb.shared_bin_filename = session_context_.so_context_file_path.parent_path() / "metadata.bin";
+      }
+      sb.openBinFile(sb.shared_bin_filename);
+    }
   }
+
 
   // Temporary code to read metadata before it moves to the .bin
   auto& metadata = shared_context_->shared_weights.metadata;
   if (session_context_.so_share_ep_contexts && metadata.empty()) {
     // Metadata is always read from model location, this could be a source or epctx model
-    fs::path metadata_filename = session_context_.onnx_model_path_name.parent_path() / "metadata.bin";
-    std::ifstream file(metadata_filename, std::ios::binary);
+    std::ifstream file(sb.shared_bin_filename, std::ios::binary);
     if (file) {
       file >> metadata;
     }
@@ -120,6 +129,18 @@ common::Status OpenVINOExecutionProvider::Compile(
     BackendManager& backend_manager;
   };
 
+  // onnxruntime::openvino_ep::SharedContext::SharedWeights(shared_bin_filename);
+  // onnxruntime::openvino_ep::SharedContext::SharedWeights::Header(1,0);
+  if (!shared_context_.shared_weights.header_) {
+    shared_context_.shared_weights.header_ = std::make_unique<SharedContext::SharedWeights::Header>(1,2);
+  }
+  if(sb.bin_file_.is_open()) {
+    sb.bin_file_ << shared_context_.shared_weights.header_->bin_version;
+    sb.bin_file_ << std::endl;
+    sb.bin_file_ << shared_context_.shared_weights.header_->footer_offset;
+  }
+  //  ofs.tellp();
+  std::cout << "Current offset after header = " << sb.bin_file_.tellp() << std::endl;
   for (const FusedNodeAndGraph& fused_node_graph : fused_nodes) {
     const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
     const Node& fused_node = fused_node_graph.fused_node;

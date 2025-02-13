@@ -215,7 +215,21 @@ Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVie
   // If not embed_mode, dump the blob here and only pass on the path to the blob
   std::string model_blob_str;
   auto compiled_model = concrete_backend_->GetOVCompiledModel();
-  if (session_context_.so_context_embed_mode) {  // Internal blob
+  if (session_context_.so_share_ep_contexts){
+    std::ostringstream model_blob_stream;
+    compiled_model.export_model(model_blob_stream);
+
+    // std::ofstream file(metadata_filename, std::ios::app| std::ios::binary);
+    // std::cout << " write to metadata bin - " << metadata_filename << std::endl;
+    auto& bin_file = shared_context_.shared_weights.shared_bin_file.bin_file_;
+    if (bin_file.is_open()) {
+      bin_file << model_blob_stream.str();
+    }
+    std::cout << "Current offset after "<< subgraph_context_.subgraph_name << "  = " << bin_file.tellp() << std::endl;
+
+    model_blob_str = shared_context_.shared_weights.shared_bin_file.shared_bin_filename.filename().string();
+  } else if (session_context_.so_context_embed_mode) {
+    // Internal blob
     std::ostringstream model_blob_stream;
     compiled_model.export_model(model_blob_stream);
     model_blob_str = std::move(model_blob_stream).str();
