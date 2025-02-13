@@ -69,6 +69,30 @@ std::ostream& operator<<(std::ostream& stream, const SharedContext::SharedWeight
   return stream;
 }
 
+std::ostream& operator<<(std::ostream& stream,
+                         const SharedContext::SharedWeights::SubgraphMetadata::Map& subgraph_metadata) {
+  try {
+    stream << subgraph_metadata.size();
+
+    // Write each key-value pair
+    // Put elements in separate lines to facilitate reading
+    for (const auto& [key, value] : subgraph_metadata) {
+      stream << std::endl
+             << key.name;
+      stream << std::endl
+             << value.epctx_offset;
+      stream << std::endl
+             << value.epctx_length;
+    }
+  } catch (const Exception& e) {
+    ORT_THROW("Error: Failed to write subgraph map data.", e.what());
+  } catch (...) {
+    ORT_THROW("Error: Failed to write subgraph map data.");
+  }
+  ORT_ENFORCE(stream.good(), "Error: Failed to write subgraph map data.");
+  return stream;
+}
+
 std::istream& operator>>(std::istream& stream, SharedContext::SharedWeights::Metadata::Map& metadata) {
   size_t map_size{0};
   try {
@@ -114,6 +138,30 @@ std::istream& operator>>(std::istream& stream, SharedContext::SharedWeights::Met
   }
 
   ORT_ENFORCE(metadata.size() == map_size, "Error: Inconsistent map data.");
+
+  return stream;
+}
+std::istream& operator>>(std::istream& stream, SharedContext::SharedWeights::SubgraphMetadata::Map& subgraph_metadata) {
+  size_t map_size{0};
+  try {
+    stream >> map_size;
+
+    while (!stream.eof()) {
+      SharedContext::SharedWeights::SubgraphMetadata::Key key;
+      SharedContext::SharedWeights::SubgraphMetadata::Value value;
+      stream >> key.name;
+      stream >> value.epctx_offset;
+      stream >> value.epctx_length;
+
+      subgraph_metadata.emplace(key, value);
+    }
+  } catch (const Exception& e) {
+    ORT_THROW("Error: Failed to read map data.", e.what());
+  } catch (...) {
+    ORT_THROW("Error: Failed to read map data.");
+  }
+
+  ORT_ENFORCE(subgraph_metadata.size() == map_size, "Error: Inconsistent map data.");
 
   return stream;
 }
