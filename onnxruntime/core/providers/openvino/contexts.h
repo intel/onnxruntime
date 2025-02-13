@@ -19,6 +19,22 @@ namespace fs = std::filesystem;
 
 struct SharedContext {
   struct SharedWeights {
+    struct Header {
+      uint32_t bin_version=1;
+      uint32_t footer_offset;
+      Header(uint32_t bin_in, uint32_t footer_in) :
+        bin_version(bin_in), footer_offset(footer_in){}
+    };
+    struct Footer {
+      uint32_t subgraph_offset;
+      uint32_t subgraph_length;
+      uint32_t metadata_offset;
+      uint32_t metadata_length;
+      Footer(uint32_t subgraph_offset_in, uint32_t subgraph_length_in,
+             uint32_t metadata_offset_in, uint32_t metadata_length_in) :
+        subgraph_offset(subgraph_offset_in), subgraph_length(subgraph_length_in),
+        metadata_offset(metadata_offset_in), metadata_length(metadata_length_in) {}
+    };
     struct Metadata {
       struct Key {
         std::string name;
@@ -31,8 +47,8 @@ struct SharedContext {
       };
       struct Value {
         std::string location;
-        unsigned int data_offset;
-        unsigned int size;
+        uint32_t data_offset;
+        uint32_t size;
         std::vector<size_t> dimensions;
         std::int32_t element_type;
         std::shared_ptr<ov::Tensor> tensor;
@@ -40,6 +56,25 @@ struct SharedContext {
       using Map = std::unordered_map<Key, Value, Hash>;
       friend std::ostream& operator<<(std::ostream& right, const Metadata::Map& metadata);
       friend std::istream& operator>>(std::istream& right, Metadata::Map& metadata);
+    };
+
+    struct SubgraphMetadata {
+      struct Key {
+        std::string name;
+        bool operator==(const Key&) const = default;
+      };
+      struct Hash {
+        std::size_t operator()(const Key& key) const noexcept {
+          return std::hash<std::string>()(key.name);
+        }
+      };
+      struct Value {
+        uint32_t epctx_offset;
+        uint32_t epctx_length;
+      };
+      using Map = std::unordered_map<Key, Value, Hash>;
+      friend std::ostream& operator<<(std::ostream& right, const SubgraphMetadata::Map& subgraph_metadata);
+      friend std::istream& operator>>(std::istream& right, SubgraphMetadata::Map& subgraph_metadata);
     };
 
     struct WeightsFile {
@@ -54,10 +89,38 @@ struct SharedContext {
       size_t weights_size_;
     };
 
+    struct SharedBinFile {
+      // ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SharedBinFile);
+      // SharedBinFile() = delete;
+      // SharedBinFile(fs::path shared_bin_filename) :
+      // bin_file_(shared_bin_filename, std::ios::out | std::ios::app| std::ios::binary) {
+      //   if(bin_file_.is_open())
+      //     std::cout << " Bin file opened " << std::endl;
+      // }
+      fs::path shared_bin_filename;
+      std::ofstream bin_file_;
+
+      SharedBinFile() = default;  // Default constructor
+      ~SharedBinFile() = default; // Prevent closing the file automatically
+
+      void openBinFile(fs::path shared_bin_filename) {
+        if (!bin_file_.is_open()) {  // Prevent reopening
+          bin_file_.open(shared_bin_filename, std::ios::out | std::ios::app | std::ios::binary);
+          if (!bin_file_) {
+              throw std::runtime_error("Failed to open log file!");
+          }
+        }
+      }
+    }shared_bin_file;
+
     fs::path external_weight_filename;
     std::unique_ptr<WeightsFile> mapped_weights;
+    std::unique_ptr<Header> header_;
+    std::unique_ptr<Footer> footer_;
+    // std::unique_ptr<SharedBinFile> shared_bin_file;
     Metadata::Map metadata;
-  } shared_weights;
+    SubgraphMetadata::Map subgraph_metadata;
+  }shared_weights;
 };
 
 using config_t = std::map<std::string, ov::AnyMap>;
