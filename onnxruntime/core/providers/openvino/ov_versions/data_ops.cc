@@ -750,14 +750,27 @@ bool DataOps::node_is_supported(const NodeIndex node_idx, bool& has_external_wei
         if (op_is_supported(optype, no_dimension_supported_)) {
           return;
         }
-        if (npu_qdq_optimizer_enabled_) {
-          // Pad Op with DQ inputs will be optimized out in the qdq optimization pass, so mark those no dim Pad ops
-          // supported here
-          if (optype == "Pad") {
-            for (Node::NodeConstIterator it_dq = node->InputNodesBegin(); it_dq != node->InputNodesEnd(); ++it_dq) {
-              const auto& DQ = &*it_dq;
-              if (DQ->OpType() == "DequantizeLinear") return;
+        if (optype == "Pad") {
+          bool is_quantized = false;
+          // Detect a quantized model by checking for a DequantizeLinear input
+          for (Node::NodeConstIterator it_dq = node->InputNodesBegin(); it_dq != node->InputNodesEnd(); ++it_dq) {
+            const auto& DQ = &*it_dq;
+            if (DQ->OpType() == "DequantizeLinear") {
+              is_quantized = true;
+              break;
             }
+          }
+          if (is_quantized) {
+            // For quantized Pad ops when the QDQ optimizer is disabled, 
+            // bypass the unsupported dim check to ensure 'pad_value' is constant.
+            if (!npu_qdq_optimizer_enabled_) {
+            #ifndef NDEBUG
+              if (openvino_ep::backend_utils::IsDebugEnabled()) {
+                std::cout << "QDQ optimizer disabled; quantized Pad op detected (DequantizeLinear present), so mark those no dim as supported by bypassing the dim check" << std::endl;
+              }
+            #endif
+            }
+            return;
           }
         }
         has_unsupported_dimension = true;
