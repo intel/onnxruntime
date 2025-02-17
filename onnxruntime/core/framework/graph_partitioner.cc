@@ -653,7 +653,11 @@ static Status EpContextFilePathCheck(const std::string& ep_context_path,
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "context_file_path should not point to a folder.");
     }
   } else if (!model_path.empty()) {
+#ifdef USE_OPENVINO
+    context_cache_path = (model_path.parent_path() / model_path.stem()).native() + ORT_TSTR("_ctx.onnx");
+#else
     context_cache_path = model_path.native() + ORT_TSTR("_ctx.onnx");
+#endif
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Both ep_context_path and model_path are empty.");
   }
@@ -696,7 +700,11 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
   if (!ep_context_path.empty()) {
     context_cache_path = ep_context_path;
   } else if (!model_path.empty()) {
+#ifdef USE_OPENVINO
+    context_cache_path = (model_path.parent_path() / model_path.stem()).native() + ORT_TSTR("_ctx.onnx");
+#else
     context_cache_path = model_path.native() + ORT_TSTR("_ctx.onnx");
+#endif
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Both ep_context_path and model_path are empty");
   }
