@@ -1,21 +1,36 @@
 name : Internal CI
 
 on:
-  pull_request:
+  pull_request_target:
     branches:
       - '**'  # Triggers on a PR to any Branch
+
+permissions:
+  contents: read
+  pull-requests: read
 
 jobs:
   build:
 
+    if: github.event.pull_request.draft == false
     runs-on: [self-hosted, Linux, X64]   # Runs on a Lunar lake
     env:
       BUILD_SOURCESDIRECTORY: ${{ github.workspace }}
       BUILD_BINARIESDIRECTORY: ${{ github.workspace }}/build
+
     steps:
-    - uses: actions/checkout@v4
+    - name: Check PR Author Authorization
+      run: |
+        if [[ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]]; then
+          echo "PR is from a fork: ${{ github.event.pull_request.head.repo.full_name }}"
+        fi
+
+    - name: Checkout PR Branch
+      uses: actions/checkout@v4
       with:
-        ref: ${{ github.event.pull_request.head.ref }}  # checkout the pr branch
+        ref: ${{ github.event.pull_request.head.ref }}
+        repository: ${{ github.event.pull_request.head.repo.full_name }}
+        fetch-depth: 1  # checkout the pr branch
 
     - name: Set up Python
       uses: actions/setup-python@v4
