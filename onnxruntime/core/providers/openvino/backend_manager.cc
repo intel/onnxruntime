@@ -101,7 +101,7 @@ BackendManager::BackendManager(SessionContext& session_context,
   }
 
   if (ModelHasSymbolicInputDims(subgraph)) {
-    subgraph_context_.has_dynamic_input_shape = true;
+    subgraph_context_.has_dynamic_input_shape  = true;
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims";
     if ((session_context_.device_type.find("CPU") != std::string::npos ||
          session_context_.device_type.find("GPU") != std::string::npos) &&
