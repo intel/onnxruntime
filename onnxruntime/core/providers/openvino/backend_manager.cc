@@ -215,16 +215,27 @@ Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVie
   std::string model_blob_str;
   auto compiled_model = concrete_backend_->GetOVCompiledModel();
   if (session_context_.so_share_ep_contexts){
-    std::ostringstream model_blob_stream;
-    compiled_model.export_model(model_blob_stream);
+    // std::ostringstream model_blob_stream;
+    // compiled_model.export_model(model_blob_stream);
 
     // std::ofstream file(metadata_filename, std::ios::app| std::ios::binary);
     // std::cout << " write to metadata bin - " << metadata_filename << std::endl;
+    auto& subgraph_metadata = shared_context_.shared_weights.subgraph_metadata;
+
+    sw::SubgraphMetadata::Map::key_type key{subgraph_context_.subgraph_name};
+    sw::SubgraphMetadata::Map::mapped_type value{};
+
     auto& bin_file = shared_context_.shared_weights.shared_bin_file.bin_file_;
     if (bin_file.is_open()) {
-      bin_file << model_blob_stream.str();
+      // std::cout << "Current offset before "<< subgraph_context_.subgraph_name << "  = " << bin_file.tellp() << std::endl;
+      value.epctx_offset = bin_file.tellp();
+      // bin_file << model_blob_stream.str();
+      compiled_model.export_model(bin_file);
+      // std::cout << "Current offset after "<< subgraph_context_.subgraph_name << "  = " << bin_file.tellp() << std::endl;
+      value.epctx_length = static_cast<size_t>(static_cast<std::streamoff>(bin_file.tellp()) - value.epctx_offset);
+      // std::cout << "Key = " << key.name << " Offset = " << value.epctx_offset << " , length = " << value.epctx_length << std::endl;
+      subgraph_metadata.emplace(key, std::move(value));
     }
-    std::cout << "Current offset after "<< subgraph_context_.subgraph_name << "  = " << bin_file.tellp() << std::endl;
 
     model_blob_str = shared_context_.shared_weights.shared_bin_file.shared_bin_filename.filename().string();
   } else if (session_context_.so_context_embed_mode) {
