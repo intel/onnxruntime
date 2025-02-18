@@ -27,20 +27,15 @@ class SharedContext : public WeakSingleton<SharedContext> {
   struct SharedWeights {
     struct Header {
       uint32_t bin_version=1;
-      uint32_t footer_offset;
-      Header(uint32_t bin_in, uint32_t footer_in) :
-        bin_version(bin_in), footer_offset(footer_in){}
-    };
+      long footer_offset=0;
+    }header_;
     struct Footer {
-      uint32_t subgraph_offset;
-      uint32_t subgraph_length;
-      uint32_t metadata_offset;
-      uint32_t metadata_length;
-      Footer(uint32_t subgraph_offset_in, uint32_t subgraph_length_in,
-             uint32_t metadata_offset_in, uint32_t metadata_length_in) :
-        subgraph_offset(subgraph_offset_in), subgraph_length(subgraph_length_in),
-        metadata_offset(metadata_offset_in), metadata_length(metadata_length_in) {}
-    };
+      long subgraph_offset;
+      size_t subgraph_length;
+      long metadata_offset;
+      size_t metadata_length;
+    }footer_;
+
     struct Metadata {
       struct Key {
         std::string name;
@@ -60,8 +55,10 @@ class SharedContext : public WeakSingleton<SharedContext> {
         std::shared_ptr<ov::Tensor> tensor;
       };
       using Map = std::unordered_map<Key, Value, Hash>;
-      friend std::ostream& operator<<(std::ostream& right, const Metadata::Map& metadata);
-      friend std::istream& operator>>(std::istream& right, Metadata::Map& metadata);
+      void writeMetadataToBinaryFile(SharedContext& shared_context, const Metadata::Map& metadata);
+      void readMetadataFromBinaryFile(SharedContext& shared_context, Metadata::Map& metadata);
+      // friend std::ostream& operator<<(std::ostream& right, const Metadata::Map& metadata);
+      // friend std::istream& operator>>(std::istream& right, Metadata::Map& metadata);
     };
 
     struct SubgraphMetadata {
@@ -75,12 +72,16 @@ class SharedContext : public WeakSingleton<SharedContext> {
         }
       };
       struct Value {
-        uint32_t epctx_offset;
-        uint32_t epctx_length;
+        long epctx_offset;
+        size_t epctx_length;
       };
       using Map = std::unordered_map<Key, Value, Hash>;
-      friend std::ostream& operator<<(std::ostream& right, const SubgraphMetadata::Map& subgraph_metadata);
-      friend std::istream& operator>>(std::istream& right, SubgraphMetadata::Map& subgraph_metadata);
+      void writeSubgraphDataToBinaryFile(SharedContext& shared_context,
+                                         const SubgraphMetadata::Map& subgraph_metadata);
+      void readSubgraphDataFromBinaryFile(SharedContext& shared_context,
+                                         SubgraphMetadata::Map& subgraph_metadata);
+      // friend std::ostream& operator<<(std::ostream& right, const SubgraphMetadata::Map& subgraph_metadata);
+      // friend std::istream& operator>>(std::istream& right, SubgraphMetadata::Map& subgraph_metadata);
     };
 
     struct WeightsFile {
@@ -96,22 +97,49 @@ class SharedContext : public WeakSingleton<SharedContext> {
     };
 
     struct SharedBinFile {
-      // ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SharedBinFile);
-      // SharedBinFile() = delete;
-      // SharedBinFile(fs::path shared_bin_filename) :
-      // bin_file_(shared_bin_filename, std::ios::out | std::ios::app| std::ios::binary) {
-      //   if(bin_file_.is_open())
-      //     std::cout << " Bin file opened " << std::endl;
-      // }
       fs::path shared_bin_filename;
-      std::ofstream bin_file_;
+      std::fstream bin_file_;
+      size_t bin_size_;
 
       SharedBinFile() = default;  // Default constructor
-      ~SharedBinFile() = default; // Prevent closing the file automatically
+      ~SharedBinFile() {
+        if (bin_file_.is_open()) {
+            bin_file_.close();  // Close file when object is destroyed
+        }
+      }
 
-      void openBinFile(fs::path shared_bin_filename) {
+      void openBinFile(const fs::path shared_bin_filename) {
+      // Check if the file exists before trying to open
+        if (!fs::exists(shared_bin_filename)) {
+            std::cerr << "Error: The file does not exist at path: " << shared_bin_filename << std::endl;
+            std::ofstream createFile(shared_bin_filename, std::ios::binary);  // Create an empty binary file
+            if (!createFile) {
+                throw std::runtime_error("Failed to create the file!");
+            }
+            createFile.close();
+            // throw std::runtime_error("Failed to open log file! File does not exist.");
+        }
+
+        // Check if the file is accessible for reading and writing
+        fs::perms file_perms = fs::status(shared_bin_filename).permissions();
+
+        if ((file_perms & fs::perms::owner_read) == fs::perms::none ||
+            (file_perms & fs::perms::owner_write) == fs::perms::none) {
+            std::cerr << "Error: Insufficient permissions for file: " << shared_bin_filename << std::endl;
+            throw std::runtime_error("Failed to open log file! Insufficient permissions.");
+        }
+
+
         if (!bin_file_.is_open()) {  // Prevent reopening
-          bin_file_.open(shared_bin_filename, std::ios::out | std::ios::app | std::ios::binary);
+          std::cout << " Bin file is not open " << std::endl;
+          bin_file_.open(shared_bin_filename, std::ios::in | std::ios::out | std::ios::binary);
+          std::cout << " bin file opened " << std::endl;
+          bin_size_ = bin_file_.seekg(0, std::ios::end).tellg();
+
+          std::cout << " bin size = " << bin_size_ << std::endl;
+          bin_file_.seekg(0, std::ios::beg);  // Reset to the beginning of the file
+
+
           if (!bin_file_) {
               throw std::runtime_error("Failed to open log file!");
           }
@@ -121,10 +149,9 @@ class SharedContext : public WeakSingleton<SharedContext> {
 
     fs::path external_weight_filename;
     std::unique_ptr<WeightsFile> mapped_weights;
-    std::unique_ptr<Header> header_;
-    std::unique_ptr<Footer> footer_;
-    // std::unique_ptr<SharedBinFile> shared_bin_file;
+    Metadata metadata_;
     Metadata::Map metadata;
+    SubgraphMetadata subgraph_metadata_;
     SubgraphMetadata::Map subgraph_metadata;
   }shared_weights;
 };
