@@ -115,6 +115,7 @@ class OVInferRequest {
   OVTensorPtr GetTensor(const std::string& name);
   std::string GetInputTensorName(uint32_t index);
   void SetTensor(const std::string& name, OVTensorPtr& blob);
+  OVTensor GetOutputTensor(const int& output_idx);
   void StartAsync();
   void Infer();
   void WaitRequest();
