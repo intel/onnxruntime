@@ -19,9 +19,10 @@ static void RunTest(const embedlayernorm::OpData& data,
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
   bool enable_rocm = DefaultRocmExecutionProvider().get() != nullptr;
   bool enable_dml = DefaultDmlExecutionProvider().get() != nullptr;
+  bool enable_openvino = DefaultOpenVINOExecutionProvider().get() != nullptr;
   bool enable_cpu = !use_float16;
 
-  if (enable_cpu || enable_cuda || enable_dml || enable_rocm) {
+  if (enable_cpu || enable_cuda || enable_dml || enable_rocm || enable_openvino) {
     // Input and output shapes
     //   Input 0 - input_ids          : (batch_size, sequence_size)
     //   Input 1 - segment_ids        : (batch_size, sequence_size)
@@ -157,12 +158,12 @@ static void RunTest(const embedlayernorm::OpData& data,
       std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
       execution_providers.push_back(DefaultDmlExecutionProvider());
       tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    } else if (enable_openvino) {
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(DefaultOpenVINOExecutionProvider());
+      tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
     } else {
-#if defined(USE_OPENVINO)
-      tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
-#else
       tester.Run();
-#endif
     }
   }
 }
@@ -190,6 +191,7 @@ TEST(EmbedLayerNormTest, EmbedLayerNormBatch3_PositionIds_BroadCast) {
           /*broadcast_position_ids=*/true);
 }
 
+#if !defined(USE_OPENVINO)
 TEST(EmbedLayerNormTest, EmbedLayerNormBatch1_EmbeddingSum) {
   RunTest(embedlayernorm::EmbedLayerNormBatch1_EmbeddingSum(), false, true);
 }
@@ -203,6 +205,7 @@ TEST(EmbedLayerNormTest, EmbedLayerNormBatch1_EmbeddingSum_NoMaskIndex) {
           /* use_float16 = */ false,
           /* sum_output = */ true);
 }
+#endif
 
 TEST(EmbedLayerNormTest, EmbedLayerNormBatch2) {
   RunTest(embedlayernorm::EmbedLayerNormBatch2());

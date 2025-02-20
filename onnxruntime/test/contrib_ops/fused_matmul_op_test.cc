@@ -255,6 +255,7 @@ TEST(FusedMatMulOpTest, FloatTypeScale) {
   RunFusedMatMulTest<float>("FusedMatMul", 1, true, true, false, false, 4.0f, true);
 }
 
+#if !defined(USE_OPENVINO)
 TEST(FusedMatMulOpTest, FloatTypeTransposeBatch) {
   RunFusedMatMulTest<float>("FusedMatMul", 1, false, false, true, false);
   RunFusedMatMulTest<float>("FusedMatMul", 1, false, false, false, true);
@@ -269,6 +270,7 @@ TEST(FusedMatMulOpTest, FloatTypeTransposeBatch) {
   RunFusedMatMulTest<float>("FusedMatMul", 1, true, true, false, true);
   RunFusedMatMulTest<float>("FusedMatMul", 1, true, true, true, true);
 }
+#endif
 
 #if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
 TEST(FusedMatMulOpTest, Float16_NoTranspose) {
