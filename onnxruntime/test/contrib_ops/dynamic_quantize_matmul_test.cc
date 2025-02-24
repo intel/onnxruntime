@@ -141,7 +141,7 @@ void TestDynamicQuantizeMatMul(bool is_matrix_b_constant,
                                     per_column, has_zp, has_bias);
   test.AddOutput<float>("Y", Y_dims, Y_data);
   test.SetOutputRelErr("Y", 0.02f);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 }
 
 template <typename T, bool HasZeroPoint, bool HasBias>
@@ -171,7 +171,6 @@ void RunDynamicQuantizeMatMulTest() {
   );
 }
 
-#if !defined(USE_OPENVINO)
 TEST(DynamicQuantizeMatMul, HasZeroPoint_NoBias_test_S8) {
   RunDynamicQuantizeMatMulTest<int8_t, true, false>();
 }
@@ -203,7 +202,6 @@ TEST(DynamicQuantizeMatMul, HasZeroPoint_HasBias_test_S8) {
 TEST(DynamicQuantizeMatMul, HasZeroPoint_HasBias_test_U8) {
   RunDynamicQuantizeMatMulTest<uint8_t, true, true>();
 }
-#endif
 
 TEST(DynamicQuantizeMatMul, UInt8_test_with_empty_input) {
   std::vector<int64_t> A_dims{0, 2};
