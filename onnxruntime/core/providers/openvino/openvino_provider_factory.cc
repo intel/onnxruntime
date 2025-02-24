@@ -166,6 +166,7 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
   ~OpenVINOProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override {
+    ParseConfigOptions(provider_info_, *provider_info_.so_config_options);
     return std::make_unique<OpenVINOExecutionProvider>(provider_info_, shared_context_);
   }
 
@@ -326,7 +327,7 @@ struct OpenVINO_Provider : Provider {
 
     pi.disable_dynamic_shapes = ParseBooleanOption(provider_options, "disable_dynamic_shapes");
 
-    ParseConfigOptions(pi, config_options);
+    pi.so_config_options = &config_options;
 
     // Always true for NPU plugin or when passed .
     if (pi.device_type.find("NPU") != std::string::npos) {
