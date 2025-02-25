@@ -26,15 +26,15 @@ class SharedContext : public WeakSingleton<SharedContext> {
   SharedContext() : OVCore_(OVCore::Get()) {}
   struct SharedWeights {
     struct Header {
-      uint32_t bin_version=1;
-      long footer_offset=0;
-    }header_;
+      uint32_t bin_version = 1;
+      long footer_offset = 0;
+    } header_;
     struct Footer {
       long subgraph_offset;
       size_t subgraph_length;
       long metadata_offset;
       size_t metadata_length;
-    }footer_;
+    } footer_;
 
     struct Metadata {
       struct Key {
@@ -57,8 +57,6 @@ class SharedContext : public WeakSingleton<SharedContext> {
       using Map = std::unordered_map<Key, Value, Hash>;
       void writeMetadataToBinaryFile(SharedContext& shared_context, const Metadata::Map& metadata);
       void readMetadataFromBinaryFile(SharedContext& shared_context, Metadata::Map& metadata);
-      // friend std::ostream& operator<<(std::ostream& right, const Metadata::Map& metadata);
-      // friend std::istream& operator>>(std::istream& right, Metadata::Map& metadata);
     };
 
     struct SubgraphMetadata {
@@ -79,9 +77,7 @@ class SharedContext : public WeakSingleton<SharedContext> {
       void writeSubgraphDataToBinaryFile(SharedContext& shared_context,
                                          const SubgraphMetadata::Map& subgraph_metadata);
       void readSubgraphDataFromBinaryFile(SharedContext& shared_context,
-                                         SubgraphMetadata::Map& subgraph_metadata);
-      // friend std::ostream& operator<<(std::ostream& right, const SubgraphMetadata::Map& subgraph_metadata);
-      // friend std::istream& operator>>(std::istream& right, SubgraphMetadata::Map& subgraph_metadata);
+                                          SubgraphMetadata::Map& subgraph_metadata);
     };
 
     struct WeightsFile {
@@ -104,20 +100,18 @@ class SharedContext : public WeakSingleton<SharedContext> {
       SharedBinFile() = default;  // Default constructor
       ~SharedBinFile() {
         if (bin_file_.is_open()) {
-            bin_file_.close();  // Close file when object is destroyed
+          bin_file_.close();  // Close file when object is destroyed
         }
       }
 
       void openBinFile(const fs::path shared_bin_filename) {
-      // Check if the file exists before trying to open
+        // Check if the file exists before trying to open
         if (!fs::exists(shared_bin_filename)) {
-            std::cerr << "Error: The file does not exist at path: " << shared_bin_filename << std::endl;
-            std::ofstream createFile(shared_bin_filename, std::ios::binary);  // Create an empty binary file
-            if (!createFile) {
-                throw std::runtime_error("Failed to create the file!");
-            }
-            createFile.close();
-            // throw std::runtime_error("Failed to open log file! File does not exist.");
+          std::ofstream createFile(shared_bin_filename, std::ios::binary);  // Create an empty binary file
+          if (!createFile) {
+            throw std::runtime_error("Failed to create the file!");
+          }
+          createFile.close();
         }
 
         // Check if the file is accessible for reading and writing
@@ -125,27 +119,22 @@ class SharedContext : public WeakSingleton<SharedContext> {
 
         if ((file_perms & fs::perms::owner_read) == fs::perms::none ||
             (file_perms & fs::perms::owner_write) == fs::perms::none) {
-            std::cerr << "Error: Insufficient permissions for file: " << shared_bin_filename << std::endl;
-            throw std::runtime_error("Failed to open log file! Insufficient permissions.");
+          std::cerr << "Error: Insufficient permissions for file: " << shared_bin_filename << std::endl;
+          throw std::runtime_error("Failed to open log file! Insufficient permissions.");
         }
 
-
         if (!bin_file_.is_open()) {  // Prevent reopening
-          std::cout << " Bin file is not open " << std::endl;
           bin_file_.open(shared_bin_filename, std::ios::in | std::ios::out | std::ios::binary);
-          std::cout << " bin file opened " << std::endl;
           bin_size_ = bin_file_.seekg(0, std::ios::end).tellg();
-
-          std::cout << " bin size = " << bin_size_ << std::endl;
           bin_file_.seekg(0, std::ios::beg);  // Reset to the beginning of the file
 
-
           if (!bin_file_) {
-              throw std::runtime_error("Failed to open log file!");
+            throw std::runtime_error("Failed to open log file!");
           }
         }
       }
-    }shared_bin_file;
+      void readBinFile(SharedContext& shared_context_);
+    } shared_bin_file;
 
     fs::path external_weight_filename;
     std::unique_ptr<WeightsFile> mapped_weights;
@@ -153,7 +142,7 @@ class SharedContext : public WeakSingleton<SharedContext> {
     Metadata::Map metadata;
     SubgraphMetadata subgraph_metadata_;
     SubgraphMetadata::Map subgraph_metadata;
-  }shared_weights;
+  } shared_weights;
 };
 
 using config_t = std::map<std::string, ov::AnyMap>;

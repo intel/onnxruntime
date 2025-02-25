@@ -93,7 +93,7 @@ common::Status OpenVINOExecutionProvider::Compile(
     std::vector<NodeComputeInfo>& node_compute_funcs) {
   auto& logger = *GetLogger();
   Status status = Status::OK();
-  auto &sb = shared_context_.shared_weights.shared_bin_file;
+  auto& sb = shared_context_.shared_weights.shared_bin_file;
   if (!fused_nodes.empty()) {
     // Assume these properties are constant for all the model subgraphs, otherwise move to SubGraphContext
     const auto& graph_body_viewer_0 = fused_nodes[0].filtered_graph.get();
@@ -101,8 +101,8 @@ common::Status OpenVINOExecutionProvider::Compile(
     session_context_.onnx_opset_version =
         graph_body_viewer_0.DomainToVersionMap().at(kOnnxDomain);
 
-    if (session_context_.so_share_ep_contexts){
-      if(session_context_.so_context_file_path.empty()) {
+    if (session_context_.so_share_ep_contexts) {
+      if (session_context_.so_context_file_path.empty()) {
         sb.shared_bin_filename = session_context_.onnx_model_path_name.parent_path() / "metadata.bin";
       } else {
         sb.shared_bin_filename = session_context_.so_context_file_path.parent_path() / "metadata.bin";
@@ -112,64 +112,64 @@ common::Status OpenVINOExecutionProvider::Compile(
     }
   }
 
-
   // Temporary code to read metadata before it moves to the .bin
 
   auto& subgraph_metadata = shared_context_.shared_weights.subgraph_metadata;
   auto& metadata = shared_context_.shared_weights.metadata;
   if (session_context_.so_share_ep_contexts) {
+    shared_context_.shared_weights.shared_bin_file.readBinFile(shared_context_);
     // Metadata is always read from model location, this could be a source or epctx model
     // std::ifstream file(sb.shared_bin_filename, std::ios::binary);
-    auto &header = shared_context_.shared_weights.header_;
-    auto &footer = shared_context_.shared_weights.footer_;
-    if(sb.bin_file_.is_open()) {
-      auto header_size = sizeof(SharedContext::SharedWeights::Header);
-      std::cout << " sb.bin_size_ " << sb.bin_size_ << std::endl;
-      std::cout << " header_size " << header_size << std::endl;
-      if(sb.bin_size_ > header_size){
-        sb.bin_file_.read(reinterpret_cast<char*>(&header), header_size);
-        std::cout << " Footer offset from header = " << header.footer_offset << std::endl;
-      }
-      std::cout << " file position after reading header " << sb.bin_file_.tellp() << std::endl;
-      auto footer_size = sizeof(SharedContext::SharedWeights::Footer);
-      std::cout << " footer_size " << footer_size  << std::endl;
-      if(header.footer_offset < sb.bin_size_ && footer_size <= sb.bin_size_ &&
-        (header.footer_offset <= sb.bin_size_ - footer_size)) {
-        sb.bin_file_.seekp(header.footer_offset, std::ios::beg);
-        sb.bin_file_.read(reinterpret_cast<char*>(&footer), footer_size);
-        std::cout << " subgraph metadata offset from footer = " << footer.subgraph_offset << std::endl;
-        std::cout << " subgraph metadata length from footer = " << footer.subgraph_length << std::endl;
-        std::cout << " metadata offset from footer = " << footer.metadata_offset << std::endl;
-        std::cout << " metadata length from footer = " << footer.metadata_length << std::endl;
-      }
-      if (footer.subgraph_offset < sb.bin_size_ && footer.subgraph_length <= sb.bin_size_ &&
-        (footer.subgraph_offset <= sb.bin_size_ - footer.subgraph_length)) {
-        sb.bin_file_.seekp(footer.subgraph_offset, std::ios::beg);
-        shared_context_.shared_weights.subgraph_metadata_.readSubgraphDataFromBinaryFile(shared_context_, subgraph_metadata);
-        for (const auto& [key, value] : subgraph_metadata){
-          std::cout << key.name << std::endl;
-          std::cout << value.epctx_offset << std::endl;
-          std::cout << value.epctx_length << std::endl;
-        }
-      }
-      if (footer.metadata_offset < sb.bin_size_ && footer.metadata_length <= sb.bin_size_ &&
-        (footer.metadata_offset <= sb.bin_size_ - footer.metadata_length)) {
-        sb.bin_file_.seekp(footer.metadata_offset, std::ios::beg);
-        shared_context_.shared_weights.metadata_.readMetadataFromBinaryFile(shared_context_, metadata);
-        for (const auto& [key, value] : metadata){
-          std::cout << key.name << std::endl;
-          std::cout << value.location << std::endl;
-          std::cout << value.data_offset << std::endl;
-          std::cout << value.element_type << std::endl;
-          std::cout << value.size << std::endl;
-          for (const auto& dim : value.dimensions) {
-            std::cout << dim << ", ";
-          }
-          std::cout << std::endl;
-      }
-      // exit(1);
-    }
-    }
+    // auto &header = shared_context_.shared_weights.header_;
+    // auto &footer = shared_context_.shared_weights.footer_;
+    // if(sb.bin_file_.is_open()) {
+    //   auto header_size = sizeof(SharedContext::SharedWeights::Header);
+    //   // std::cout << " sb.bin_size_ " << sb.bin_size_ << std::endl;
+    //   // std::cout << " header_size " << header_size << std::endl;
+    //   if(sb.bin_size_ > header_size){
+    //     sb.bin_file_.read(reinterpret_cast<char*>(&header), header_size);
+    //     std::cout << " Footer offset from header = " << header.footer_offset << std::endl;
+    //   }
+    //   // std::cout << " file position after reading header " << sb.bin_file_.tellp() << std::endl;
+    //   auto footer_size = sizeof(SharedContext::SharedWeights::Footer);
+    //   // std::cout << " footer_size " << footer_size  << std::endl;
+    //   if(header.footer_offset < sb.bin_size_ && footer_size <= sb.bin_size_ &&
+    //     (header.footer_offset <= sb.bin_size_ - footer_size)) {
+    //     sb.bin_file_.seekp(header.footer_offset, std::ios::beg);
+    //     sb.bin_file_.read(reinterpret_cast<char*>(&footer), footer_size);
+    //     // std::cout << " subgraph metadata offset from footer = " << footer.subgraph_offset << std::endl;
+    //     // std::cout << " subgraph metadata length from footer = " << footer.subgraph_length << std::endl;
+    //     // std::cout << " metadata offset from footer = " << footer.metadata_offset << std::endl;
+    //     // std::cout << " metadata length from footer = " << footer.metadata_length << std::endl;
+    //   }
+    //   if (footer.subgraph_offset < sb.bin_size_ && footer.subgraph_length <= sb.bin_size_ &&
+    //     (footer.subgraph_offset <= sb.bin_size_ - footer.subgraph_length)) {
+    //     sb.bin_file_.seekp(footer.subgraph_offset, std::ios::beg);
+    //     shared_context_.shared_weights.subgraph_metadata_.readSubgraphDataFromBinaryFile(shared_context_, subgraph_metadata);
+    //     // for (const auto& [key, value] : subgraph_metadata){
+    //     //   std::cout << key.name << std::endl;
+    //     //   std::cout << value.epctx_offset << std::endl;
+    //     //   std::cout << value.epctx_length << std::endl;
+    //     // }
+    //   }
+    //   if (footer.metadata_offset < sb.bin_size_ && footer.metadata_length <= sb.bin_size_ &&
+    //     (footer.metadata_offset <= sb.bin_size_ - footer.metadata_length)) {
+    //     sb.bin_file_.seekp(footer.metadata_offset, std::ios::beg);
+    //     shared_context_.shared_weights.metadata_.readMetadataFromBinaryFile(shared_context_, metadata);
+    //     // for (const auto& [key, value] : metadata){
+    //     //   std::cout << key.name << std::endl;
+    //     //   std::cout << value.location << std::endl;
+    //     //   std::cout << value.data_offset << std::endl;
+    //     //   std::cout << value.element_type << std::endl;
+    //     //   std::cout << value.size << std::endl;
+    //     //   for (const auto& dim : value.dimensions) {
+    //     //     std::cout << dim << ", ";
+    //     //   }
+    //     //   std::cout << std::endl;
+    //     // }
+    //   // exit(1);
+    //   }
+    // }
   }
 
   struct OpenVINOEPFunctionState {
@@ -179,11 +179,18 @@ common::Status OpenVINOExecutionProvider::Compile(
     BackendManager& backend_manager;
   };
 
-  auto &header = shared_context_.shared_weights.header_;
-  if(sb.bin_file_.is_open()) {
+  auto& header = shared_context_.shared_weights.header_;
+  auto& footer = shared_context_.shared_weights.footer_;
+
+  if (sb.bin_file_.is_open()) {
+    sb.bin_file_.seekp(0, std::ios::beg);
     sb.bin_file_.write(reinterpret_cast<char*>(&header), sizeof(SharedContext::SharedWeights::Header));
   }
   std::cout << "Current offset after header = " << sb.bin_file_.tellp() << std::endl;
+  if (!subgraph_metadata.empty() && footer.subgraph_offset > sizeof(SharedContext::SharedWeights::Header)) {
+    sb.bin_file_.seekp(footer.subgraph_offset, std::ios::beg);
+    std::cout << " After setting bin file offset to the start of subgraph offset = " << sb.bin_file_.tellp() << std::endl;
+  }
   for (const FusedNodeAndGraph& fused_node_graph : fused_nodes) {
     const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
     const Node& fused_node = fused_node_graph.fused_node;
@@ -212,10 +219,12 @@ common::Status OpenVINOExecutionProvider::Compile(
           return 0;
         };
 
+    std::cout << " OVEP compile successful " << std::endl;
     compute_info.compute_func = [](FunctionState state, const OrtApi* /* api */, OrtKernelContext* context) {
       auto function_state = static_cast<OpenVINOEPFunctionState*>(state);
       try {
         function_state->backend_manager.Compute(context);
+        std::cout << " OVEP compute successful " << std::endl;
       } catch (const std::exception& ex) {
         return common::Status(common::ONNXRUNTIME, common::FAIL, ex.what());
       }
@@ -238,10 +247,11 @@ common::Status OpenVINOExecutionProvider::Compile(
   }
 
   if (session_context_.so_share_ep_contexts) {
-    auto footer = shared_context_.shared_weights.footer_;
-    auto &bin_file = sb.bin_file_;
+    // auto footer = shared_context_.shared_weights.footer_;
+    auto& bin_file = sb.bin_file_;
     if (bin_file.is_open()) {
       footer.subgraph_offset = bin_file.tellp();
+      std::cout << " subgraph offset after reading epctx nodes = " << footer.subgraph_offset << std::endl;
       // bin_file << subgraph_metadata;
       shared_context_.shared_weights.subgraph_metadata_.writeSubgraphDataToBinaryFile(shared_context_, subgraph_metadata);
       footer.metadata_offset = bin_file.tellp();
@@ -269,7 +279,13 @@ common::Status OpenVINOExecutionProvider::Compile(
       bin_file.write(reinterpret_cast<char*>(&header), sizeof(SharedContext::SharedWeights::Header));
       // bin_file << header.footer_offset;
       std::cout << " file ptr after updating header = " << bin_file.tellp() << std::endl;
+      bin_file.close();
     }
+    // std::cout << " Read bin file after writing" << std::endl;
+    // sb.bin_size_ = bin_file.seekg(0, std::ios::end).tellg();
+    // bin_file.seekp(0, std::ios::beg);
+
+    // shared_context_.shared_weights.shared_bin_file.readBinFile(shared_context_);
   }
 
   return status;
