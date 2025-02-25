@@ -51,9 +51,12 @@ void SharedContext::SharedWeights::Metadata::writeMetadataToBinaryFile(SharedCon
         std::cerr << "Error opening file for writing!" << std::endl;
         return;
     }
+    std::cout << " bin file location in write for metadata map = " << file.tellp() << std::endl;
+
     try{
         size_t metadataSize = metadata.size();
         file.write(reinterpret_cast<const char*>(&metadataSize), sizeof(metadataSize));  // Write map size
+        std::cout << " bin file location after write metadata size = " << file.tellp() << std::endl;
 
         for (const auto& [key, value] : metadata) {
             writeString(file, key.name);
@@ -63,6 +66,7 @@ void SharedContext::SharedWeights::Metadata::writeMetadataToBinaryFile(SharedCon
             file.write(reinterpret_cast<const char*>(&value.element_type), sizeof(value.element_type));
             writeVector(file, value.dimensions);
         }
+        std::cout << " bin file location after write metadata map = " << file.tellp() << std::endl;
     }  catch (const Exception& e) {
         ORT_THROW("Error: Failed to write map data.", e.what());
     } catch (...) {
@@ -80,14 +84,18 @@ void SharedContext::SharedWeights::SubgraphMetadata::writeSubgraphDataToBinaryFi
         return;
     }
     try{
+        std::cout << " bin file location at write subgraph metadata = " << file.tellp() << std::endl;
         size_t subgraph_metadataSize = subgraph_metadata.size();
         file.write(reinterpret_cast<const char*>(&subgraph_metadataSize), sizeof(subgraph_metadataSize));  // Write map size
+        std::cout << " bin file location at write subgraph metadata after metadata size = " << file.tellp() << std::endl;
 
         for (const auto& [key, value] : subgraph_metadata) {
             writeString(file, key.name);
             file.write(reinterpret_cast<const char*>(&value.epctx_offset), sizeof(value.epctx_offset));
             file.write(reinterpret_cast<const char*>(&value.epctx_length), sizeof(value.epctx_length));
         }
+        std::cout << " bin file location after write subgraph metadata = " << file.tellp() << std::endl;
+
         // std::cout << " File position after writing subgraph metadata = " << file.tellp() << std::end;
     }  catch (const Exception& e) {
         ORT_THROW("Error: Failed to write map data.", e.what());
@@ -115,7 +123,7 @@ std::vector<size_t> readVector(std::fstream& file) {
     return vec;
 }
 
-// Read the entire map from a binary file
+// Read the Metadata map from a binary file
 void SharedContext::SharedWeights::Metadata::readMetadataFromBinaryFile(SharedContext& shared_context,
                            SharedContext::SharedWeights::Metadata::Map& metadata) {
     auto &file = shared_context.shared_weights.shared_bin_file.bin_file_;
@@ -125,6 +133,7 @@ void SharedContext::SharedWeights::Metadata::readMetadataFromBinaryFile(SharedCo
     }
 
     size_t metadata_mapSize;
+
     file.read(reinterpret_cast<char*>(&metadata_mapSize), sizeof(metadata_mapSize));  // Read map size
 
     for (size_t i = 0; i < metadata_mapSize; ++i) {
@@ -141,11 +150,9 @@ void SharedContext::SharedWeights::Metadata::readMetadataFromBinaryFile(SharedCo
         metadata[key] = value;
     }
 
-    // file.close();
-    std::cout << "Map read from binary file successfully!\n";
 }
 
-// Read the entire map from a binary file
+// Read the Subgraph Metadata map from a binary file
 void SharedContext::SharedWeights::SubgraphMetadata::readSubgraphDataFromBinaryFile(SharedContext& shared_context,
                            SharedContext::SharedWeights::SubgraphMetadata::Map& subgraph_metadata) {
     auto &file = shared_context.shared_weights.shared_bin_file.bin_file_;
@@ -156,151 +163,85 @@ void SharedContext::SharedWeights::SubgraphMetadata::readSubgraphDataFromBinaryF
 
     size_t subgraph_metadata_mapSize;
     file.read(reinterpret_cast<char*>(&subgraph_metadata_mapSize), sizeof(subgraph_metadata_mapSize));  // Read map size
-
     for (size_t i = 0; i < subgraph_metadata_mapSize; ++i) {
         SharedContext::SharedWeights::SubgraphMetadata::Key key;
         SharedContext::SharedWeights::SubgraphMetadata::Value value;
 
         key.name = readString(file);  // Read key (name)
+        std::cout << " key.name = " << key.name << std::endl;
         file.read(reinterpret_cast<char*>(&value.epctx_offset), sizeof(value.epctx_offset));
+        std::cout << "value.epctx_offset = " << value.epctx_offset << std::endl;
         file.read(reinterpret_cast<char*>(&value.epctx_length), sizeof(value.epctx_length));
-
+        std::cout << " value.epctx_length = " << value.epctx_length << std::endl;
         subgraph_metadata[key] = value;
     }
-
-    // file.close();
-    std::cout << "Map read from binary file successfully!\n";
 }
-// std::ostream& operator<<(std::ostream& stream, const SharedContext::SharedWeights::Metadata::Map& metadata) {
-//   try {
-//     stream << metadata.size();
 
-//     // Write each key-value pair
-//     // Put elements in separate lines to facilitate reading
-//     for (const auto& [key, value] : metadata) {
-//       stream << std::endl
-//              << key.name;
-//       stream << std::endl
-//              << value.location;
-//       stream << std::endl
-//              << value.data_offset;
-//       stream << std::endl
-//              << value.size;
-//       stream << std::endl
-//              << value.dimensions.size();
-//       for (const auto& dim : value.dimensions) {
-//         stream << std::endl
-//                << dim;
-//       }
-//       stream << std::endl
-//              << value.element_type;
-//     }
-//   } catch (const Exception& e) {
-//     ORT_THROW("Error: Failed to write map data.", e.what());
-//   } catch (...) {
-//     ORT_THROW("Error: Failed to write map data.");
-//   }
+void SharedContext::SharedWeights::SharedBinFile::readBinFile(SharedContext& shared_context_) {
+    auto &header = shared_context_.shared_weights.header_;
+    auto &footer = shared_context_.shared_weights.footer_;
+    auto& subgraph_metadata_map = shared_context_.shared_weights.subgraph_metadata;
+    auto& metadata_map = shared_context_.shared_weights.metadata;
+    auto &sb = shared_context_.shared_weights.shared_bin_file;
+    if(sb.bin_file_.is_open()) {
+      auto header_size = sizeof(SharedContext::SharedWeights::Header);
+      std::cout << " sb.bin_size_ " << sb.bin_size_ << std::endl;
+      std::cout << " header_size " << header_size << std::endl;
+      if(sb.bin_size_ > header_size){
+        sb.bin_file_.read(reinterpret_cast<char*>(&header), header_size);
+        std::cout << " Footer offset from header = " << header.footer_offset << std::endl;
+      }
+      std::cout << " file position after reading header " << sb.bin_file_.tellp() << std::endl;
+      auto footer_size = sizeof(SharedContext::SharedWeights::Footer);
+      std::cout << " footer_size " << footer_size  << std::endl;
+      if(header.footer_offset < sb.bin_size_ && footer_size <= sb.bin_size_ &&
+        (header.footer_offset <= sb.bin_size_ - footer_size)) {
+        sb.bin_file_.seekp(header.footer_offset, std::ios::beg);
+        sb.bin_file_.read(reinterpret_cast<char*>(&footer), footer_size);
+        std::cout << " subgraph metadata offset from footer = " << footer.subgraph_offset << std::endl;
+        std::cout << " subgraph metadata length from footer = " << footer.subgraph_length << std::endl;
+        std::cout << " metadata offset from footer = " << footer.metadata_offset << std::endl;
+        std::cout << " metadata length from footer = " << footer.metadata_length << std::endl;
+      }
+      std::cout << " footer.subgraph_offset = " << footer.subgraph_offset << std::endl;
 
-//   ORT_ENFORCE(stream.good(), "Error: Failed to write map data.");
-//   return stream;
-// }
+      if (footer.subgraph_offset < sb.bin_size_ && footer.subgraph_length <= sb.bin_size_ &&
+        (footer.subgraph_offset <= sb.bin_size_ - footer.subgraph_length)) {
+        std::cout << " inside if for reading subgraph metadata  = " << footer.subgraph_offset << std::endl;
+        sb.bin_file_.seekp(footer.subgraph_offset, std::ios::beg);
+        shared_context_.shared_weights.subgraph_metadata_.readSubgraphDataFromBinaryFile(shared_context_, subgraph_metadata_map);
+        for (const auto& [key, value] : subgraph_metadata_map){
+          std::cout << key.name << std::endl;
+          std::cout << value.epctx_offset << std::endl;
+          std::cout << value.epctx_length << std::endl;
+        }
+      }
+      if (footer.metadata_offset < sb.bin_size_ && footer.metadata_length <= sb.bin_size_ &&
+        (footer.metadata_offset <= sb.bin_size_ - footer.metadata_length)) {
+        sb.bin_file_.seekp(footer.metadata_offset, std::ios::beg);
+        shared_context_.shared_weights.metadata_.readMetadataFromBinaryFile(shared_context_, metadata_map);
+        for (const auto& [key, value] : metadata_map){
+          std::cout << key.name << std::endl;
+          std::cout << value.location << std::endl;
+          std::cout << value.data_offset << std::endl;
+          std::cout << value.element_type << std::endl;
+          std::cout << value.size << std::endl;
+          for (const auto& dim : value.dimensions) {
+            std::cout << dim << ", ";
+          }
+          std::cout << std::endl;
+        }
+      // exit(1);
+      }
+    //   // After reading the Subgraph map and metadata map move the file ptr to start of subgraph metadata map
+    //   // so that epctx blobs that are not already exisiting in the bin file gets written.
+    //   // Once all the epctx blobs are written, subgraph map and metadata map are written to the bin file along with updating header and footer.
+    //   if(!subgraph_metadata_map.empty()){
+    //     sb.bin_file_.seekp(footer.subgraph_offset, std::ios::beg);
+    //     std::cout << " After setting bin file offset to the start of subgraph offset = " << sb.bin_file_.tellp() << std::endl;
+    //   }
+    }
 
-// std::ostream& operator<<(std::ostream& stream,
-//                          const SharedContext::SharedWeights::SubgraphMetadata::Map& subgraph_metadata) {
-//   try {
-//     stream << subgraph_metadata.size();
-
-//     // Write each key-value pair
-//     // Put elements in separate lines to facilitate reading
-//     for (const auto& [key, value] : subgraph_metadata) {
-//       stream << std::endl
-//              << key.name;
-//       stream << std::endl
-//              << value.epctx_offset;
-//       stream << std::endl
-//              << value.epctx_length;
-//     }
-//   } catch (const Exception& e) {
-//     ORT_THROW("Error: Failed to write subgraph map data.", e.what());
-//   } catch (...) {
-//     ORT_THROW("Error: Failed to write subgraph map data.");
-//   }
-//   ORT_ENFORCE(stream.good(), "Error: Failed to write subgraph map data.");
-//   return stream;
-// }
-
-// std::istream& operator>>(std::istream& stream, SharedContext::SharedWeights::Metadata::Map& metadata) {
-//   size_t map_size{0};
-//   try {
-//     stream >> map_size;
-
-//     while (!stream.eof()) {
-//       SharedContext::SharedWeights::Metadata::Key key;
-//       SharedContext::SharedWeights::Metadata::Value value;
-//       stream >> key.name;
-//       stream >> value.location;
-//       stream >> value.data_offset;
-//       stream >> value.size;
-//       size_t num_dimensions;
-//       stream >> num_dimensions;
-
-//       if (stream.fail()) {
-//         ORT_THROW("Error: Failed to read num_dimensions from stream.");
-//       }
-
-//       constexpr size_t MAX_SAFE_DIMENSIONS = 1024;
-
-//       size_t safe_num_dimensions = num_dimensions;
-
-//       if(num_dimensions == 0 || safe_num_dimensions > MAX_SAFE_DIMENSIONS) {
-//          ORT_THROW("Invalid number of dimensions provided.");
-//       }
-//       try {
-//           value.dimensions.resize(safe_num_dimensions);
-//       } catch (const std::bad_alloc&) {
-//           ORT_THROW("Error: Memory allocation failed while resizing dimensions.");
-//       }
-
-//       for (auto& dim : value.dimensions) {
-//         stream >> dim;
-//       }
-//       stream >> value.element_type;
-//       metadata.emplace(key, value);
-//     }
-//   } catch (const Exception& e) {
-//     ORT_THROW("Error: Failed to read map data.", e.what());
-//   } catch (...) {
-//     ORT_THROW("Error: Failed to read map data.");
-//   }
-
-//   ORT_ENFORCE(metadata.size() == map_size, "Error: Inconsistent map data.");
-
-//   return stream;
-// }
-// std::istream& operator>>(std::istream& stream, SharedContext::SharedWeights::SubgraphMetadata::Map& subgraph_metadata) {
-//   size_t map_size{0};
-//   try {
-//     stream >> map_size;
-
-//     while (!stream.eof()) {
-//       SharedContext::SharedWeights::SubgraphMetadata::Key key;
-//       SharedContext::SharedWeights::SubgraphMetadata::Value value;
-//       stream >> key.name;
-//       stream >> value.epctx_offset;
-//       stream >> value.epctx_length;
-
-//       subgraph_metadata.emplace(key, value);
-//     }
-//   } catch (const Exception& e) {
-//     ORT_THROW("Error: Failed to read map data.", e.what());
-//   } catch (...) {
-//     ORT_THROW("Error: Failed to read map data.");
-//   }
-
-//   ORT_ENFORCE(subgraph_metadata.size() == map_size, "Error: Inconsistent map data.");
-
-//   return stream;
-// }
-
+}
 }
 }

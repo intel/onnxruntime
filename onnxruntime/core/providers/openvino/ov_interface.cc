@@ -74,8 +74,10 @@ std::shared_ptr<OVNetwork> OVCore::ReadModel(const std::string& model, const std
       ORT_THROW(log_tag + "[OpenVINO-EP] Unknown exception while Reading network");
     }
   } catch (const Exception& e) {
+    std::cout << "[OpenVINO-EP] Exception while Reading network: " << std::string(e.what()) << std::endl;
     ORT_THROW(log_tag + "[OpenVINO-EP] Exception while Reading network: " + std::string(e.what()));
   } catch (...) {
+    std::cout << "[OpenVINO-EP] Unknown exception while Reading network" << std::endl;
     ORT_THROW(log_tag + "[OpenVINO-EP] Unknown exception while Reading network");
   }
 }
@@ -124,15 +126,22 @@ OVExeNetwork OVCore::ImportModel(std::istream& model_stream,
                                  std::string name) {
   try {
     ov::CompiledModel obj;
+    std::cout << " before ov core import model " << std::endl;
     obj = Get().import_model(model_stream, hw_target, device_config);
+    std::cout << " ov core import model done " << std::endl;
 #ifndef NDEBUG
     printDebugInfo(obj);
 #endif
     OVExeNetwork exe(obj);
     return exe;
-  } catch (const Exception& e) {
+  } catch (const ov::Exception& e) {  // Catch OpenVINO-specific exceptions
+    std::cout << "OpenVINO Exception: " << e.what() << std::endl;
+    ORT_THROW(log_tag + " Exception while Loading Network for graph: " + name + e.what());
+  } catch (const std::exception& e) {
+    std::cout << " Exception while Loading Network for graph: " << name << "  "<< e.what() << std::endl;
     ORT_THROW(log_tag + " Exception while Loading Network for graph: " + name + e.what());
   } catch (...) {
+    std::cout << " Exception while Loading Network for graph " << name << std::endl;
     ORT_THROW(log_tag + " Exception while Loading Network for graph " + name);
   }
 }

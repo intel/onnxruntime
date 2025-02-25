@@ -88,10 +88,12 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
     if (subgraph_context_.is_ep_ctx_graph) {
       // If the blob is held in an EPContext node, then skip FE+Compile
       // and directly move on to creating a backend with the executable blob
+      std::cout << " before ovcore import model " << std::endl;
       exe_network_ = OVCore::ImportModel(*model_stream,
                                          hw_target,
                                          device_config,
                                          subgraph_context_.subgraph_name);
+      std::cout << " import model is successful " << std::endl;
       model_stream.reset();  // Delete stream after it is no longer needed
     } else if (!session_context_.has_external_weights &&
                !subgraph_context_.has_dynamic_input_shape &&
@@ -120,6 +122,7 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
           ov_model, hw_target, device_config, subgraph_context_.subgraph_name);
     }
 #endif
+    std::cout << " loaded model to the plugin " << std::endl;
     LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
   } catch (const char* msg) {
     ORT_THROW(msg);
@@ -131,11 +134,14 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
   if (session_context_.so_share_ep_contexts) {
     initializer = [&metadata](OVInferRequestPtr ir_ptr) {
       const auto input_count = ir_ptr->GetNumInputs();
+      std::cout << " ov ir input count = " << input_count << std::endl;
       for (auto i = 0u; i < input_count; i++) {
         using Key = SharedContext::SharedWeights::Metadata::Key;
         const auto tensor_key = Key{ir_ptr->GetInputTensorName(i)};
         if (metadata.contains(tensor_key)) {
           auto& value = metadata.at(tensor_key);
+          // ORT_ENFORCE(value.tensor->get_byte_size() == value.size, "Unexpected tensor size mismatch");
+          std::cout << " value tensor is set with shape = " << value.tensor->get_byte_size() << " input size from metadata = " << value.size << std::endl;
           ir_ptr->SetTensor(tensor_key.name, value.tensor);
         }
       }

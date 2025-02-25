@@ -47,6 +47,8 @@ class BackendManager {
   ReWriteInputShapeInfo(const ONNX_NAMESPACE::ModelProto& model_proto,
                         const std::vector<std::vector<int64_t>>& input_shapes);
 
+  std::string stripAfterFirstDot(std::string filename);
+
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_;
   std::shared_ptr<IBackend> concrete_backend_;
   std::map<std::string, std::shared_ptr<IBackend>> backend_map_;

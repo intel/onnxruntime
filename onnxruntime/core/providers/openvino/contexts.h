@@ -51,8 +51,6 @@ struct SharedContext {
       using Map = std::unordered_map<Key, Value, Hash>;
       void writeMetadataToBinaryFile(SharedContext& shared_context, const Metadata::Map& metadata);
       void readMetadataFromBinaryFile(SharedContext& shared_context, Metadata::Map& metadata);
-      // friend std::ostream& operator<<(std::ostream& right, const Metadata::Map& metadata);
-      // friend std::istream& operator>>(std::istream& right, Metadata::Map& metadata);
     };
 
     struct SubgraphMetadata {
@@ -74,8 +72,6 @@ struct SharedContext {
                                          const SubgraphMetadata::Map& subgraph_metadata);
       void readSubgraphDataFromBinaryFile(SharedContext& shared_context,
                                          SubgraphMetadata::Map& subgraph_metadata);
-      // friend std::ostream& operator<<(std::ostream& right, const SubgraphMetadata::Map& subgraph_metadata);
-      // friend std::istream& operator>>(std::istream& right, SubgraphMetadata::Map& subgraph_metadata);
     };
 
     struct WeightsFile {
@@ -105,13 +101,11 @@ struct SharedContext {
       void openBinFile(const fs::path shared_bin_filename) {
       // Check if the file exists before trying to open
         if (!fs::exists(shared_bin_filename)) {
-            std::cerr << "Error: The file does not exist at path: " << shared_bin_filename << std::endl;
             std::ofstream createFile(shared_bin_filename, std::ios::binary);  // Create an empty binary file
             if (!createFile) {
                 throw std::runtime_error("Failed to create the file!");
             }
             createFile.close();
-            // throw std::runtime_error("Failed to open log file! File does not exist.");
         }
 
         // Check if the file is accessible for reading and writing
@@ -125,20 +119,16 @@ struct SharedContext {
 
 
         if (!bin_file_.is_open()) {  // Prevent reopening
-          std::cout << " Bin file is not open " << std::endl;
           bin_file_.open(shared_bin_filename, std::ios::in | std::ios::out | std::ios::binary);
-          std::cout << " bin file opened " << std::endl;
           bin_size_ = bin_file_.seekg(0, std::ios::end).tellg();
-
-          std::cout << " bin size = " << bin_size_ << std::endl;
           bin_file_.seekg(0, std::ios::beg);  // Reset to the beginning of the file
-
 
           if (!bin_file_) {
               throw std::runtime_error("Failed to open log file!");
           }
         }
       }
+      void readBinFile(SharedContext& shared_context_);
     }shared_bin_file;
 
     fs::path external_weight_filename;
