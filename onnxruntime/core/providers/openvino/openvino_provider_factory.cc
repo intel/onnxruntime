@@ -17,11 +17,19 @@ namespace openvino_ep {
 void ParseConfigOptions(ProviderInfo& pi) {
   if(pi.config_options==NULL)
     return;
+
   pi.so_disable_cpu_ep_fallback = pi.config_options->GetConfigOrDefault(kOrtSessionOptionsDisableCPUEPFallback, "0") == "1";
   pi.so_context_enable = pi.config_options->GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") == "1";
   pi.so_context_embed_mode = pi.config_options->GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "0") == "1";
   pi.so_share_ep_contexts = pi.config_options->GetConfigOrDefault(kOrtSessionOptionShareEpContexts, "0") == "1";
   pi.so_context_file_path = pi.config_options->GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
+
+  if (pi.so_share_ep_contexts) {
+    ov::AnyMap map;
+    map["NPU_COMPILATION_MODE_PARAMS"] = "enable-wd-blockarg-input=true compute-layers-with-higher-precision=Sqrt,Power,ReduceSum";
+    pi.load_config["NPU"] = std::move(map);
+  }
+
 }
 
 void* ParseUint64(const ProviderOptions& provider_options, std::string option_name) {
@@ -342,13 +350,6 @@ struct OpenVINO_Provider : Provider {
     // Always true for NPU plugin or when passed .
     if (pi.device_type.find("NPU") != std::string::npos) {
       pi.disable_dynamic_shapes = true;
-    }
-
-    // Append values to config to support weight-as-inputs conversion for shared contexts
-    if (pi.so_share_ep_contexts) {
-      ov::AnyMap map;
-      map["NPU_COMPILATION_MODE_PARAMS"] = "enable-wd-blockarg-input=true compute-layers-with-higher-precision=Sqrt,Power,ReduceSum";
-      pi.load_config["NPU"] = std::move(map);
     }
 
     return std::make_shared<OpenVINOProviderFactory>(pi, SharedContext::Get());
