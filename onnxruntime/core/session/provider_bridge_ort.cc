@@ -2169,17 +2169,13 @@ std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Creat
     const ProviderOptions* provider_options_map, const SessionOptions* session_options) try {
   // Append session options applicable for EP to EP Provider options.
   const ConfigOptions* config_options = nullptr;
-  if (session_options != nullptr) {
+  if (session_options !=nullptr) {
     config_options = &session_options->config_options;
   }
 
   std::array<const void*, 2> configs_array = {provider_options_map, config_options};
   const void* arg = reinterpret_cast<const void*>(&configs_array);
   return s_library_openvino.Get().CreateExecutionProviderFactory(arg);
-} catch (const std::exception& exception) {
-  // Will get an exception when fail to load EP library.
-  LOGS_DEFAULT(ERROR) << exception.what();
-  return nullptr;
 }
 
 std::shared_ptr<IExecutionProviderFactory> DnnlProviderFactoryCreator::Create(const OrtDnnlProviderOptions* dnnl_options) {

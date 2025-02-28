@@ -20,7 +20,7 @@
 namespace onnxruntime {
 namespace openvino_ep {
 void ParseConfigOptions(ProviderInfo& pi) {
-  if (pi.config_options == nullptr)
+  if(pi.config_options==NULL)
     return;
 
   pi.so_disable_cpu_ep_fallback = pi.config_options->GetConfigOrDefault(kOrtSessionOptionsDisableCPUEPFallback, "0") == "1";
@@ -34,6 +34,7 @@ void ParseConfigOptions(ProviderInfo& pi) {
     map["NPU_COMPILATION_MODE_PARAMS"] = "enable-wd-blockarg-input=true compute-layers-with-higher-precision=Sqrt,Power,ReduceSum";
     pi.load_config["NPU"] = std::move(map);
   }
+
 }
 
 void* ParseUint64(const ProviderOptions& provider_options, std::string option_name) {
@@ -210,7 +211,10 @@ static void ParseProviderInfo(const ProviderOptions& provider_options,
   };
   validateKeys();
 
-  std::string bool_flag = "";
+  std::unique_ptr<IExecutionProvider> CreateProvider() override {
+    ParseConfigOptions(provider_info_);
+    return std::make_unique<OpenVINOExecutionProvider>(provider_info_, shared_context_);
+  }
 
   // Minor optimization: we'll hold an OVCore reference to ensure we don't create a new core between ParseDeviceType and
   // (potential) SharedContext creation.
@@ -230,6 +234,31 @@ static void ParseProviderInfo(const ProviderOptions& provider_options,
   if (provider_options.contains("cache_dir")) {
     pi.cache_dir = provider_options.at("cache_dir");
   }
+};
+
+struct OpenVINO_Provider : Provider {
+  void* GetInfo() override { return &info_; }
+
+  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* void_params) override {
+    if (void_params == nullptr) {
+      LOGS_DEFAULT(ERROR) << "[OpenVINO EP] Passed NULL options to CreateExecutionProviderFactory()";
+      return nullptr;
+    }
+
+    std::array<void*, 2> pointers_array = *reinterpret_cast<const std::array<void*, 2>*>(void_params);
+    const ProviderOptions* provider_options_ptr = reinterpret_cast<ProviderOptions*>(pointers_array[0]);
+    const ConfigOptions* config_options = reinterpret_cast<ConfigOptions*>(pointers_array[1]);
+
+    if(provider_options_ptr == NULL) {
+      LOGS_DEFAULT(ERROR) << "[OpenVINO EP] Passed NULL ProviderOptions to CreateExecutionProviderFactory()";
+      return nullptr;
+    }
+    const ProviderOptions provider_options = *provider_options_ptr;
+
+    ProviderInfo pi;
+    pi.config_options = config_options;
+
+    std::string bool_flag = "";
 
   pi.precision = OpenVINOParserUtils::ParsePrecision(provider_options, pi.device_type, "precision");
 
@@ -353,78 +382,10 @@ static void ParseProviderInfo(const ProviderOptions& provider_options,
   }
 }
 
-struct OpenVINOProviderFactory : IExecutionProviderFactory {
-  OpenVINOProviderFactory(ProviderInfo provider_info, std::shared_ptr<SharedContext> shared_context)
-      : provider_info_(std::move(provider_info)), shared_context_(shared_context) {}
-
-  ~OpenVINOProviderFactory() override {}
-
-  std::unique_ptr<IExecutionProvider> CreateProvider() override {
-    ParseConfigOptions(provider_info_);
-    return std::make_unique<OpenVINOExecutionProvider>(provider_info_, shared_context_);
-  }
-
-  // Called by InferenceSession when registering EPs. Allows creation of an EP instance that is initialized with
-  // session-level configurations.
-  std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions& session_options,
-                                                     const OrtLogger& session_logger) override {
-    const ConfigOptions& config_options = session_options.GetConfigOptions();
-    const std::unordered_map<std::string, std::string>& config_options_map = config_options.GetConfigOptionsMap();
-
-    // The implementation of the SessionOptionsAppendExecutionProvider C API function automatically adds EP options to
-    // the session option configurations with the key prefix "ep.<lowercase_ep_name>.".
-    // Extract those EP options into a new "provider_options" map.
-    std::string lowercase_ep_name = kOpenVINOExecutionProvider;
-    std::transform(lowercase_ep_name.begin(), lowercase_ep_name.end(), lowercase_ep_name.begin(), [](unsigned char c) {
-      return static_cast<char>(std::tolower(c));
-    });
-
-    std::string key_prefix = "ep.";
-    key_prefix += lowercase_ep_name;
-    key_prefix += ".";
-
-    std::unordered_map<std::string, std::string> provider_options;
-    for (const auto& [key, value] : config_options_map) {
-      if (key.rfind(key_prefix, 0) == 0) {
-        provider_options[key.substr(key_prefix.size())] = value;
-      }
+    // Always true for NPU plugin or when passed .
+    if (pi.device_type.find("NPU") != std::string::npos) {
+      pi.disable_dynamic_shapes = true;
     }
-
-    ProviderInfo provider_info = provider_info_;
-    ParseProviderInfo(provider_options, &config_options, provider_info);
-    ParseConfigOptions(provider_info);
-
-    auto ov_ep = std::make_unique<OpenVINOExecutionProvider>(provider_info, shared_context_);
-    ov_ep->SetLogger(reinterpret_cast<const logging::Logger*>(&session_logger));
-    return ov_ep;
-  }
-
- private:
-  ProviderInfo provider_info_;
-  std::shared_ptr<SharedContext> shared_context_;
-};
-
-struct ProviderInfo_OpenVINO_Impl : ProviderInfo_OpenVINO {
-  std::vector<std::string> GetAvailableDevices() const override {
-    return OVCore::Get()->GetAvailableDevices();
-  }
-};
-
-struct OpenVINO_Provider : Provider {
-  void* GetInfo() override { return &info_; }
-
-  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* void_params) override {
-    if (void_params == nullptr) {
-      LOGS_DEFAULT(ERROR) << "[OpenVINO EP] Passed NULL options to CreateExecutionProviderFactory()";
-      return nullptr;
-    }
-
-    std::array<void*, 2> pointers_array = *reinterpret_cast<const std::array<void*, 2>*>(void_params);
-    const ProviderOptions provider_options = *reinterpret_cast<ProviderOptions*>(pointers_array[0]);
-    const ConfigOptions* config_options = reinterpret_cast<ConfigOptions*>(pointers_array[1]);
-
-    ProviderInfo pi;
-    ParseProviderInfo(provider_options, config_options, pi);
 
     return std::make_shared<OpenVINOProviderFactory>(pi, SharedContext::Get());
   }
