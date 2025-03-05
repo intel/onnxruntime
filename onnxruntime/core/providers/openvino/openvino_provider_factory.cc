@@ -20,7 +20,7 @@
 namespace onnxruntime {
 namespace openvino_ep {
 void ParseConfigOptions(ProviderInfo& pi) {
-  if(pi.config_options==NULL)
+  if (pi.config_options == NULL)
     return;
 
   pi.so_disable_cpu_ep_fallback = pi.config_options->GetConfigOrDefault(kOrtSessionOptionsDisableCPUEPFallback, "0") == "1";
@@ -34,7 +34,6 @@ void ParseConfigOptions(ProviderInfo& pi) {
     map["NPU_COMPILATION_MODE_PARAMS"] = "enable-wd-blockarg-input=true compute-layers-with-higher-precision=Sqrt,Power,ReduceSum";
     pi.load_config["NPU"] = std::move(map);
   }
-
 }
 
 void* ParseUint64(const ProviderOptions& provider_options, std::string option_name) {
@@ -110,89 +109,6 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
 #endif
   }
 
-  // Get the LUID passed from the provider option in a comma separated string list
-  // Compare each of the LUID's against the LUID obtained using ov property and map with the right device
-  if (provider_options.contains("device_luid")) {
-    std::string luid_str = provider_options.at("device_luid");
-    std::erase(luid_str, ' ');
-    luid_list = split(luid_str, ',');
-  }
-
-  bool all_devices_found = true;
-
-  for (auto device : devices_to_check) {
-    bool device_found = false;
-    // Check deprecated device format (CPU_FP32, GPU.0_FP16, etc.) and remove the suffix in place
-    // Suffix will be parsed in ParsePrecision
-    if (auto delimit = device.find("_"); delimit != std::string::npos) {
-      device = device.substr(0, delimit);
-    }
-    // Just the device name without .0, .1, etc. suffix
-    auto device_prefix = device;
-    // Check if device index is appended (.0, .1, etc.), if so, remove it
-    if (auto delimit = device_prefix.find("."); delimit != std::string::npos)
-      device_prefix = device_prefix.substr(0, delimit);
-    if (supported_device_types.contains(device_prefix)) {
-      try {
-        std::vector<std::string> available_devices = ov_core->GetAvailableDevices(device_prefix);
-        // Here we need to find the full device name (with .idx, but without _precision)
-        if (std::find(std::begin(available_devices), std::end(available_devices), device) != std::end(available_devices))
-          device_found = true;
-        if (device_prefix != "CPU" && luid_list.size() > 0) {
-          for (auto dev : available_devices) {
-            ov::device::LUID ov_luid = OVCore::Get()->core.get_property(dev, ov::device::luid);
-            std::stringstream ov_luid_str;
-            ov_luid_str << ov_luid;
-            ov_luid_map.emplace(ov_luid_str.str(), dev);
-          }
-        }
-      } catch (const char* msg) {
-        ORT_THROW(msg);
-      }
-    }
-    all_devices_found = all_devices_found && device_found;
-  }
-  if (luid_list.size() > 0) {
-    std::string ov_luid_devices;
-    for (auto luid_str : luid_list) {
-      if (ov_luid_map.contains(luid_str)) {
-        std::string ov_dev = ov_luid_map.at(luid_str);
-        std::string ov_dev_strip = split(ov_dev, '.')[0];
-        if (std::find(std::begin(devices_to_check), std::end(devices_to_check), ov_dev) != std::end(devices_to_check) ||
-            std::find(std::begin(devices_to_check), std::end(devices_to_check), ov_dev_strip) != std::end(devices_to_check)) {
-          if (!ov_luid_devices.empty()) ov_luid_devices = ov_luid_devices + ",";
-          ov_luid_devices = ov_luid_devices + ov_dev;
-        } else {
-          ORT_THROW(" LUID : ", ov_dev, " does not match with device_type : ", selected_device);
-        }
-      } else {
-        ORT_THROW(provider_options.at("device_luid"), " does not exist for the selected device_type : ", selected_device);
-      }
-    }
-    if (!device_mode.empty()) {
-      selected_device = device_mode + ":" + ov_luid_devices;
-      for (auto dev_str : devices_to_check) {
-        auto default_dev = split(dev_str, '.')[0];
-
-        if (ov_luid_devices.find(default_dev) == std::string::npos)
-          selected_device = selected_device + "," + dev_str;
-      }
-    } else {
-      selected_device = ov_luid_devices;
-    }
-  }
-  // If invalid device is chosen error is thrown
-  if (!all_devices_found) {
-    ORT_THROW(
-        "[ERROR] [OpenVINO] You have selected wrong configuration value for the key 'device_type'. "
-        "Select from 'CPU', 'GPU', 'NPU', 'GPU.x' where x = 0,1,2 and so on or from"
-        " HETERO/MULTI/AUTO/BATCH options available. \n");
-  } else {
-    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Choosing Device: " << selected_device;
-    return selected_device;
-  }
-}
-
 void ParseProviderOptions([[maybe_unused]] ProviderInfo& result, [[maybe_unused]] const ProviderOptions& config_options) {}
 
 // Initializes a ProviderInfo struct from a ProviderOptions map and a ConfigOptions map.
@@ -249,7 +165,7 @@ struct OpenVINO_Provider : Provider {
     const ProviderOptions* provider_options_ptr = reinterpret_cast<ProviderOptions*>(pointers_array[0]);
     const ConfigOptions* config_options = reinterpret_cast<ConfigOptions*>(pointers_array[1]);
 
-    if(provider_options_ptr == NULL) {
+    if (provider_options_ptr == NULL) {
       LOGS_DEFAULT(ERROR) << "[OpenVINO EP] Passed NULL ProviderOptions to CreateExecutionProviderFactory()";
       return nullptr;
     }
@@ -262,13 +178,7 @@ struct OpenVINO_Provider : Provider {
 
   pi.precision = OpenVINOParserUtils::ParsePrecision(provider_options, pi.device_type, "precision");
 
-  if (provider_options.contains("load_config")) {
-    auto parse_config = [&](const std::string& config_str) -> std::map<std::string, ov::AnyMap> {
-      // If the config string is empty, return an empty map and skip processing
-      if (config_str.empty()) {
-        LOGS_DEFAULT(WARNING) << "Empty OV Config Map passed. Skipping load_config option parsing.\n";
-        return {};
-      }
+    pi.precision = OpenVINOParserUtils::ParsePrecision(provider_options, pi.device_type, "precision");
 
       std::stringstream input_str_stream(config_str);
       std::map<std::string, ov::AnyMap> target_map;
