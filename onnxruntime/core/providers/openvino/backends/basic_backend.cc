@@ -222,6 +222,15 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
         }
       }
     }
+    auto find_device_type_mode = [&](const std::string& device_type) -> std::string {
+      std::string device_mode="";
+      auto delimiter_pos = device_type.find(':');
+      if (delimiter_pos != std::string::npos) {
+        std::stringstream str_stream(device_type.substr(0, delimiter_pos));
+        std::getline(str_stream, device_mode, ',');
+      }
+      return device_mode;
+    };
 
     // Parse device types like "AUTO:CPU,GPU" and extract individual devices
     auto parse_individual_devices = [&](const std::string& device_type) -> std::vector<std::string> {
@@ -270,8 +279,12 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
     if (session_context_.device_type.find("AUTO") == 0 ||
         session_context_.device_type.find("HETERO") == 0 ||
         session_context_.device_type.find("MULTI") == 0) {
+      //// Parse to get the device mode (e.g., "AUTO:CPU,GPU" -> "AUTO")
+      auto device_mode = find_device_type_mode(session_context_.device_type);
       // Parse individual devices (e.g., "AUTO:CPU,GPU" -> ["CPU", "GPU"])
       auto individual_devices = parse_individual_devices(session_context_.device_type);
+      if(!device_mode.empty()) individual_devices.emplace_back(device_mode);
+
       // Set properties only for individual devices (e.g., "CPU", "GPU")
       for (const std::string& device : individual_devices) {
         if (target_config.count(device)) {
@@ -282,6 +295,8 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
         }
       }
     } else {
+      std::unordered_set<std::string> valid_ov_devices = {"CPU", "GPU", "NPU", "AUTO", "HETERO", "MULTI"};
+
       if (target_config.count(session_context_.device_type)) {
         auto supported_properties = OVCore::Get()->core.get_property(session_context_.device_type,
                                                                      ov::supported_properties);

@@ -101,8 +101,8 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
     default_device = DEVICE_NAME;
 
     // Validate that devices passed are valid
-    int delimit = device_type.find(":");
-    const auto& devices = device_type.substr(delimit + 1);
+    int delimit = default_device.find(":");
+    const auto& devices = default_device.substr(delimit + 1);
     auto device_list = split(devices, ',');
     for (const auto& device : devices) {
       if (!ov_supported_device_types.contains(device)) {
@@ -199,9 +199,9 @@ struct OpenVINO_Provider : Provider {
 
           for (auto& [key, value] : json_config.items()) {
             ov::AnyMap inner_map;
-
+            std::unordered_set<std::string> valid_ov_devices = {"CPU", "GPU", "NPU", "AUTO", "HETERO", "MULTI"};
             // Ensure the key is one of "CPU", "GPU", or "NPU"
-            if (key != "CPU" && key != "GPU" && key != "NPU") {
+            if (valid_ov_devices.find(key) == valid_ov_devices.end()) {
               LOGS_DEFAULT(WARNING) << "Unsupported device key: " << key << ". Skipping entry.\n";
               continue;
             }
