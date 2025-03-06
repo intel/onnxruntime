@@ -216,9 +216,9 @@ struct OpenVINO_Provider : Provider {
 
           for (auto& [key, value] : json_config.items()) {
             ov::AnyMap inner_map;
-
+            std::unordered_set<std::string> valid_ov_devices = {"CPU", "GPU", "NPU", "AUTO", "HETERO", "MULTI"};
             // Ensure the key is one of "CPU", "GPU", or "NPU"
-            if (key != "CPU" && key != "GPU" && key != "NPU") {
+            if (valid_ov_devices.find(key) == valid_ov_devices.end()) {
               LOGS_DEFAULT(WARNING) << "Unsupported device key: " << key << ". Skipping entry.\n";
               continue;
             }
