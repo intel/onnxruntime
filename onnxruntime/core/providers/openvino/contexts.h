@@ -108,6 +108,7 @@ struct ProviderInfo {
 struct SessionContext : ProviderInfo {
   SessionContext(const ProviderInfo& info) : ProviderInfo{info} {}
   std::vector<bool> deviceAvailableList = {true, true, true, true, true, true, true, true};
+  std::vector<std::string> available_devices; // this vector will be used to validate available devices thoughout OVEP lifetime
   std::filesystem::path onnx_model_path_name;
   uint32_t onnx_opset_version{0};
   mutable bool is_wholly_supported_graph = false;  // Value is set to mutable to modify from capability
