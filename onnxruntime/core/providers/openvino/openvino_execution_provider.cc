@@ -64,6 +64,9 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const ProviderInfo& info, s
   if (info.cache_dir.empty()) {
     bool device_found = false;
     std::vector<std::string> available_devices = OVCore::Get()->GetAvailableDevices();
+    for (int i = 0 ; i< available_devices.size() ; i++) {
+      session_context_.available_devices.push_back(available_devices[i]);
+    }
     // Checking for device_type configuration
     if (info.device_type != "") {
       if (info.device_type.find("HETERO") != std::string::npos ||
