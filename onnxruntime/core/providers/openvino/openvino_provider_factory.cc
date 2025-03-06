@@ -56,7 +56,6 @@ bool ParseBooleanOption(const ProviderOptions& provider_options, std::string opt
 }
 
 std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptions& provider_options, std::string option_name) {
-  const std::vector<std::string> ov_available_devices = ov_core->GetAvailableDevices();
 
   std::set<std::string> ov_supported_device_types = {"CPU", "GPU",
                                                      "GPU.0", "GPU.1", "NPU"};
@@ -64,8 +63,6 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
                                                    "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
                                                    "GPU.0_FP16", "GPU.1_FP16"};
 
-  // Expand set of supported device with OV devices
-  ov_supported_device_types.insert(ov_available_devices.begin(), ov_available_devices.end());
 
   if (provider_options.contains(option_name)) {
     const auto& selected_device = provider_options.at("device_type");
