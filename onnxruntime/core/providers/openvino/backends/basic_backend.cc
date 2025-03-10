@@ -2,6 +2,8 @@
 // Licensed under the MIT License
 
 #include <map>
+#include <unordered_set>
+
 #include <string>
 #include <memory>
 #include <sstream>
@@ -223,7 +225,7 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
       }
     }
     auto find_device_type_mode = [&](const std::string& device_type) -> std::string {
-      std::string device_mode="";
+      std::string device_mode = "";
       auto delimiter_pos = device_type.find(':');
       if (delimiter_pos != std::string::npos) {
         std::stringstream str_stream(device_type.substr(0, delimiter_pos));
@@ -283,7 +285,7 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
       auto device_mode = find_device_type_mode(session_context_.device_type);
       // Parse individual devices (e.g., "AUTO:CPU,GPU" -> ["CPU", "GPU"])
       auto individual_devices = parse_individual_devices(session_context_.device_type);
-      if(!device_mode.empty()) individual_devices.emplace_back(device_mode);
+      if (!device_mode.empty()) individual_devices.emplace_back(device_mode);
 
       // Set properties only for individual devices (e.g., "CPU", "GPU")
       for (const std::string& device : individual_devices) {
