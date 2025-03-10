@@ -13,6 +13,7 @@
 #include <mutex>
 #include <map>
 #include <functional>
+#include <unordered_set>
 
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/openvino/contexts.h"
