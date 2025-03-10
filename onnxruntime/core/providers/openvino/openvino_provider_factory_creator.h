@@ -4,6 +4,7 @@
 #pragma once
 
 #include <memory>
+#include <set>
 
 #include "core/providers/providers.h"
 #include "core/framework/provider_options.h"
