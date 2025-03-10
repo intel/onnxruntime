@@ -2,6 +2,8 @@
 // Licensed under the MIT License
 
 #include <map>
+#include <set>
+
 #include <utility>
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/openvino_provider_factory.h"
@@ -15,7 +17,7 @@
 namespace onnxruntime {
 namespace openvino_ep {
 void ParseConfigOptions(ProviderInfo& pi) {
-  if(pi.config_options==NULL)
+  if (pi.config_options == NULL)
     return;
 
   pi.so_disable_cpu_ep_fallback = pi.config_options->GetConfigOrDefault(kOrtSessionOptionsDisableCPUEPFallback, "0") == "1";
@@ -29,7 +31,6 @@ void ParseConfigOptions(ProviderInfo& pi) {
     map["NPU_COMPILATION_MODE_PARAMS"] = "enable-wd-blockarg-input=true compute-layers-with-higher-precision=Sqrt,Power,ReduceSum";
     pi.load_config["NPU"] = std::move(map);
   }
-
 }
 
 void* ParseUint64(const ProviderOptions& provider_options, std::string option_name) {
@@ -204,7 +205,7 @@ struct OpenVINO_Provider : Provider {
     const ProviderOptions* provider_options_ptr = reinterpret_cast<ProviderOptions*>(pointers_array[0]);
     const ConfigOptions* config_options = reinterpret_cast<ConfigOptions*>(pointers_array[1]);
 
-    if(provider_options_ptr == NULL) {
+    if (provider_options_ptr == NULL) {
       LOGS_DEFAULT(ERROR) << "[OpenVINO EP] Passed NULL ProviderOptions to CreateExecutionProviderFactory()";
       return nullptr;
     }
@@ -256,7 +257,7 @@ struct OpenVINO_Provider : Provider {
 
           for (auto& [key, value] : json_config.items()) {
             ov::AnyMap inner_map;
-            std::unordered_set<std::string> valid_ov_devices = {"CPU", "GPU", "NPU", "AUTO", "HETERO", "MULTI"};
+            std::set<std::string> valid_ov_devices = {"CPU", "GPU", "NPU", "AUTO", "HETERO", "MULTI"};
             // Ensure the key is one of "CPU", "GPU", or "NPU"
             if (valid_ov_devices.find(key) == valid_ov_devices.end()) {
               LOGS_DEFAULT(WARNING) << "Unsupported device key: " << key << ". Skipping entry.\n";
