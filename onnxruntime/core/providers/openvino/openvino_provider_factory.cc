@@ -15,7 +15,7 @@
 namespace onnxruntime {
 namespace openvino_ep {
 void ParseConfigOptions(ProviderInfo& pi) {
-  if(pi.config_options==NULL)
+  if (pi.config_options == NULL)
     return;
 
   pi.so_disable_cpu_ep_fallback = pi.config_options->GetConfigOrDefault(kOrtSessionOptionsDisableCPUEPFallback, "0") == "1";
@@ -29,7 +29,6 @@ void ParseConfigOptions(ProviderInfo& pi) {
     map["NPU_COMPILATION_MODE_PARAMS"] = "enable-wd-blockarg-input=true compute-layers-with-higher-precision=Sqrt,Power,ReduceSum";
     pi.load_config["NPU"] = std::move(map);
   }
-
 }
 
 void* ParseUint64(const ProviderOptions& provider_options, std::string option_name) {
@@ -167,6 +166,25 @@ std::string ParsePrecision(const ProviderOptions& provider_options, std::string&
   return helper[device_type].first;
 }
 
+// Map the OV device to the device id passed at runtime
+std::string map_LUID_to_device(const std::string& luid_str) {
+  try {
+    for (const auto& device : OVCore::Get()->core.get_available_devices()) {
+      if (device.find("GPU") != std::string::npos) {
+        ov::device::LUID ov_luid = OVCore::Get()->core.get_property(device, ov::device::luid);
+        std::stringstream ov_luid_str;
+        ov_luid_str << ov_luid;
+        if (luid_str == ov_luid_str.str()) {
+          return device;
+        }
+      }
+    }
+    return "No_match_found";
+  } catch (...) {
+    ORT_THROW("[ERROR] [OpenVINO] Parsing device_id provider option failed ");
+  }
+}
+
 void ParseProviderOptions([[maybe_unused]] ProviderInfo& result, [[maybe_unused]] const ProviderOptions& config_options) {}
 
 struct OpenVINOProviderFactory : IExecutionProviderFactory {
@@ -204,7 +222,7 @@ struct OpenVINO_Provider : Provider {
     const ProviderOptions* provider_options_ptr = reinterpret_cast<ProviderOptions*>(pointers_array[0]);
     const ConfigOptions* config_options = reinterpret_cast<ConfigOptions*>(pointers_array[1]);
 
-    if(provider_options_ptr == NULL) {
+    if (provider_options_ptr == NULL) {
       LOGS_DEFAULT(ERROR) << "[OpenVINO EP] Passed NULL ProviderOptions to CreateExecutionProviderFactory()";
       return nullptr;
     }
@@ -221,13 +239,16 @@ struct OpenVINO_Provider : Provider {
     pi.device_type = ParseDeviceType(ov_core, provider_options, "device_type");
 
     if (provider_options.contains("device_id")) {
-      std::string dev_id = provider_options.at("device_id").data();
-      LOGS_DEFAULT(WARNING) << "[OpenVINO] The options 'device_id' is deprecated. "
-                            << "Upgrade to set deice_type and precision session options.\n";
-      if (dev_id == "CPU" || dev_id == "GPU" || dev_id == "NPU") {
-        pi.device_type = std::move(dev_id);
+      std::string luid_str = provider_options.at("device_id").data();
+      if (luid_str.empty()) {
+        ORT_THROW("[ERROR] [OpenVINO] Device id is empty");
       } else {
-        ORT_THROW("[ERROR] [OpenVINO] Unsupported device_id is selected. Select from available options.");
+        std::string device_name = map_LUID_to_device(luid_str);
+        if (device_name == "No_match_found") {
+          ORT_THROW(" [ERROR] [OpenVINO] Invalid LUID. No matching hardware is found");
+        } else {
+          pi.device_type = device_name;
+        }
       }
     }
     if (provider_options.contains("cache_dir")) {
