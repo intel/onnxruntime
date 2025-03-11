@@ -691,11 +691,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
               " HETERO/MULTI/AUTO options available. \n");
         }
       } else if (key == "device_id") {
-        if (value == "CPU" || value == "GPU" || value == "NPU") {
-          ov_options[key] = value;
-        } else {
-          ORT_THROW("[ERROR] [OpenVINO] Unsupported device_id is selected. Select from available options.");
-        }
+        ov_options[key] = value;
       } else if (key == "precision") {
         auto device_type = ov_options["device_type"];
         if (device_type.find("GPU") != std::string::npos) {
