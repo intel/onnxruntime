@@ -158,10 +158,8 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
   if (session_context_.precision.find("FP32") != std::string::npos) {
     device_config.emplace(ov::hint::inference_precision("f32"));
   }
-  if (session_context_.precision.find("ACCURACY") != std::string::npos &&
-      session_context_.device_type.find("GPU") != std::string::npos) {
+  if (session_context_.precision.find("ACCURACY") != std::string::npos) {
     if (session_context_.OpenVINO_Version.at(0) >= 2024) {
-      device_config.emplace(ov::hint::inference_precision(ov::element::dynamic));
       device_config.emplace(ov::hint::execution_mode(ov::hint::ExecutionMode::ACCURACY));
     } else {
       if (!subgraph_context_.model_precision.empty())
@@ -647,7 +645,7 @@ void BasicBackend::CompleteAsyncInference(Ort::KernelContext& context, OVInferRe
         const auto& out_name = item.first;
         auto node = item.second;
         Ort::UnownedValue output_tensor = GetOutputTensor(context,
-                                                          std::move(out_name),
+                                                          out_name,
                                                           subgraph_context_.output_names,
                                                           node);
         auto mem_info = output_tensor.GetTensorMemoryInfo();
