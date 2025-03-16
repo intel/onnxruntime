@@ -77,8 +77,15 @@ BackendManager::BackendManager(SessionContext& session_context,
   ptr_stream_t model_stream;
   std::unique_ptr<onnx::ModelProto> model_proto;
   if (subgraph_context_.is_ep_ctx_graph) {
-    std::cout << " inside is_ep_ctx_graph " << std::endl;
-    std::string model_name = onnxruntime::openvino_ep::BackendManager::stripAfterFirstDot(session_context_.onnx_model_path_name.filename().string());
+    std::string filename;
+    if (!session_context_.so_context_file_path.empty()) {
+      filename = session_context_.so_context_file_path.filename().string();
+    } else if (!session_context_.onnx_model_path_name.empty()) {
+      filename = session_context_.onnx_model_path_name.filename().string();
+    } else {
+      ORT_THROW("Either Session_options ep.context_file_path or model path must be specified");
+    }
+    std::string model_name = onnxruntime::openvino_ep::BackendManager::stripAfterFirstDot(filename);
     auto subgraph_name = model_name + "_" + subgraph_context_.subgraph_name;
     model_stream = ep_ctx_handle_.GetModelBlobStream(shared_context_,
                                                      session_context_.so_context_file_path,
@@ -103,9 +110,9 @@ BackendManager::BackendManager(SessionContext& session_context,
       if (!sw.mapped_weights) {
         sw.mapped_weights = std::make_unique<SharedContext::SharedWeights::WeightsFile>(weight_filename);
       }
-      std::cout << " Call createOVTensors in backend_manager.cc" << std::endl;
       backend_utils::CreateOVTensors(session_context_.device_type, sw.metadata, *sw.mapped_weights);
-      std::cout << " create OVTensors successful " << std::endl;
+    } else {
+      ORT_THROW(" External weight file is not found ");
     }
   }
 
@@ -207,11 +214,16 @@ BackendManager::BackendManager(SessionContext& session_context,
 }
 
 std::string BackendManager::stripAfterFirstDot(std::string filename) {
-  size_t dotPos = filename.find('.');  // Find first dot
-  if (dotPos == std::string::npos) {
+  size_t dotPos = filename.find('.');     // Find first dot
+  size_t ctxPos = filename.find("_ctx");  // Find first dot
+  if (dotPos == std::string::npos && ctxPos == std::string::npos) {
     return filename;  // No dot found, return full filename
   }
-  return filename.substr(0, dotPos);  // Return everything before first dot
+  if (dotPos != std::string::npos)
+    filename = filename.substr(0, dotPos);  // strip everything after first dot
+  if (ctxPos != std::string::npos)
+    filename = filename.substr(0, ctxPos);  // strip everything after _ctx
+  return filename;
 }
 
 // Call EPContext model exporter here if the provider option for exporting
@@ -227,8 +239,6 @@ Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVie
     ORT_THROW(exception_str);
   }
 
-  std::cout << " inside export compiled model " << std::endl;
-
   // If embed_mode, then pass on the serialized blob
   // If not embed_mode, dump the blob here and only pass on the path to the blob
   std::string model_blob_str;
@@ -236,27 +246,26 @@ Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVie
   if (session_context_.so_share_ep_contexts) {
     std::ostringstream model_blob_stream;
     compiled_model.export_model(model_blob_stream);
-    std::cout << " inside export compiled model - share ep contexts" << std::endl;
 
-    // std::ofstream file(metadata_filename, std::ios::app| std::ios::binary);
-    // std::cout << " write to metadata bin - " << metadata_filename << std::endl;
     auto& subgraph_metadata = shared_context_.shared_weights.subgraph_metadata;
-    std::string model_name = onnxruntime::openvino_ep::BackendManager::stripAfterFirstDot(session_context_.onnx_model_path_name.filename().string());
+    std::string filename = "";
+    if (!session_context_.so_context_file_path.empty()) {
+      filename = session_context_.so_context_file_path.filename().string();
+    } else if (!session_context_.onnx_model_path_name.empty()) {
+      filename = session_context_.onnx_model_path_name.filename().string();
+    } else {
+      ORT_THROW("Either Session_options ep.context_file_path or model path must be specified");
+    }
+    std::string model_name = onnxruntime::openvino_ep::BackendManager::stripAfterFirstDot(filename);
     auto subgraph_name = model_name + "_" + subgraph_context_.subgraph_name;
     sw::SubgraphMetadata::Map::key_type key{subgraph_name};
     sw::SubgraphMetadata::Map::mapped_type value{};
 
     auto& bin_file = shared_context_.shared_weights.shared_bin_file.bin_file_;
-    std::cout << " subgraph name " << subgraph_name << "key = " << key.name << " For bin write " << std::endl;
     if (!subgraph_metadata.contains(key) && bin_file.is_open()) {
-      // std::cout << "Current offset before "<< subgraph_context_.subgraph_name << "  = " << bin_file.tellp() << std::endl;
-      value.epctx_offset = bin_file.tellp();
-      std::cout << " bin file location for writing subgraph = " << bin_file.tellp() << std::endl;
+      value.epctx_offset = static_cast<uint64_t>(bin_file.tellp());
       bin_file << model_blob_stream.str();
-      // compiled_model.export_model(bin_file);
-      // std::cout << "Current offset after "<< subgraph_context_.subgraph_name << "  = " << bin_file.tellp() << std::endl;
-      value.epctx_length = static_cast<size_t>(static_cast<std::streamoff>(bin_file.tellp()) - value.epctx_offset);
-      // std::cout << "Key = " << key.name << " Offset = " << value.epctx_offset << " , length = " << value.epctx_length << std::endl;
+      value.epctx_length = static_cast<size_t>(static_cast<uint64_t>(bin_file.tellp()) - value.epctx_offset);
       subgraph_metadata.emplace(key, std::move(value));
     }
 

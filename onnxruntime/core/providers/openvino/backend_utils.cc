@@ -303,33 +303,23 @@ void CreateOVTensors(const std::string& device_name,
                      SharedContext::SharedWeights::Metadata::Map& metadata_map,
                      SharedContext::SharedWeights::WeightsFile& weights) {
   for (auto& [key, value] : metadata_map) {
-    // std::cout << " Key = " << key.name << std::endl;
     if (value.tensor) {
-      // std::cout << " Value already present for key = " << key.name << std::endl;
       continue;
     }
 
     // Get element data type
-    // std::cout << " value element type = " << value.element_type << std::endl;
     auto onnx_element_type = (ONNX_NAMESPACE::TensorProto_DataType)value.element_type;
 
     ov::element::Type ov_elementType = GetOpenVINOElementType(onnx_element_type);  // Map to OpenVINO data type
-    // std::cout << "value dimensions = " << std::endl;
-    // for (auto dim:value.dimensions){
-    //   std::cout << dim << std::endl;
-    // }
+
     // Create OpenVINO Tensor
     if (device_name == "NPU") {
       // Use remote tensors
       auto npu_context = OVCore::Get()->core.get_default_context("NPU").as<ov::intel_npu::level_zero::ZeroContext>();
       auto&& remote_tensor = npu_context.create_l0_host_tensor(ov_elementType, value.dimensions, ov::intel_npu::TensorType::INPUT);
-      // std::cout << " Remote tensor created " << std::endl;
       // Copy data to remote tensor
-      // std::cout << " value size = " << value.size << std::endl;
       weights.load_weights(value.data_offset, remote_tensor.get(), value.size);
       value.tensor = std::make_shared<ov::Tensor>(remote_tensor);
-      // std::cout << " value tensor created " << std::endl;
-
     } else {
       // Use vanilla tensors
       value.tensor = std::make_shared<ov::Tensor>(ov_elementType, value.dimensions);

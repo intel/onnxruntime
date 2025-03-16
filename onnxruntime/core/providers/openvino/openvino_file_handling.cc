@@ -50,12 +50,10 @@ void SharedContext::SharedWeights::Metadata::writeMetadataToBinaryFile(SharedCon
     std::cerr << "Error opening file for writing!" << std::endl;
     return;
   }
-  std::cout << " bin file location in write for metadata map = " << file.tellp() << std::endl;
 
   try {
     size_t metadataSize = metadata.size();
     file.write(reinterpret_cast<const char*>(&metadataSize), sizeof(metadataSize));  // Write map size
-    std::cout << " bin file location after write metadata size = " << file.tellp() << std::endl;
 
     for (const auto& [key, value] : metadata) {
       writeString(file, key.name);
@@ -65,13 +63,11 @@ void SharedContext::SharedWeights::Metadata::writeMetadataToBinaryFile(SharedCon
       file.write(reinterpret_cast<const char*>(&value.element_type), sizeof(value.element_type));
       writeVector(file, value.dimensions);
     }
-    std::cout << " bin file location after write metadata map = " << file.tellp() << std::endl;
   } catch (const Exception& e) {
     ORT_THROW("Error: Failed to write map data.", e.what());
   } catch (...) {
     ORT_THROW("Error: Failed to write map data.");
   }
-  std::cout << "Map written to binary file successfully!\n";
 }
 
 //  Write the entire subgraph metadata map to a binary file
@@ -83,25 +79,20 @@ void SharedContext::SharedWeights::SubgraphMetadata::writeSubgraphDataToBinaryFi
     return;
   }
   try {
-    std::cout << " bin file location at write subgraph metadata = " << file.tellp() << std::endl;
     size_t subgraph_metadataSize = subgraph_metadata.size();
     file.write(reinterpret_cast<const char*>(&subgraph_metadataSize), sizeof(subgraph_metadataSize));  // Write map size
-    std::cout << " bin file location at write subgraph metadata after metadata size = " << file.tellp() << std::endl;
 
     for (const auto& [key, value] : subgraph_metadata) {
       writeString(file, key.name);
       file.write(reinterpret_cast<const char*>(&value.epctx_offset), sizeof(value.epctx_offset));
       file.write(reinterpret_cast<const char*>(&value.epctx_length), sizeof(value.epctx_length));
     }
-    std::cout << " bin file location after write subgraph metadata = " << file.tellp() << std::endl;
 
-    // std::cout << " File position after writing subgraph metadata = " << file.tellp() << std::end;
   } catch (const Exception& e) {
     ORT_THROW("Error: Failed to write map data.", e.what());
   } catch (...) {
     ORT_THROW("Error: Failed to write map data.");
   }
-  std::cout << "Map written to binary file successfully!\n";
 }
 
 // Utility function to read a string
@@ -166,11 +157,8 @@ void SharedContext::SharedWeights::SubgraphMetadata::readSubgraphDataFromBinaryF
     SharedContext::SharedWeights::SubgraphMetadata::Value value;
 
     key.name = readString(file);  // Read key (name)
-    std::cout << " key.name = " << key.name << std::endl;
     file.read(reinterpret_cast<char*>(&value.epctx_offset), sizeof(value.epctx_offset));
-    std::cout << "value.epctx_offset = " << value.epctx_offset << std::endl;
     file.read(reinterpret_cast<char*>(&value.epctx_length), sizeof(value.epctx_length));
-    std::cout << " value.epctx_length = " << value.epctx_length << std::endl;
     subgraph_metadata[key] = value;
   }
 }
@@ -183,61 +171,26 @@ void SharedContext::SharedWeights::SharedBinFile::readBinFile(SharedContext& sha
   auto& sb = shared_context_.shared_weights.shared_bin_file;
   if (sb.bin_file_.is_open()) {
     auto header_size = sizeof(SharedContext::SharedWeights::Header);
-    std::cout << " sb.bin_size_ " << sb.bin_size_ << std::endl;
-    std::cout << " header_size " << header_size << std::endl;
     if (sb.bin_size_ > header_size) {
       sb.bin_file_.read(reinterpret_cast<char*>(&header), header_size);
-      std::cout << " Footer offset from header = " << header.footer_offset << std::endl;
     }
-    std::cout << " file position after reading header " << sb.bin_file_.tellp() << std::endl;
     auto footer_size = sizeof(SharedContext::SharedWeights::Footer);
-    std::cout << " footer_size " << footer_size << std::endl;
     if (header.footer_offset < sb.bin_size_ && footer_size <= sb.bin_size_ &&
         (header.footer_offset <= sb.bin_size_ - footer_size)) {
       sb.bin_file_.seekp(header.footer_offset, std::ios::beg);
       sb.bin_file_.read(reinterpret_cast<char*>(&footer), footer_size);
-      std::cout << " subgraph metadata offset from footer = " << footer.subgraph_offset << std::endl;
-      std::cout << " subgraph metadata length from footer = " << footer.subgraph_length << std::endl;
-      std::cout << " metadata offset from footer = " << footer.metadata_offset << std::endl;
-      std::cout << " metadata length from footer = " << footer.metadata_length << std::endl;
     }
-    std::cout << " footer.subgraph_offset = " << footer.subgraph_offset << std::endl;
 
     if (footer.subgraph_offset < sb.bin_size_ && footer.subgraph_length <= sb.bin_size_ &&
         (footer.subgraph_offset <= sb.bin_size_ - footer.subgraph_length)) {
-      std::cout << " inside if for reading subgraph metadata  = " << footer.subgraph_offset << std::endl;
       sb.bin_file_.seekp(footer.subgraph_offset, std::ios::beg);
       shared_context_.shared_weights.subgraph_metadata_.readSubgraphDataFromBinaryFile(shared_context_, subgraph_metadata_map);
-      for (const auto& [key, value] : subgraph_metadata_map) {
-        std::cout << key.name << std::endl;
-        std::cout << value.epctx_offset << std::endl;
-        std::cout << value.epctx_length << std::endl;
-      }
     }
     if (footer.metadata_offset < sb.bin_size_ && footer.metadata_length <= sb.bin_size_ &&
         (footer.metadata_offset <= sb.bin_size_ - footer.metadata_length)) {
       sb.bin_file_.seekp(footer.metadata_offset, std::ios::beg);
       shared_context_.shared_weights.metadata_.readMetadataFromBinaryFile(shared_context_, metadata_map);
-      for (const auto& [key, value] : metadata_map) {
-        std::cout << key.name << std::endl;
-        std::cout << value.location << std::endl;
-        std::cout << value.data_offset << std::endl;
-        std::cout << value.element_type << std::endl;
-        std::cout << value.size << std::endl;
-        for (const auto& dim : value.dimensions) {
-          std::cout << dim << ", ";
-        }
-        std::cout << std::endl;
-      }
-      // exit(1);
     }
-    //   // After reading the Subgraph map and metadata map move the file ptr to start of subgraph metadata map
-    //   // so that epctx blobs that are not already exisiting in the bin file gets written.
-    //   // Once all the epctx blobs are written, subgraph map and metadata map are written to the bin file along with updating header and footer.
-    //   if(!subgraph_metadata_map.empty()){
-    //     sb.bin_file_.seekp(footer.subgraph_offset, std::ios::beg);
-    //     std::cout << " After setting bin file offset to the start of subgraph offset = " << sb.bin_file_.tellp() << std::endl;
-    //   }
   }
 }
 }  // namespace openvino_ep

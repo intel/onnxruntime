@@ -44,27 +44,5 @@ class EPCtxHandler {
   std::unique_ptr<Model> epctx_model_;
   const logging::Logger& logger_;
 };
-
-// class LimitedFileStreambuf : public std::streambuf {
-// private:
-//     std::fstream& file; // Reference to the existing file stream
-//     long start, end; // Start and end positions
-
-// protected:
-//     int_type underflow() override {
-//         if (file.tellg() >= end || file.eof())
-//             return traits_type::eof(); // Stop reading if we reach the limit
-
-//         return file.get(); // Read next character directly from the file
-//     }
-
-// public:
-//     LimitedFileStreambuf(std::fstream& bin_file_, long start, long end)
-//         : file(bin_file_), start(start), end(end) {
-//         file.clear(); // Clear error flags in case of previous reads
-//         file.seekg(start); // Move file pointer to the start position
-//     }
-// };
-
 }  // namespace openvino_ep
 }  // namespace onnxruntime

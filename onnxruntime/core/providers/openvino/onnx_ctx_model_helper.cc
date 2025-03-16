@@ -124,8 +124,6 @@ std::unique_ptr<std::istream> EPCtxHandler::GetModelBlobStream(SharedContext& sh
     }
     blob_filepath = blob_filepath.parent_path() / ep_cache_context;
     ORT_ENFORCE(std::filesystem::exists(blob_filepath), "Blob file not found: ", blob_filepath.string());
-    std::cout << " blob_filepath " << blob_filepath.filename().string() << std::endl;
-    std::cout << " shared bin filename = " << shared_context_.shared_weights.shared_bin_file.shared_bin_filename.filename().string() << std::endl;
     if (blob_filepath == shared_context_.shared_weights.shared_bin_file.shared_bin_filename) {
       LOGS_DEFAULT(VERBOSE) << "[OpenVINO EP] Read blob from Shared bin file - " << blob_filepath;
       auto& sb = shared_context_.shared_weights.shared_bin_file;
@@ -133,15 +131,10 @@ std::unique_ptr<std::istream> EPCtxHandler::GetModelBlobStream(SharedContext& sh
       ORT_ENFORCE(sb.bin_size_ > 8, " Bin file is empty. Regenerate the epctx model. Bin file path : ", blob_filepath.string());
       auto subgraph_metadata = shared_context_.shared_weights.subgraph_metadata;
       using Key = SharedContext::SharedWeights::SubgraphMetadata::Key;
-      std::cout << " subgraph name = " << subgraph_name << std::endl;
       const auto subgraph_key = Key{subgraph_name};
       auto it = subgraph_metadata.find(subgraph_key);
       if (it != subgraph_metadata.end()) {
         auto& value = it->second;
-        std::cout << " value.epctx_offset =  " << value.epctx_offset << std::endl;
-        std::cout << " value.epctx_length =  " << value.epctx_length << std::endl;
-        std::cout << " sb.bin_size_ =  " << sb.bin_size_ << std::endl;
-
         if (value.epctx_offset < sb.bin_size_ && value.epctx_length <= sb.bin_size_ &&
             (value.epctx_offset <= sb.bin_size_ - value.epctx_length)) {
           sb.bin_file_.seekg(value.epctx_offset);             // Move to the specified offset
@@ -149,7 +142,6 @@ std::unique_ptr<std::istream> EPCtxHandler::GetModelBlobStream(SharedContext& sh
           sb.bin_file_.read(&buffer[0], value.epctx_length);  // Read the specified length
           // Adjust string size in case of a short read
           buffer.resize(sb.bin_file_.gcount());
-          std::cout << " Read epctx into stream " << std::endl;
           result.reset((std::istream*)new std::istringstream(buffer));
         }
       }
