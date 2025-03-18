@@ -2169,7 +2169,7 @@ std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Creat
     const ProviderOptions* provider_options_map, const SessionOptions* session_options) try {
   // Append session options applicable for EP to EP Provider options.
   const ConfigOptions* config_options = nullptr;
-  if (session_options !=nullptr) {
+  if (session_options != nullptr) {
     config_options = &session_options->config_options;
   }
 
