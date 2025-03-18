@@ -104,7 +104,8 @@ BackendManager::BackendManager(SessionContext& session_context,
     subgraph_context_.has_dynamic_input_shape = true;
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims";
     if ((session_context_.device_type.find("CPU") != std::string::npos ||
-         session_context_.device_type.find("GPU") != std::string::npos) &&
+         session_context_.device_type.find("GPU") != std::string::npos ||
+         session_context_.device_type.find("NPU") != std::string::npos) &&
         !session_context_.disable_dynamic_shapes) {
       LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Starting backend initialization. "
                          << "Creating backend Dynamic Shapes";
@@ -202,13 +203,13 @@ BackendManager::BackendManager(SessionContext& session_context,
 // By default, create model in embed mode where the blob stream is exported as data within
 // the EPContext node.
 Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphViewer& graph_body_viewer) {
-  if (session_context_.disable_dynamic_shapes && subgraph_context_.has_dynamic_input_shape) {
-    std::string exception_str =
-        "Exporting dynamically compiled models at runtime is not supported. "
-        "Cannot export blobs of dynamic models that request static shape inference. "
-        "To export this model, set disable_dynamic_shapes to False";
-    ORT_THROW(exception_str);
-  }
+  // if (session_context_.disable_dynamic_shapes && subgraph_context_.has_dynamic_input_shape) {
+  //   std::string exception_str =
+  //       "Exporting dynamically compiled models at runtime is not supported. "
+  //       "Cannot export blobs of dynamic models that request static shape inference. "
+  //       "To export this model, set disable_dynamic_shapes to False";
+  //   ORT_THROW(exception_str);
+  // }
 
   // If embed_mode, then pass on the serialized blob
   // If not embed_mode, dump the blob here and only pass on the path to the blob

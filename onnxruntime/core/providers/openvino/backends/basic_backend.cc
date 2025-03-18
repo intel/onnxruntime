@@ -361,10 +361,11 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
                   "Input names mismatch between OpenVINO and ONNX. ", onnx_input_name,
                   " doesn't exist in the list of OpenVINO input tensor names");
       size_t batch_slice_idx = 0;
-      if (subgraph_context_.has_dynamic_input_shape &&
+      if (!subgraph_context_.has_dynamic_input_shape &&
           !session_context_.disable_dynamic_shapes &&
           (session_context_.device_type.find("CPU") != std::string::npos ||
-           session_context_.device_type.find("GPU") != std::string::npos)) {
+           session_context_.device_type.find("GPU") != std::string::npos ||
+           session_context_.device_type.find("NPU") != std::string::npos)) {
         auto tensor = context.GetInput(subgraph_context_.input_names.at(input_name));
         auto tensor_info = tensor.GetTensorTypeAndShapeInfo();
         auto tensor_shape = tensor_info.GetShape();
