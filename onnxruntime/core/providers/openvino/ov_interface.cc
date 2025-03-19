@@ -197,6 +197,16 @@ OVTensorPtr OVInferRequest::GetTensor(const std::string& input_name) {
   }
 }
 
+OVTensor OVInferRequest::GetOutputTensor(const int& output_idx) {
+  try {
+    return ovInfReq.get_output_tensor(output_idx);
+  } catch (const Exception& e) {
+    ORT_THROW(log_tag + " Cannot access output tensor: " + e.what());
+  } catch (...) {
+    ORT_THROW(log_tag + " Cannot access output tensor");
+  }
+}
+
 std::string OVInferRequest::GetInputTensorName(uint32_t index) {
   try {
     const auto& model = ovInfReq.get_compiled_model();
