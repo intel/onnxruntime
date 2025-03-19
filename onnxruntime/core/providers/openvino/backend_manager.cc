@@ -361,12 +361,14 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
 
   const auto& onnx_model_path_name = subgraph.ModelPath();
   // QDQ stripping enabled only for the NPU
+  // OV query should come here, if compiler stripping is enabled mark session_context_.enable_qdq_optimizer as false
+  // else everything remains as it is
   if (session_context_.device_type.find("NPU") != std::string::npos &&
-      session_context_.enable_qdq_optimizer &&
+      (session_context_.enable_qdq_optimizer || session_context_.so_share_ep_contexts) &&
       IsQDQGraph(subgraph)) {
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] QDQ optimization pass status: 1";
     std::unique_ptr<onnxruntime::Model> model;
-    Status status = CreateModelWithStrippedQDQNodes(subgraph, logger, session_context_.so_share_ep_contexts, model, shared_context_.shared_weights);
+    Status status = CreateModelWithStrippedQDQNodes(subgraph, logger, session_context_.so_share_ep_contexts, model, shared_context_.shared_weights, session_context_.enable_qdq_optimizer);
     auto model_proto = model->ToProto();
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
     print_model_proto_duration();
