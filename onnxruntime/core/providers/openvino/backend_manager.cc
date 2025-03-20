@@ -376,6 +376,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     return model_proto;
   } else {
+    // ovep stripping and weight sharing both set to false and compiler stripping will got through this pass
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] QDQ optimization pass status: 0";
     auto model = subgraph.CreateModel(logger);
     auto model_proto = model->ToProto();
