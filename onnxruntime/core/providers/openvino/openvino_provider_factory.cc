@@ -103,20 +103,23 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
   // Devices considered to be supported by default
   std::unordered_set<std::string> supported_device_types = {"CPU", "GPU", "NPU"};
   for (auto device : devices_to_check) {
-    // Check deprecated device format (CPU_FP32, GPU.0_FP16, etc.) and remove the suffix
+    // Check deprecated device format (CPU_FP32, GPU.0_FP16, etc.) and remove the suffix in place
     // Suffix will be parsed in ParsePrecision
     if (auto delimit = device.find("_"); delimit != std::string::npos) {
       device = device.substr(0, delimit);
     }
+    // Just the device name without .0, .1, etc. suffix
+    auto device_prefix = device;
     // Check if device index is appended (.0, .1, etc.), if so, remove it
-    if (auto delimit = device.find("."); delimit != std::string::npos) {
-      device = device.substr(0, delimit);
-      if (device == "CPU")
+    if (auto delimit = device_prefix.find("."); delimit != std::string::npos) {
+      device_prefix = device_prefix.substr(0, delimit);
+      if (device_prefix == "CPU")
         ORT_THROW("[ERROR] [OpenVINO] CPU device is only supported without index, CPU.x is illegal.\n");
     }
     // Only device is not supported by default (some exotic device), check if it's available
-    if (!supported_device_types.contains(device)) {
+    if (!supported_device_types.contains(device_prefix)) {
       std::vector<std::string> available_devices = ov_core->GetAvailableDevices();
+      // Here we need to find the full device name (with .idx, but without _precision)
       if (std::find(std::begin(available_devices), std::end(available_devices), device) == std::end(available_devices)) {
         ORT_THROW(
             "[ERROR] [OpenVINO] You have selected wrong configuration value for the key 'device_type'. "
