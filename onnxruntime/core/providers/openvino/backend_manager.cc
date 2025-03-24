@@ -76,7 +76,20 @@ BackendManager::BackendManager(SessionContext& session_context,
   ptr_stream_t model_stream;
   std::unique_ptr<onnx::ModelProto> model_proto;
   if (subgraph_context_.is_ep_ctx_graph) {
-    model_stream = ep_ctx_handle_.GetModelBlobStream(session_context_.so_context_file_path, subgraph);
+    std::string filename;
+    if (!session_context_.so_context_file_path.empty()) {
+      filename = session_context_.so_context_file_path.filename().string();
+    } else if (!session_context_.onnx_model_path_name.empty()) {
+      filename = session_context_.onnx_model_path_name.filename().string();
+    } else {
+      ORT_THROW("Either Session_options ep.context_file_path or model path must be specified");
+    }
+    std::string model_name = onnxruntime::openvino_ep::BackendManager::stripAfterFirstDot(filename);
+    auto subgraph_name = model_name + "_" + subgraph_context_.subgraph_name;
+    model_stream = ep_ctx_handle_.GetModelBlobStream(shared_context_,
+                                                     session_context_.so_context_file_path,
+                                                     subgraph_name,
+                                                     subgraph);
   } else {
     model_proto = GetModelProtoFromFusedNode(fused_node, subgraph, logger);
   }
@@ -97,6 +110,8 @@ BackendManager::BackendManager(SessionContext& session_context,
         sw.mapped_weights = std::make_unique<SharedContext::SharedWeights::WeightsFile>(weight_filename);
       }
       backend_utils::CreateOVTensors(session_context_.device_type, sw.metadata, *sw.mapped_weights);
+    } else {
+      ORT_THROW(" External weight file is not found ");
     }
   }
 
@@ -197,6 +212,19 @@ BackendManager::BackendManager(SessionContext& session_context,
   }
 }
 
+std::string BackendManager::stripAfterFirstDot(std::string filename) {
+  size_t dotPos = filename.find('.');     // Find first dot
+  size_t ctxPos = filename.find("_ctx");  // Find first dot
+  if (dotPos == std::string::npos && ctxPos == std::string::npos) {
+    return filename;  // No dot found, return full filename
+  }
+  if (dotPos != std::string::npos)
+    filename = filename.substr(0, dotPos);  // strip everything after first dot
+  if (ctxPos != std::string::npos)
+    filename = filename.substr(0, ctxPos);  // strip everything after _ctx
+  return filename;
+}
+
 // Call EPContext model exporter here if the provider option for exporting
 // precompiled blob is set. If that's the case:
 // By default, create model in embed mode where the blob stream is exported as data within
@@ -214,7 +242,35 @@ Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVie
   // If not embed_mode, dump the blob here and only pass on the path to the blob
   std::string model_blob_str;
   auto compiled_model = concrete_backend_->GetOVCompiledModel();
-  if (session_context_.so_context_embed_mode) {  // Internal blob
+  if (session_context_.so_share_ep_contexts) {
+    std::ostringstream model_blob_stream;
+    compiled_model.export_model(model_blob_stream);
+
+    auto& subgraph_metadata = shared_context_.shared_weights.subgraph_metadata;
+    std::string filename = "";
+    if (!session_context_.so_context_file_path.empty()) {
+      filename = session_context_.so_context_file_path.filename().string();
+    } else if (!session_context_.onnx_model_path_name.empty()) {
+      filename = session_context_.onnx_model_path_name.filename().string();
+    } else {
+      ORT_THROW("Either Session_options ep.context_file_path or model path must be specified");
+    }
+    std::string model_name = onnxruntime::openvino_ep::BackendManager::stripAfterFirstDot(filename);
+    auto subgraph_name = model_name + "_" + subgraph_context_.subgraph_name;
+    sw::SubgraphMetadata::Map::key_type key{subgraph_name};
+    sw::SubgraphMetadata::Map::mapped_type value{};
+
+    auto& bin_file = shared_context_.shared_weights.shared_bin_file.bin_file_;
+    if (!subgraph_metadata.contains(key) && bin_file.is_open()) {
+      value.epctx_offset = static_cast<uint64_t>(bin_file.tellp());
+      bin_file << model_blob_stream.str();
+      value.epctx_length = static_cast<size_t>(static_cast<uint64_t>(bin_file.tellp()) - value.epctx_offset);
+      subgraph_metadata.emplace(key, std::move(value));
+    }
+
+    model_blob_str = shared_context_.shared_weights.shared_bin_file.shared_bin_filename.filename().string();
+  } else if (session_context_.so_context_embed_mode) {
+    // Internal blob
     std::ostringstream model_blob_stream;
     compiled_model.export_model(model_blob_stream);
     model_blob_str = std::move(model_blob_stream).str();

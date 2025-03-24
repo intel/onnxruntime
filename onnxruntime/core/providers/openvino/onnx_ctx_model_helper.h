@@ -6,8 +6,10 @@
 #include <sstream>
 #include <string>
 #include <memory>
+#include <streambuf>
 
 #include "core/providers/shared_library/provider_api.h"
+#include "core/providers/openvino/contexts.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -31,7 +33,10 @@ class EPCtxHandler {
                                const std::string& graph_name,
                                const bool embed_mode,
                                std::string&& model_blob_str) const;
-  std::unique_ptr<std::istream> GetModelBlobStream(const std::filesystem::path& so_context_file_path, const GraphViewer& graph_viewer) const;
+  std::unique_ptr<std::istream> GetModelBlobStream(SharedContext& shared_context_,
+                                                   const std::filesystem::path& so_context_file_path,
+                                                   const std::string& subgraph_name,
+                                                   const GraphViewer& graph_viewer) const;
   InlinedVector<const Node*> GetEPCtxNodes() const;
 
  private:
@@ -39,6 +44,5 @@ class EPCtxHandler {
   std::unique_ptr<Model> epctx_model_;
   const logging::Logger& logger_;
 };
-
 }  // namespace openvino_ep
 }  // namespace onnxruntime

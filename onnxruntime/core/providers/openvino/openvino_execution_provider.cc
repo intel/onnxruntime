@@ -130,24 +130,30 @@ common::Status OpenVINOExecutionProvider::Compile(
     std::vector<NodeComputeInfo>& node_compute_funcs) {
   auto& logger = *GetLogger();
   Status status = Status::OK();
-
+  auto& sb = shared_context_->shared_weights.shared_bin_file;
   if (!fused_nodes.empty()) {
     // Assume these properties are constant for all the model subgraphs, otherwise move to SubGraphContext
     const auto& graph_body_viewer_0 = fused_nodes[0].filtered_graph.get();
     session_context_.onnx_model_path_name = graph_body_viewer_0.ModelPath().string();
     session_context_.onnx_opset_version =
         graph_body_viewer_0.DomainToVersionMap().at(kOnnxDomain);
+
+    if (session_context_.so_share_ep_contexts) {
+      if (session_context_.so_context_file_path.empty()) {
+        sb.shared_bin_filename = session_context_.onnx_model_path_name.parent_path() / "metadata.bin";
+      } else {
+        sb.shared_bin_filename = session_context_.so_context_file_path.parent_path() / "metadata.bin";
+      }
+      sb.openBinFile(sb.shared_bin_filename);
+    }
   }
 
   // Temporary code to read metadata before it moves to the .bin
+
+  auto& subgraph_metadata = shared_context_->shared_weights.subgraph_metadata;
   auto& metadata = shared_context_->shared_weights.metadata;
-  if (session_context_.so_share_ep_contexts && metadata.empty()) {
-    // Metadata is always read from model location, this could be a source or epctx model
-    fs::path metadata_filename = session_context_.onnx_model_path_name.parent_path() / "metadata.bin";
-    std::ifstream file(metadata_filename, std::ios::binary);
-    if (file) {
-      file >> metadata;
-    }
+  if (session_context_.so_share_ep_contexts) {
+    shared_context_->shared_weights.shared_bin_file.readBinFile(*shared_context_);
   }
 
   struct OpenVINOEPFunctionState {
@@ -157,6 +163,16 @@ common::Status OpenVINOExecutionProvider::Compile(
     BackendManager& backend_manager;
   };
 
+  auto& header = shared_context_->shared_weights.header_;
+  auto& footer = shared_context_->shared_weights.footer_;
+
+  if (sb.bin_file_.is_open()) {
+    sb.bin_file_.seekp(0, std::ios::beg);
+    sb.bin_file_.write(reinterpret_cast<char*>(&header), sizeof(SharedContext::SharedWeights::Header));
+  }
+  if (!subgraph_metadata.empty() && footer.subgraph_offset > sizeof(SharedContext::SharedWeights::Header)) {
+    sb.bin_file_.seekp(footer.subgraph_offset, std::ios::beg);
+  }
   for (const FusedNodeAndGraph& fused_node_graph : fused_nodes) {
     const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
     const Node& fused_node = fused_node_graph.fused_node;
@@ -211,20 +227,22 @@ common::Status OpenVINOExecutionProvider::Compile(
   }
 
   if (session_context_.so_share_ep_contexts) {
-    fs::path metadata_filename;
-    if (session_context_.so_context_file_path.empty()) {
-      metadata_filename = session_context_.onnx_model_path_name.parent_path() / "metadata.bin";
-    } else {
-      metadata_filename = session_context_.so_context_file_path.parent_path() / "metadata.bin";
-    }
+    auto& bin_file = sb.bin_file_;
+    if (bin_file.is_open()) {
+      footer.subgraph_offset = static_cast<uint64_t>(bin_file.tellp());
+      shared_context_->shared_weights.subgraph_metadata_.writeSubgraphDataToBinaryFile(*shared_context_, subgraph_metadata);
+      footer.metadata_offset = static_cast<uint64_t>(bin_file.tellp());
+      footer.subgraph_length = static_cast<size_t>(footer.metadata_offset - footer.subgraph_offset);
+      shared_context_->shared_weights.metadata_.writeMetadataToBinaryFile(*shared_context_, metadata);
+      header.footer_offset = static_cast<uint64_t>(bin_file.tellp());
+      footer.metadata_length = static_cast<size_t>(header.footer_offset - footer.metadata_offset);
 
-    // Metadata is generated only for shared contexts
-    // If saving metadata then save it to the provided path or ose the original model path
-    // Multiple calls to Compile() will update the metadata and for the last call
-    //   the resulting file will contain the aggregated content
-    std::ofstream file(metadata_filename, std::ios::binary);
-    if (file) {
-      file << metadata;
+      // Write footer to the bin file
+      bin_file.write(reinterpret_cast<char*>(&footer), sizeof(SharedContext::SharedWeights::Footer));
+      // Update header with Footer offset at the end
+      bin_file.seekp(0, std::ios::beg);
+      bin_file.write(reinterpret_cast<char*>(&header), sizeof(SharedContext::SharedWeights::Header));
+      bin_file.close();
     }
   }
 
