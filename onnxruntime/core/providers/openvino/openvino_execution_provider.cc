@@ -88,7 +88,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const ProviderInfo& info, s
           try {
             device_idx = std::stoi(device_prefix.substr(delimit + 1));
           } catch (std::exception& ex) {
-            ORT_THROW("[ERROR] [OpenVINO] Wrong index in specified device - " + info.device_type + " :", ex.what());
+            ORT_THROW("[ERROR] [OpenVINO] Wrong index in specified device - " + device + " :", ex.what());
           }
           device_prefix = device_prefix.substr(0, delimit);
         }
@@ -97,7 +97,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const ProviderInfo& info, s
           if (available_devices[0] == device_prefix && device_idx == 0)
             device_found = true;
         } else {
-          if (std::find(std::begin(available_devices), std::end(available_devices), info.device_type) != std::end(available_devices))
+          if (std::find(std::begin(available_devices), std::end(available_devices), device) != std::end(available_devices))
             device_found = true;
         }
         all_devices_found = all_devices_found && device_found;
