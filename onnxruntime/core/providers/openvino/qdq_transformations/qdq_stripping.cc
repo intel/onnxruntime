@@ -457,6 +457,7 @@ static void AddStandaloneNodeUnit(onnxruntime::Graph& dst_graph, const onnxrunti
   // do not strip off any Q or DQ node
   if (enable_ovep_weight_sharing && !enable_ovep_qdq_optimizer) {
     AddNode(initializers_to_keep, src_graph, dst_graph, node_unit.GetNode());
+    return;
   }
 
   if (HandleDoubleQDQ(dst_graph, src_graph, node_unit, initializers_to_keep)) return;
@@ -525,12 +526,6 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
                            bool enable_ovep_weight_sharing) {
   assert(node_unit.UnitType() == NodeUnit::Type::QDQGroup);
 
-  // this is the scenario where WAI is enabled and ovep stripping is disabled
-  // do not strip off any Q or DQ node
-  if (enable_ovep_weight_sharing && !enable_ovep_qdq_optimizer) {
-    AddNode(initializers_to_keep, src_graph, dst_graph, node_unit.GetNode());
-  }
-
   // Collect inputs coming into the node unit.
   const auto& node_unit_inputs = node_unit.Inputs();
   std::vector<NodeArg*> input_args;
@@ -546,7 +541,7 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
     SkipReason reason = SkipReason::Other;
     bool keep_dq = CheckDQRuleSet(node_unit, dq_node, src_graph, reason);
 
-    if (keep_dq) {
+    if (keep_dq || (enable_ovep_weight_sharing && !enable_ovep_qdq_optimizer)) {
       AddNode(initializers_to_keep, src_graph, dst_graph, *dq_node);
       dq_node_args_to_keep.insert({input_defs.at(0)->Name(),
                                    &dst_graph.GetOrCreateNodeArg(dq_node->OutputDefs().at(0)->Name(),
@@ -614,7 +609,7 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
 
       bool keep_q = CheckQRuleSet(node_unit, q_node, src_graph, reason);
 
-      if (keep_q) {
+      if (keep_q || (enable_ovep_weight_sharing && !enable_ovep_qdq_optimizer)) {
         AddNode(initializers_to_keep, src_graph, dst_graph, *q_node);
         // if keep_q, then output defs of the target node doesn't change
         output_args.push_back(&dst_graph.GetOrCreateNodeArg(target_node.OutputDefs().at(i)->Name(),
