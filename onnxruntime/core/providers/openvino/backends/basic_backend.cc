@@ -357,6 +357,12 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
         }
         index++;
       }
+
+      // for the stateful PoC, the ONNX model will have KV cache (past/present) tensors, but
+      // we internally converted it to stateful, which removed these. So, we just continue here
+      // to avoid runtime exception.
+      if (input_name.empty()) continue;
+
       ORT_ENFORCE(!input_name.empty(), log_tag,
                   "Input names mismatch between OpenVINO and ONNX. ", onnx_input_name,
                   " doesn't exist in the list of OpenVINO input tensor names");
@@ -364,7 +370,8 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
       if (subgraph_context_.has_dynamic_input_shape &&
           !session_context_.disable_dynamic_shapes &&
           (session_context_.device_type.find("CPU") != std::string::npos ||
-           session_context_.device_type.find("GPU") != std::string::npos)) {
+           session_context_.device_type.find("GPU") != std::string::npos ||
+           session_context_.device_type.find("NPU") != std::string::npos)) {
         auto tensor = context.GetInput(subgraph_context_.input_names.at(input_name));
         auto tensor_info = tensor.GetTensorTypeAndShapeInfo();
         auto tensor_shape = tensor_info.GetShape();
@@ -425,8 +432,11 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
         }
       }
     }  // Loop subgraph original input names
+
+    // For stateful PoC added '&& false' here to disable it, as we forced it through
+    // same dynamic shape path above as we do for CPU & GPU.
     if (session_context_.device_type.find("NPU") != std::string::npos &&
-        !subgraph_context_.has_dynamic_input_shape) {
+        !subgraph_context_.has_dynamic_input_shape && false) {
       // Set the output blob as remote blob
       auto graph_output_info = exe_network_.Get().outputs();
       auto output_idx = 0;
@@ -621,7 +631,8 @@ void BasicBackend::CompleteAsyncInference(Ort::KernelContext& context, OVInferRe
             "list of OpenVINO output tensor names");
       }
       if ((session_context_.device_type.find("CPU") != std::string::npos ||
-           session_context_.device_type.find("GPU") != std::string::npos)) {
+           session_context_.device_type.find("GPU") != std::string::npos ||
+           session_context_.device_type.find("NPU") != std::string::npos)) {
         try {
           graph_output_blob = infer_request->GetTensor(output_name);
         } catch (const char* msg) {
