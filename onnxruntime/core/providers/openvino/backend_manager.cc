@@ -104,7 +104,8 @@ BackendManager::BackendManager(SessionContext& session_context,
     subgraph_context_.has_dynamic_input_shape = true;
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims";
     if ((session_context_.device_type.find("CPU") != std::string::npos ||
-         session_context_.device_type.find("GPU") != std::string::npos) &&
+         session_context_.device_type.find("GPU") != std::string::npos ||
+         session_context_.device_type.find("NPU") != std::string::npos) &&
         !session_context_.disable_dynamic_shapes) {
       LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Starting backend initialization. "
                          << "Creating backend Dynamic Shapes";
@@ -474,7 +475,8 @@ void BackendManager::Compute(OrtKernelContext* context) {
   if (subgraph_context_.has_dynamic_input_shape &&
       !session_context_.disable_dynamic_shapes &&
       (session_context_.device_type.find("CPU") != std::string::npos ||
-       session_context_.device_type.find("GPU") != std::string::npos)) {
+       session_context_.device_type.find("GPU") != std::string::npos ||
+       session_context_.device_type.find("NPU") != std::string::npos)) {
     concrete_backend_->Infer(context);
   } else if (subgraph_context_.has_dynamic_input_shape) {
     std::vector<std::vector<int64_t>> tensor_shapes = GetInputTensorShapes(ctx);
