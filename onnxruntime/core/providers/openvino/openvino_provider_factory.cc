@@ -17,8 +17,8 @@
 
 namespace onnxruntime {
 namespace openvino_ep {
-void ParseConfigOptions(ProviderInfo& pi) {
 
+void ParseConfigOptions(ProviderInfo& pi) {
   if (pi.config_options == nullptr)
     return;
 
@@ -311,7 +311,9 @@ struct OpenVINO_Provider : Provider {
 
     // Always true for NPU plugin or when passed .
     if (pi.device_type.find("NPU") != std::string::npos) {
-      pi.disable_dynamic_shapes = true;
+      // For Stateful PoC, we want control to pass through dynamic shape paths,
+      // so just force this to false right now.
+      pi.disable_dynamic_shapes = false;
     }
 
     return std::make_shared<OpenVINOProviderFactory>(pi, SharedContext::Get());
