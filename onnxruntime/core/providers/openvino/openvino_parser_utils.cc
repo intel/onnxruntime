@@ -26,7 +26,8 @@ std::string OpenVINOParserUtils::ParsePrecision(const ProviderOptions& provider_
       (device_type.find("BATCH:") == 0) ||
       (device_type.find("AUTO:") == 0)) {
     if (!provider_options.contains(option_name)) {
-      ORT_THROW("[ERROR] [OpenVINO] Please provide precision for the ", device_type, " device.\n");
+      LOGS_DEFAULT(INFO) << "[OpenVINO] Precision is not set. Using default OpenVINO precision for " + device_type + ". \n";
+      return "";
     } else {
       std::unordered_set<std::string> supported_precisions = {"FP16", "FP32", "ACCURACY"};
       std::string precision = provider_options.at(option_name);
@@ -108,8 +109,9 @@ std::string OpenVINOParserUtils::ParsePrecision(const ProviderOptions& provider_
       // If found in helper - set the default
       return helper[device_prefix].first;
     } else {
-      // Not found in helper - custom device - request precision from user
-      ORT_THROW("[ERROR] [OpenVINO] Please provide precision for the ", device_type, " device.\n");
+      // Not found in helper - custom device - default precision
+      LOGS_DEFAULT(INFO) << "[OpenVINO] Precision is not set. Using default OpenVINO precision for " + device_type + ". \n";
+      return "";
     }
   }
 }

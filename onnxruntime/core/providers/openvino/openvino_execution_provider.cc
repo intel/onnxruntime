@@ -66,10 +66,10 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const ProviderInfo& info, s
     // Checking for device_type configuration
     if (info.device_type != "") {
       std::vector<std::string> devices_to_check;
-      if (info.device_type.find("HETERO:") != std::string::npos ||
-          info.device_type.find("MULTI:") != std::string::npos ||
-          info.device_type.find("BATCH:") != std::string::npos ||
-          info.device_type.find("AUTO:") != std::string::npos) {
+      if (info.device_type.find("HETERO:") == 0 ||
+          info.device_type.find("MULTI:") == 0 ||
+          info.device_type.find("BATCH:") == 0 ||
+          info.device_type.find("AUTO:") == 0) {
         auto delimit = info.device_type.find(":");
         const auto& devices = info.device_type.substr(delimit + 1);
         devices_to_check = split(devices, ',');
