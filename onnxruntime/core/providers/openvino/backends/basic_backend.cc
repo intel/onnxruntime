@@ -27,7 +27,8 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
                            ptr_stream_t& model_stream)
     : session_context_{session_context}, subgraph_context_{subgraph_context}, shared_context_{shared_context} {
   std::string& hw_target = session_context_.device_type;
-
+  static std::string onnx_model_path = session_context_.onnx_model_path_name.string();
+  // std::cout << "onnx_model_path: " << onnx_model_path << std::endl;
   if (ValidateSubgraph(const_outputs_map_))
     return;
 
@@ -111,7 +112,7 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
       }
       auto ov_model = CreateOVModel(std::move(model), session_context_, const_outputs_map_);
       exe_network_ = OVCore::Get()->CompileModel(
-          ov_model, hw_target, device_config, subgraph_context_.subgraph_name);
+          ov_model, hw_target, device_config, onnx_model_path,subgraph_context_.subgraph_name);
     }
 #endif
     LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";

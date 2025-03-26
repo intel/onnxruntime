@@ -73,6 +73,7 @@ struct OVCore : WeakSingleton<OVCore> {
   OVExeNetwork CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_network,
                             std::string& hw_target,
                             ov::AnyMap& device_config,
+                            const std::string& onnx_model_path,
                             const std::string& name);
   // OV Interface for Fast Compile
   OVExeNetwork CompileModel(const std::string& onnx_model,

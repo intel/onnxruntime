@@ -77,15 +77,17 @@ std::shared_ptr<OVNetwork> OVCore::ReadModel(std::string&& model, const std::str
 OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_network,
                                   std::string& hw_target,
                                   ov::AnyMap& device_config,
+                                  const std::string& onnx_model_path,
                                   const std::string& name) {
   ov::CompiledModel obj;
   try {
     if (true) {
       ov::AnyMap config;
 
-      // Create a clone of ie_cnn_network, since it's a const ov::Model, and we need to patch it..
-      //  Note! With this default path, the model runs but produces garbage (for NPUW). For CPU it's fine.
-      auto mutable_model = ie_cnn_network->clone();
+      //Create a clone of ie_cnn_network, since it's a const ov::Model, and we need to patch it..
+      // Note! With this default path, the model runs but produces garbage (for NPUW). For CPU it's fine.
+      // auto mutable_model = ie_cnn_network->clone();
+      auto mutable_model = core.read_model(onnx_model_path);
 
       // uncomment to override ov::Model with one produced by OV's ONNX front-end.
       // For some reason, this makes it work -- even though model.onnx is the same model read by ORT GenAI.
