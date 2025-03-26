@@ -19,6 +19,10 @@
 
 namespace onnxruntime {
 namespace openvino_ep {
+<<<<<<< HEAD
+=======
+
+>>>>>>> a36ddbc86a (Stateful PoC: Perform stateless -> stateful conversion of ov::Model)
 void ParseConfigOptions(ProviderInfo& pi) {
   if (pi.config_options == nullptr)
     return;
