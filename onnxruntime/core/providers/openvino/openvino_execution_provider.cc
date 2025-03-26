@@ -93,10 +93,12 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const ProviderInfo& info, s
           device_prefix = device_prefix.substr(0, delimit);
         }
         std::vector<std::string> available_devices = OVCore::Get()->GetAvailableDevices(device_prefix);
-        if (available_devices.size() == 1) {
-          if (available_devices[0] == device_prefix && device_idx == 0)
+        // If idx is 0, maybe index is not set (e.g. GPU)
+        // Then the device is found if we have at least one device of the type
+        if (device_idx == 0 && available_devices.size() >= 1) {
             device_found = true;
         } else {
+          // Find full device (e.g GPU.1) in the list
           if (std::find(std::begin(available_devices), std::end(available_devices), device) != std::end(available_devices))
             device_found = true;
         }
