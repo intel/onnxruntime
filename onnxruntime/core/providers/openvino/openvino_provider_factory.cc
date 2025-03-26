@@ -14,12 +14,22 @@
 
 namespace onnxruntime {
 namespace openvino_ep {
-void ParseConfigOptions(ProviderInfo& pi, const ConfigOptions& config_options) {
-  pi.so_disable_cpu_ep_fallback = config_options.GetConfigOrDefault(kOrtSessionOptionsDisableCPUEPFallback, "0") == "1";
-  pi.so_context_enable = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") == "1";
-  pi.so_context_embed_mode = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "0") == "1";
-  pi.so_share_ep_contexts = config_options.GetConfigOrDefault(kOrtSessionOptionShareEpContexts, "0") == "1";
-  pi.so_context_file_path = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
+
+void ParseConfigOptions(ProviderInfo& pi) {
+  if (pi.config_options == nullptr)
+    return;
+
+  pi.so_disable_cpu_ep_fallback = pi.config_options->GetConfigOrDefault(kOrtSessionOptionsDisableCPUEPFallback, "0") == "1";
+  pi.so_context_enable = pi.config_options->GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") == "1";
+  pi.so_context_embed_mode = pi.config_options->GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "0") == "1";
+  pi.so_share_ep_contexts = pi.config_options->GetConfigOrDefault(kOrtSessionOptionShareEpContexts, "0") == "1";
+  pi.so_context_file_path = pi.config_options->GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
+
+  if (pi.so_share_ep_contexts) {
+    ov::AnyMap map;
+    map["NPU_COMPILATION_MODE_PARAMS"] = "enable-wd-blockarg-input=true compute-layers-with-higher-precision=Sqrt,Power,ReduceSum";
+    pi.load_config["NPU"] = std::move(map);
+  }
 }
 
 void* ParseUint64(const ProviderOptions& provider_options, std::string option_name) {
@@ -330,7 +340,9 @@ struct OpenVINO_Provider : Provider {
 
     // Always true for NPU plugin or when passed .
     if (pi.device_type.find("NPU") != std::string::npos) {
-      pi.disable_dynamic_shapes = true;
+      // For Stateful PoC, we want control to pass through dynamic shape paths,
+      // so just force this to false right now.
+      pi.disable_dynamic_shapes = false;
     }
 
     // Append values to config to support weight-as-inputs conversion for shared contexts
