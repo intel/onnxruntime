@@ -81,7 +81,7 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   openvino_ep::GetCapability obj(ep_ctx_handle_,
                                  graph_viewer,
                                  session_context_.device_type,
-                                 session_context_.enable_qdq_optimizer);
+                                 session_context_.enable_ovep_qdq_optimizer);
   result = obj.Execute();
   session_context_.is_wholly_supported_graph = obj.IsWhollySupportedGraph();
   session_context_.has_external_weights = obj.HasExternalWeights();
