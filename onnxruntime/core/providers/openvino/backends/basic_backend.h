@@ -51,6 +51,8 @@ class BasicBackend : public IBackend {
   void EnableStreams();
   void SetNumThreads(ov::AnyMap& device_config);
   void StartAsyncInference(Ort::KernelContext& context, std::shared_ptr<OVInferRequest> infer_request);
+  void ValidateOrtDimsAgainstPartialShape(const std::vector<int64_t>& ort_dims,
+                                          const ov::PartialShape& partial_shape) const;
 
 #ifdef IO_BUFFER_ENABLED
   void StartRemoteAsyncInference(Ort::KernelContext& context, std::shared_ptr<OVInferRequest> infer_request);
