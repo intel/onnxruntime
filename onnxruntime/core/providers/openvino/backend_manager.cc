@@ -365,10 +365,6 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     // getting all the OV properties
     auto supported_properties = OVCore::Get()->core.get_property(session_context_.device_type, ov::supported_properties);
 
-    for (int i = 0 ; i< supported_properties.size() ; i++) {
-      std::cout << supported_properties[i] << std::endl;
-    }
-
     // query ov properties for deciding on which stripping to use
     if (std::find(supported_properties.begin(), supported_properties.end(), "NPU_QDQ_OPTIMIZATION") != supported_properties.end()) { // 25.1 exist or not
 
