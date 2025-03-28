@@ -60,29 +60,23 @@ bool ParseBooleanOption(const ProviderOptions& provider_options, std::string opt
   return false;
 }
 
-std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptions& provider_options) {
-  std::set<std::string> supported_device_types = {"CPU", "GPU", "NPU"};
-  std::set<std::string> supported_device_modes = {"AUTO", "HETERO", "MULTI"};
+std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptions& provider_options, std::string option_name) {
+  // This function normally does not check if the selected device is available, but does some sanity checks
+  // Only if the device is not standard, then availability is checked.
+  // Availability is checked for the selected device in the OpenVINOExecutionProvider constructor
+
   std::vector<std::string> devices_to_check;
   std::string selected_device;
-  std::vector<std::string> luid_list;
-  std::string device_mode = "";
-  std::map<std::string, std::string> ov_luid_map;
-
-  if (provider_options.contains("device_type")) {
-    selected_device = provider_options.at("device_type");
-    std::erase(selected_device, ' ');
-    if (selected_device == "AUTO") return selected_device;
-
-    if (auto delimit = selected_device.find(":"); delimit != std::string::npos) {
-      device_mode = selected_device.substr(0, delimit);
-      if (supported_device_modes.contains(device_mode)) {
-        const auto& devices = selected_device.substr(delimit + 1);
-        devices_to_check = split(devices, ',');
-        ORT_ENFORCE(devices_to_check.size() > 0, "Mode AUTO/HETERO/MULTI should have devices listed based on priority");
-      } else {
-        ORT_THROW("[ERROR] [OpenVINO] Invalid device_type is selected. Supported modes are AUTO/HETERO/MULTI");
-      }
+  if (provider_options.contains(option_name)) {
+    selected_device = provider_options.at(option_name);
+    // If we have multiple device configuration, we need to check all of them
+    if ((selected_device.find("HETERO:") == 0) ||
+        (selected_device.find("MULTI:") == 0) ||
+        (selected_device.find("BATCH:") == 0) ||
+        (selected_device.find("AUTO:") == 0)) {
+      auto delimit = selected_device.find(":");
+      const auto& devices = selected_device.substr(delimit + 1);
+      devices_to_check = split(devices, ',');
     } else {
       devices_to_check.push_back(selected_device);
     }
@@ -109,6 +103,39 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
     devices_to_check = split(devices, ',');
 #endif
   }
+
+  // Devices considered to be supported by default
+  std::unordered_set<std::string> supported_device_types = {"CPU", "GPU", "NPU"};
+  for (auto device : devices_to_check) {
+    // Check deprecated device format (CPU_FP32, GPU.0_FP16, etc.) and remove the suffix in place
+    // Suffix will be parsed in ParsePrecision
+    if (auto delimit = device.find("_"); delimit != std::string::npos) {
+      device = device.substr(0, delimit);
+    }
+    // Just the device name without .0, .1, etc. suffix
+    auto device_prefix = device;
+    // Check if device index is appended (.0, .1, etc.), if so, remove it
+    if (auto delimit = device_prefix.find("."); delimit != std::string::npos) {
+      device_prefix = device_prefix.substr(0, delimit);
+      if (device_prefix == "CPU")
+        ORT_THROW("[ERROR] [OpenVINO] CPU device is only supported without index, CPU.x is illegal.\n");
+    }
+    // Only device is not supported by default (some exotic device), check if it's available
+    if (!supported_device_types.contains(device_prefix)) {
+      std::vector<std::string> available_devices = ov_core->GetAvailableDevices();
+      // Here we need to find the full device name (with .idx, but without _precision)
+      if (std::find(std::begin(available_devices), std::end(available_devices), device) == std::end(available_devices)) {
+        ORT_THROW(
+            "[ERROR] [OpenVINO] You have selected wrong configuration value for the key 'device_type'. "
+            "Select from 'CPU', 'GPU', 'NPU', 'GPU.x' where x = 0,1,2 and so on or from"
+            " HETERO/MULTI/AUTO/BATCH options available. \n");
+      }
+    }
+  }
+  // All devices have passed the check, return selected device
+  LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Choosing Device: " << selected_device;
+  return selected_device;
+}
 
 void ParseProviderOptions([[maybe_unused]] ProviderInfo& result, [[maybe_unused]] const ProviderOptions& config_options) {}
 

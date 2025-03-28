@@ -178,31 +178,25 @@ std::vector<std::string> OVCore::GetAvailableDevices(const std::string& device_t
   } catch (const ov::Exception&) {
     // plugin is not created by e.g. invalid env
     // Empty device list will be returned
-  } catch (const std::runtime_error& ex) {
+  } catch (const std::runtime_error&) {
     // plugin is not created by e.g. invalid env
     // Empty device list will be returned
-    ORT_THROW("[ERROR] [OpenVINO] An exception occurred while trying to create the ",
-              device_type,
-              " device: ",
-              ex.what());
   } catch (const std::exception& ex) {
-    ORT_THROW("[ERROR] [OpenVINO] An exception occurred while trying to create the ",
+    ORT_THROW("[ERROR] [OpenVINO] An exception is thrown while trying to create the ",
               device_type,
               " device: ",
               ex.what());
   } catch (...) {
-    ORT_THROW("[ERROR] [OpenVINO] Unknown exception occurred while trying to create the ",
+    ORT_THROW("[ERROR] [OpenVINO] Unknown exception is thrown while trying to create the ",
               device_type,
               " device");
   }
 
-  if (devicesIDs.size() > 1 ||
-      (devicesIDs.size() == 1 && devicesIDs[0] == "0")) {
+  if (devicesIDs.size() > 1) {
     for (const auto& deviceID : devicesIDs) {
       available_devices.push_back(device_type + '.' + deviceID);
     }
-  }
-  if (!devicesIDs.empty()) {
+  } else if (!devicesIDs.empty()) {
     available_devices.push_back(device_type);
   }
 
