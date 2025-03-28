@@ -303,7 +303,7 @@ struct OpenVINO_Provider : Provider {
     }
     pi.enable_opencl_throttling = ParseBooleanOption(provider_options, "enable_opencl_throttling");
 
-    pi.enable_qdq_optimizer = ParseBooleanOption(provider_options, "enable_qdq_optimizer");
+    pi.enable_ovep_qdq_optimizer = ParseBooleanOption(provider_options, "enable_ovep_qdq_optimizer");
 
     pi.disable_dynamic_shapes = ParseBooleanOption(provider_options, "disable_dynamic_shapes");
 

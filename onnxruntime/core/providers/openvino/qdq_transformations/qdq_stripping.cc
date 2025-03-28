@@ -341,6 +341,7 @@ static bool CheckDQRuleSet(const NodeUnit& node_unit,
   }
 }
 
+// this check is if QLinear node feed into the output of src graph which expects quantized output
 static bool CheckQFeedsIntoQuantizedOutput(const NodeUnit& node_unit,
                                            const std::unordered_map<std::string, std::string> graph_op_data_type) {
   auto op_of_quantized_layer = node_unit.Outputs();
@@ -447,8 +448,17 @@ static bool HandleDoubleQDQ(onnxruntime::Graph& dst_graph, const onnxruntime::Gr
 static void AddStandaloneNodeUnit(onnxruntime::Graph& dst_graph, const onnxruntime::GraphViewer& src_graph,
                                   const NodeUnit& node_unit,
                                   std::set<std::string>& initializers_to_keep,
-                                  const logging::Logger& /* logger */) {
+                                  const logging::Logger& /* logger */,
+                                  bool enable_ovep_qdq_optimizer,
+                                  bool enable_ovep_weight_sharing) {
   assert(node_unit.UnitType() == NodeUnit::Type::SingleNode);
+
+  // this is the scenario where WAI is enabled and ovep stripping is disabled
+  // do not strip off any Q or DQ node
+  if (enable_ovep_weight_sharing && !enable_ovep_qdq_optimizer) {
+    AddNode(initializers_to_keep, src_graph, dst_graph, node_unit.GetNode());
+    return;
+  }
 
   if (HandleDoubleQDQ(dst_graph, src_graph, node_unit, initializers_to_keep)) return;
 
@@ -511,7 +521,9 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
                            const onnxruntime::GraphViewer& src_graph,
                            const NodeUnit& node_unit,
                            std::set<std::string>& initializers_to_keep,
-                           const logging::Logger& /* logger */) {
+                           const logging::Logger& /* logger */,
+                           bool enable_ovep_qdq_optimizer,
+                           bool enable_ovep_weight_sharing) {
   assert(node_unit.UnitType() == NodeUnit::Type::QDQGroup);
 
   // Collect inputs coming into the node unit.
@@ -529,7 +541,7 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
     SkipReason reason = SkipReason::Other;
     bool keep_dq = CheckDQRuleSet(node_unit, dq_node, src_graph, reason);
 
-    if (keep_dq) {
+    if (keep_dq || (enable_ovep_weight_sharing && !enable_ovep_qdq_optimizer)) {
       AddNode(initializers_to_keep, src_graph, dst_graph, *dq_node);
       dq_node_args_to_keep.insert({input_defs.at(0)->Name(),
                                    &dst_graph.GetOrCreateNodeArg(dq_node->OutputDefs().at(0)->Name(),
@@ -597,7 +609,7 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
 
       bool keep_q = CheckQRuleSet(node_unit, q_node, src_graph, reason);
 
-      if (keep_q) {
+      if (keep_q || (enable_ovep_weight_sharing && !enable_ovep_qdq_optimizer)) {
         AddNode(initializers_to_keep, src_graph, dst_graph, *q_node);
         // if keep_q, then output defs of the target node doesn't change
         output_args.push_back(&dst_graph.GetOrCreateNodeArg(target_node.OutputDefs().at(i)->Name(),
@@ -675,7 +687,8 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
                                        const logging::Logger& logger,
                                        bool enable_ovep_weight_sharing,
                                        /*out*/ std::unique_ptr<onnxruntime::Model>& model,
-                                       /*out*/ sw& shared_weights) {
+                                       /*out*/ sw& shared_weights,
+                                       bool enable_ovep_qdq_optimizer) {
   // NOTE: This function is a re-implementation of GraphViewerToProto() in core/graph/graph_proto_serializer.cc
   // with the following differences:
   //   - Uses onnxruntime::Graph APIs instead of onnx::GraphProto APIs.
@@ -767,9 +780,9 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
     }
 
     if (node_unit->UnitType() == NodeUnit::Type::SingleNode) {
-      AddStandaloneNodeUnit(dst_graph, src_graph, *node_unit, initializers_to_keep, logger);
+      AddStandaloneNodeUnit(dst_graph, src_graph, *node_unit, initializers_to_keep, logger, enable_ovep_qdq_optimizer, enable_ovep_weight_sharing);
     } else {
-      AddQDQNodeUnit(dst_graph, src_graph, *node_unit, initializers_to_keep, logger);
+      AddQDQNodeUnit(dst_graph, src_graph, *node_unit, initializers_to_keep, logger, enable_ovep_qdq_optimizer, enable_ovep_weight_sharing);
     }
 
     seen_node_units.insert(node_unit);
