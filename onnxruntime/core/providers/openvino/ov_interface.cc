@@ -192,11 +192,13 @@ std::vector<std::string> OVCore::GetAvailableDevices(const std::string& device_t
               " device");
   }
 
-  if (devicesIDs.size() > 1) {
+  if (devicesIDs.size() > 1 ||
+      (devicesIDs.size() == 1 && devicesIDs[0] == "0")) {
     for (const auto& deviceID : devicesIDs) {
       available_devices.push_back(device_type + '.' + deviceID);
     }
-  } else if (!devicesIDs.empty()) {
+  }
+  if (!devicesIDs.empty()) {
     available_devices.push_back(device_type);
   }
 
