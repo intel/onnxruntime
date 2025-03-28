@@ -16,7 +16,6 @@
 namespace onnxruntime {
 namespace openvino_ep {
 void ParseConfigOptions(ProviderInfo& pi) {
-
   if (pi.config_options == nullptr)
     return;
 
@@ -57,63 +56,82 @@ bool ParseBooleanOption(const ProviderOptions& provider_options, std::string opt
 }
 
 std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptions& provider_options, std::string option_name) {
-  const std::vector<std::string> ov_available_devices = ov_core->GetAvailableDevices();
+  std::unordered_set<std::string> supported_device_types = {"CPU", "GPU", "NPU"};
+  std::unordered_set<std::string> supported_device_modes = {"AUTO", "HETERO", "MULTI", "BATCH"};
+  std::vector<std::string> devices_to_check;
+  std::string selected_device;
+  std::string device_mode = "";
 
-  std::set<std::string> ov_supported_device_types = {"CPU", "GPU",
-                                                     "GPU.0", "GPU.1", "NPU"};
-  std::set<std::string> deprecated_device_types = {"CPU_FP32", "GPU_FP32",
-                                                   "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
-                                                   "GPU.0_FP16", "GPU.1_FP16"};
+  if (provider_options.contains("device_type")) {
+    selected_device = provider_options.at(option_name);
+    if (supported_device_modes.contains(selected_device)) return selected_device;
 
-  // Expand set of supported device with OV devices
-  ov_supported_device_types.insert(ov_available_devices.begin(), ov_available_devices.end());
-
-  if (provider_options.contains(option_name)) {
-    const auto& selected_device = provider_options.at("device_type");
-
-    if (deprecated_device_types.contains(selected_device)) {
-      // Deprecated device and precision is handled together at ParsePrecision
-      return selected_device;
+    if (auto delimit = selected_device.find(":"); delimit != std::string::npos) {
+      device_mode = selected_device.substr(0, delimit);
+      if (supported_device_modes.contains(device_mode)) {
+        const auto& devices = selected_device.substr(delimit + 1);
+        devices_to_check = split(devices, ',');
+      } else {
+        ORT_THROW("[ERROR] [OpenVINO] Invlid device_type is selected");
+      }
+    } else {
+      devices_to_check.push_back(selected_device);
     }
-
-    if (!((ov_supported_device_types.contains(selected_device)) ||
-          (selected_device.find("HETERO:") == 0) ||
-          (selected_device.find("MULTI:") == 0) ||
-          (selected_device.find("AUTO:") == 0))) {
-      ORT_THROW(
-          "[ERROR] [OpenVINO] You have selected wrong configuration value for the key 'device_type'. "
-          "Select from 'CPU', 'GPU', 'NPU', 'GPU.x' where x = 0,1,2 and so on or from"
-          " HETERO/MULTI/AUTO options available. \n");
-    }
-    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Choosing Device: " << selected_device;
-    return selected_device;
   } else {
-    std::string default_device;
-
     // Take default behavior from project configuration
 #if defined OPENVINO_CONFIG_CPU
-    default_device = "CPU";
+    selected_device = "CPU";
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Choosing Device: " << selected_device;
+    return selected_device;
 #elif defined OPENVINO_CONFIG_GPU
-    default_device = "GPU";
+    selected_device = "GPU";
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Choosing Device: " << selected_device;
+    return selected_device;
 #elif defined OPENVINO_CONFIG_NPU
-    default_device = "NPU";
+    selected_device = "NPU";
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Choosing Device: " << selected_device;
+    return selected_device;
 #elif defined OPENVINO_CONFIG_HETERO || defined OPENVINO_CONFIG_MULTI || defined OPENVINO_CONFIG_AUTO
-    default_device = DEVICE_NAME;
+    selected_device = DEVICE_NAME;
 
-    // Validate that devices passed are valid
-    int delimit = device_type.find(":");
-    const auto& devices = device_type.substr(delimit + 1);
-    auto device_list = split(devices, ',');
-    for (const auto& device : devices) {
-      if (!ov_supported_device_types.contains(device)) {
-        ORT_THROW("[ERROR] [OpenVINO] Invalid device selected: ", device);
-      }
-    }
+    // Add sub-devices to check-list
+    int delimit = selected_device.find(":");
+    const auto& devices = selected_device.substr(delimit + 1);
+    devices_to_check = split(devices, ',');
 #endif
-
-    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Choosing Device: " << default_device;
-    return default_device;
   }
+
+  bool all_devices_found = true;
+  for (auto device : devices_to_check) {
+    bool device_found = false;
+    // Check deprecated device format (CPU_FP32, GPU.0_FP16, etc.) and remove the suffix in place
+    // Suffix will be parsed in ParsePrecision
+    if (auto delimit = device.find("_"); delimit != std::string::npos) {
+      device = device.substr(0, delimit);
+    }
+    // Just the device name without .0, .1, etc. suffix
+    auto device_prefix = device;
+    // Check if device index is appended (.0, .1, etc.), if so, remove it
+    if (auto delimit = device_prefix.find("."); delimit != std::string::npos)
+      device_prefix = device_prefix.substr(0, delimit);
+
+    if (supported_device_types.contains(device_prefix)) {
+      std::vector<std::string> available_devices = ov_core->GetAvailableDevices(device_prefix);
+
+      // Here we need to find the full device name (with .idx, but without _precision)
+      if (std::find(std::begin(available_devices), std::end(available_devices), device) != std::end(available_devices))
+        device_found = true;
+    }
+    all_devices_found = all_devices_found && device_found;
+  }
+  // If invalid device is choosen error is thrown
+  if (!all_devices_found)
+    ORT_THROW(
+        "[ERROR] [OpenVINO] You have selected wrong configuration value for the key 'device_type'. "
+        "Select from 'CPU', 'GPU', 'NPU', 'GPU.x' where x = 0,1,2 and so on or from"
+        " HETERO/MULTI/AUTO/BATCH options available. \n");
+  else
+    return selected_device;
 }
 
 void ParseProviderOptions([[maybe_unused]] ProviderInfo& result, [[maybe_unused]] const ProviderOptions& config_options) {}
