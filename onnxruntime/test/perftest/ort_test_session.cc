@@ -680,11 +680,11 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
           ov_options[key] = value;
         } else if (deprecated_device_types.find(value) != deprecated_device_types.end()) {
           ov_options[key] = value;
-        } else if (value.find("HETERO:") == 0) {
+        } else if (value.find("HETERO") == 0) {
           ov_options[key] = value;
-        } else if (value.find("MULTI:") == 0) {
+        } else if (value.find("MULTI") == 0) {
           ov_options[key] = value;
-        } else if (value.find("AUTO:") == 0) {
+        } else if (value.find("AUTO") == 0) {
           ov_options[key] = value;
         } else {
           ORT_THROW(
