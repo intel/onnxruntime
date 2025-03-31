@@ -136,7 +136,7 @@ bool IsCILogEnabled() {
   return false;
 }
 
-std::shared_ptr<const OVNetwork>
+std::shared_ptr<OVNetwork>
 CreateOVModel(const std::string model,
               const SessionContext& session_context,
               std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map) {

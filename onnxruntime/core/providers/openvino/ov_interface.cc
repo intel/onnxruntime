@@ -74,7 +74,7 @@ std::shared_ptr<OVNetwork> OVCore::ReadModel(const std::string& model, const std
   }
 }
 
-OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_network,
+OVExeNetwork OVCore::CompileModel(std::shared_ptr<OVNetwork>& ie_cnn_network,
                                   std::string& hw_target,
                                   ov::AnyMap& device_config,
                                   const std::string& name) {
@@ -83,29 +83,21 @@ OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_netwo
     if (true) {
       ov::AnyMap config;
 
-      // Create a clone of ie_cnn_network, since it's a const ov::Model, and we need to patch it..
-      //  Note! With this default path, the model runs but produces garbage (for NPUW). For CPU it's fine.
-      auto mutable_model = ie_cnn_network->clone();
-
-      // uncomment to override ov::Model with one produced by OV's ONNX front-end.
-      // For some reason, this makes it work -- even though model.onnx is the same model read by ORT GenAI.
-      // auto mutable_model = core.read_model("C:\\Users\\LNL\\Workspace\\ORT\\deepseek_r1_distill_qwen_1.5B_int4_ort_qdq\\model.onnx");
-
       std::cout << "stateless model" << std::endl;
-      logBasicModelInfo(mutable_model);
+      logBasicModelInfo(ie_cnn_network);
 
       std::cout << "making stateful..." << std::endl;
-      patch_stateful_decoder(mutable_model);
+      patch_stateful_decoder(ie_cnn_network);
 
       std::cout << "after stateful transition:" << std::endl;
-      logBasicModelInfo(mutable_model);
+      logBasicModelInfo(ie_cnn_network);
 
       // This patches the model so that it only produces the logits required for sampling.
       // Actually either way that happens within NPUW::LLMCompiledModel creation, but this is
       // here mostly to align this behavior for other devices (CPU, GPU).
-      apply_slice_before_matmul_transformation(mutable_model);
+      apply_slice_before_matmul_transformation(ie_cnn_network);
 
-      auto kv_pos = get_kv_axes_pos(mutable_model);
+      auto kv_pos = get_kv_axes_pos(ie_cnn_network);
       std::cout << "kv_pos.batch = " << kv_pos.batch << std::endl;
       std::cout << "kv_pos.seq_len = " << kv_pos.seq_len << std::endl;
 
@@ -117,11 +109,11 @@ OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_netwo
         std::cout << "kv_desc.max_prompt_len = " << kv_desc.max_prompt_len << std::endl;
         std::cout << "kv_desc.min_response_len = " << kv_desc.min_response_len << std::endl;
 
-        update_npu_config(config, mutable_model, kv_pos, kv_desc);
+        update_npu_config(config, ie_cnn_network, kv_pos, kv_desc);
       }
 
       std::cout << "calling compile on stateful model..." << std::endl;
-      obj = core.compile_model(mutable_model, hw_target, config);
+      obj = core.compile_model(ie_cnn_network, hw_target, config);
       std::cout << "done calling compile on stateful model..." << std::endl;
     } else {
       obj = core.compile_model(ie_cnn_network, hw_target, device_config);

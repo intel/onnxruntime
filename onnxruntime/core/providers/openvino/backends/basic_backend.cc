@@ -108,7 +108,7 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
                                                  subgraph_context_.subgraph_name);
     } else {  // For all other types use ov::ov_core read_model() to generate OV IR
               // followed by ov::ov_core compile_model()
-      std::shared_ptr<const OVNetwork> ov_model;
+      std::shared_ptr<OVNetwork> ov_model;
       {
         const std::string model = model_proto->SerializeAsString();
         if (!subgraph_context.has_dynamic_input_shape) {
