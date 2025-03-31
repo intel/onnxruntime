@@ -191,6 +191,7 @@ class DefaultWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         quant_format=QuantFormat.QOperator,
         op_types_to_quantize: tuple[str, ...] | None = None,
         quant_axes: tuple[tuple[str, int], ...] | None = None,
+        channel_wised_quantize: bool = False,
     ):
         """
         This is a class for weight only affine quantization configuration.
@@ -212,6 +213,8 @@ class DefaultWeightOnlyQuantConfig(WeightOnlyQuantConfig):
                 set of operator types to quantize.
             quant_axes (dict[str, int], optional):
                 op:axis, which axis to quantize for an op. Default {MatMul: 0, Gather: 1}
+            channel_wised_quantize (bool, optional):
+                whether use K (rows) as block size, channel wised quantization. Default is False.
         """
         super().__init__(
             algorithm="DEFAULT",
@@ -223,6 +226,7 @@ class DefaultWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         self.is_symmetric = is_symmetric
         self.bits = 4
         self.accuracy_level = accuracy_level
+        self.channel_wised_quantize = channel_wised_quantize
 
 
 class NVAWQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
@@ -732,6 +736,12 @@ class DefaultWeightOnlyQuantizer:
         k_blocks = (rows + block_size - 1) // block_size
 
         if self.config.quant_format == QuantFormat.QOperator:
+            # channel wised quantization only added for QOperator for now
+            # block size equal to rows (K)
+            if self.config.channel_wised_quantize:
+                block_size = rows
+                k_blocks = (rows + block_size - 1) // block_size
+
             blob_size = block_size // 2
             padded_rows = k_blocks * block_size
             pad_len = padded_rows - rows
@@ -745,6 +755,22 @@ class DefaultWeightOnlyQuantizer:
             quantize_matmul_4bits(
                 packed, fp32weight, scales, zero_point, block_size, cols, rows, self.config.is_symmetric
             )
+
+            # Quantize to int4 [-8, 7] when channel wise and symmetric quantize enabled.
+            # The packed uint4 is already symmetric quantization and +8 to uint4 [0, 15], bring it back to int4 [-8, 7].
+            # It saved a sub op when model infer, also meets the optimization pattern in Intel NPU to raise performance.
+            # Ref: https://github.com/openvinotoolkit/openvino.genai/tree/master/samples/python/text_generation#npu-support
+            keep_int4 = True if self.config.channel_wised_quantize and self.config.is_symmetric else False
+            if keep_int4:
+                # Get uint4 Quantized data, convert to int4 by -8, and repack as uint8
+                high_4bit_u = (packed >> 4) & 0x0F
+                low_4bit_u = packed & 0x0F
+                high_4bit_i = high_4bit_u.astype(np.int8) - 8
+                low_4bit_i = low_4bit_u.astype(np.int8) - 8
+                high_4bit_requantized = np.clip(high_4bit_i, -8, 7) & 0x0F
+                low_4bit_requantized = np.clip(low_4bit_i, -8, 7) & 0x0F
+                packed = (high_4bit_requantized << 4) | low_4bit_requantized
+                packed = packed.astype(np.uint8)
         else:
             packed = np.zeros((rows * cols + 1) // 2, dtype="uint8")
             zero_point = np.zeros((cols * k_blocks + 1) // 2, dtype="uint8")
@@ -801,7 +827,7 @@ class DefaultWeightOnlyQuantizer:
             kwargs["K"] = rows
             kwargs["N"] = cols
             kwargs["bits"] = 4
-            kwargs["block_size"] = self.config.block_size
+            kwargs["block_size"] = rows if self.config.channel_wised_quantize else self.config.block_size
             if self.config.accuracy_level is not None:
                 kwargs["accuracy_level"] = self.config.accuracy_level
 
