@@ -1112,7 +1112,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         } else if (option.first == "context") {
           OV_provider_options_map[option.first] = option.second;
           continue;
-        } else if (option.first == "enable_ovep_qdq_optimizer") {
+        } else if (option.first == "enable_qdq_optimizer") {
           OV_provider_options_map[option.first] = option.second;
           continue;
         } else {

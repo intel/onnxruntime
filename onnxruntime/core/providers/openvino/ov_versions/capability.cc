@@ -30,13 +30,13 @@ namespace openvino_ep {
 GetCapability::GetCapability(const EPCtxHandler& ep_ctx_handler,
                              const GraphViewer& graph_viewer_param,
                              const std::string device_type_param,
-                             const bool enable_ovep_qdq_optimizer) : ep_ctx_handler_(ep_ctx_handler),
+                             const bool enable_qdq_optimizer) : ep_ctx_handler_(ep_ctx_handler),
                                                                 graph_viewer_(graph_viewer_param),
                                                                 device_type_(std::move(device_type_param)) {
   bool npu_qdq_optimizer_enabled = false;
   if (device_type_.find("NPU") != std::string::npos) {
     device_type_ = "CPU";
-    if (enable_ovep_qdq_optimizer) npu_qdq_optimizer_enabled = true;
+    if (enable_qdq_optimizer) npu_qdq_optimizer_enabled = true;
   }
 #if OPENVINO_VERSION_MAJOR == 2024 && OPENVINO_VERSION_MINOR == 5
   data_ops_ = new DataOps(graph_viewer_, V_2024_5, device_type_, npu_qdq_optimizer_enabled);

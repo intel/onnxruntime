@@ -359,8 +359,9 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     }
   };
 
+  bool enable_ovep_qdq_optimizer = session_context_.enable_qdq_optimizer;
 #if (((OPENVINO_VERSION_MAJOR == 2025) && (OPENVINO_VERSION_MINOR > 0)) || (OPENVINO_VERSION_MAJOR > 2025))
-  if (session_context_.device_type.find("NPU") != std::string::npos && session_context_.enable_ovep_qdq_optimizer) {
+  if (session_context_.device_type.find("NPU") != std::string::npos && session_context_.enable_qdq_optimizer) {
 
     // getting all the OV properties
     auto supported_properties = OVCore::Get()->core.get_property(session_context_.device_type, ov::supported_properties);
@@ -373,21 +374,21 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
 
 
       // disabling OVEP qdq stripping
-      session_context_.enable_ovep_qdq_optimizer = false;
+      // at this stage provider option "enable_qdq_optimizer" is still true but OVEP stripping is (disabled) false
+      // as compiler stripping is enabled
+      enable_ovep_qdq_optimizer = false;
     }
   }
 #endif
 
   const auto& onnx_model_path_name = subgraph.ModelPath();
   // QDQ stripping enabled only for the NPU
-  // OV query should come here, if compiler stripping is enabled mark session_context_.enable_ovep_qdq_optimizer as false
-  // else everything remains as it is
   if (session_context_.device_type.find("NPU") != std::string::npos &&
-      (session_context_.enable_ovep_qdq_optimizer || session_context_.so_share_ep_contexts) &&
+      (enable_ovep_qdq_optimizer || session_context_.so_share_ep_contexts) &&
       IsQDQGraph(subgraph)) {
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] QDQ optimization pass status: 1";
     std::unique_ptr<onnxruntime::Model> model;
-    Status status = CreateModelWithStrippedQDQNodes(subgraph, logger, session_context_.so_share_ep_contexts, model, shared_context_.shared_weights, session_context_.enable_ovep_qdq_optimizer);
+    Status status = CreateModelWithStrippedQDQNodes(subgraph, logger, session_context_.so_share_ep_contexts, model, shared_context_.shared_weights, enable_ovep_qdq_optimizer);
     auto model_proto = model->ToProto();
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
     print_model_proto_duration();
