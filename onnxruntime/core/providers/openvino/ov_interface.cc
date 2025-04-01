@@ -163,7 +163,91 @@ OVExeNetwork OVCore::ImportModel(std::istream& model_stream,
                                  std::string name) {
   try {
     ov::CompiledModel obj;
-    obj = core.import_model(model_stream, hw_target, device_config);
+
+    //Check if it's XML
+    std::streampos originalPos = model_stream.tellg();
+    std::string header(5, '\0');  // Allocate space for "<?xml"
+    model_stream.read(&header[0], 5);
+
+    // Restore the stream position (important for reusing the stream)
+    model_stream.clear(); // Clear any read errors
+    model_stream.seekg(originalPos);
+
+    if (header != "<?xml") {
+        obj = core.import_model(model_stream, hw_target, device_config);
+
+    } else {
+
+        //Get path to bin file
+        std::string bin_file;
+        if (name.size() >= 5 && name.substr(name.size() - 5) == ".onnx") {
+            bin_file = name;
+            bin_file.replace(name.size() - 5, 5, ".bin");
+        } else {
+            throw std::runtime_error("Invalid model name. Make sure *.onnx, *.xml, and *.bin carry the same name." );
+        }
+
+        // Read the model XML into a string    
+        std::stringstream xml_stream;    
+        xml_stream << model_stream.rdbuf();    
+        std::string xml_content = xml_stream.str();     
+
+        // Read model.bin into a vector    
+        std::ifstream bin_stream;
+        bin_stream.open(bin_file, std::ios::binary);
+        if (!bin_stream.is_open()) {
+            throw std::runtime_error("Failed to open " + bin_file);    
+        }     
+
+        bin_stream.seekg(0, std::ios::end);
+        std::streamsize size = bin_stream.tellg();
+        bin_stream.seekg(0, std::ios::beg);
+        std::vector<uint8_t> bin_data(size);
+        if (!bin_stream.read(reinterpret_cast<char*>(bin_data.data()), size)) {
+            throw std::runtime_error("Failed to read binary data from " + bin_file);
+        }
+
+        // Create an ov::Tensor for weights
+        ov::Tensor weights_tensor(ov::element::u8, {bin_data.size()}, bin_data.data());
+
+        // Load the model explicitly with XML content and weights
+        std::shared_ptr<ov::Model> model = core.read_model(xml_content, weights_tensor);
+
+
+        if (true) {
+          ov::AnyMap config = device_config;
+          
+          std::cout << "already a stateful model since it came from EPCtx:" << std::endl;
+          logBasicModelInfo(model);
+
+          // This patches the model so that it only produces the logits required for sampling.
+          // Actually either way that happens within NPUW::LLMCompiledModel creation, but this is
+          // here mostly to align this behavior for other devices (CPU, GPU).
+          apply_slice_before_matmul_transformation(model);
+
+          auto kv_pos = get_kv_axes_pos(model);
+          std::cout << "kv_pos.batch = " << kv_pos.batch << std::endl;
+          std::cout << "kv_pos.seq_len = " << kv_pos.seq_len << std::endl;
+
+          if (hw_target.find("NPU") != std::string::npos) {
+            KVDesc kv_desc;
+            kv_desc.max_prompt_len = pop_int_and_cast(config, "MAX_PROMPT_LEN").value_or(1024u);
+            kv_desc.min_response_len = pop_int_and_cast(config, "MIN_RESPONSE_LEN").value_or(128u);
+
+            std::cout << "kv_desc.max_prompt_len = " << kv_desc.max_prompt_len << std::endl;
+            std::cout << "kv_desc.min_response_len = " << kv_desc.min_response_len << std::endl;
+
+            update_npu_config(config, model, kv_pos, kv_desc);
+          }
+
+          std::cout << "calling compile on stateful model for" << hw_target  << " ... " << std::endl;
+          obj = core.compile_model(model, hw_target, config);
+          std::cout << "done calling compile on stateful model..." << std::endl;
+        } else {
+          // Compile the model
+          obj = core.compile_model(model, hw_target, device_config);
+        }
+    }   
 #ifndef NDEBUG
     printDebugInfo(obj);
 #endif
@@ -175,6 +259,9 @@ OVExeNetwork OVCore::ImportModel(std::istream& model_stream,
     ORT_THROW(log_tag + " Exception while Loading Network for graph " + name);
   }
 }
+
+
+
 
 void OVCore::SetCache(const std::string& cache_dir_path) {
   core.set_property(ov::cache_dir(cache_dir_path));

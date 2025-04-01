@@ -91,7 +91,8 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
       exe_network_ = OVCore::Get()->ImportModel(*model_stream,
                                                 hw_target,
                                                 device_config,
-                                                subgraph_context_.subgraph_name);
+                                                session_context.onnx_model_path_name.string());
+
       model_stream.reset();  // Delete stream after it is no longer needed
     } else if (!session_context_.has_external_weights &&
                !subgraph_context_.has_dynamic_input_shape &&
@@ -368,7 +369,8 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
       // for the stateful PoC, the ONNX model will have KV cache (past/present) tensors, but
       // we internally converted it to stateful, which removed these. So, we just continue here
       // to avoid runtime exception.
-      if (input_name.empty()) continue;
+      //if (input_name.empty()) continue;
+      if (input_name.empty() || input_name == "beam_idx") continue;
 
       ORT_ENFORCE(!input_name.empty(), log_tag,
                   "Input names mismatch between OpenVINO and ONNX. ", onnx_input_name,
