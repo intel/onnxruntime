@@ -371,12 +371,14 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
 
       // compiler stripping is off by default turning it on explicitly
       OVCore::Get()->core.set_property("NPU", {ov::intel_npu::qdq_optimization(true)});
-
+      LOGS_DEFAULT(INFO) << "[OpenVINO-EP]: Compiler QDQ optimization pass is enabled";
 
       // disabling OVEP qdq stripping
       // at this stage provider option "enable_qdq_optimizer" is still true but OVEP stripping is (disabled) false
       // as compiler stripping is enabled
       enable_ovep_qdq_optimizer = false;
+    } else {
+      LOGS_DEFAULT(INFO) << "[OpenVINO-EP]: OVEP QDQ optimization pass is enabled";
     }
   }
 #endif
@@ -386,7 +388,6 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
   if (session_context_.device_type.find("NPU") != std::string::npos &&
       (enable_ovep_qdq_optimizer || session_context_.so_share_ep_contexts) &&
       IsQDQGraph(subgraph)) {
-    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] QDQ optimization pass status: 1";
     std::unique_ptr<onnxruntime::Model> model;
     Status status = CreateModelWithStrippedQDQNodes(subgraph, logger, session_context_.so_share_ep_contexts, model, shared_context_.shared_weights, enable_ovep_qdq_optimizer);
     auto model_proto = model->ToProto();
@@ -396,7 +397,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     return model_proto;
   } else {
-    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] QDQ optimization pass status: 0";
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] QDQ optimization pass is disabled";
     auto model = subgraph.CreateModel(logger);
     auto model_proto = model->ToProto();
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
