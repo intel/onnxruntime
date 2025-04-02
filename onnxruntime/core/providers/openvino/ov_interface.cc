@@ -232,13 +232,13 @@ OVExeNetwork OVCore::ImportModel(std::istream& model_stream,
           std::cout << "kv_desc.min_response_len = " << kv_desc.min_response_len << std::endl;
 
           update_npu_config(config, model, kv_pos, kv_desc);
+        } else {
+          apply_slice_before_matmul_transformation(model);
         }
 
          std::cout << "calling compile on stateful model for" << hw_target  << " ... " << std::endl;
          obj = core.compile_model(model, hw_target, config);
          std::cout << "done calling compile on stateful model..." << std::endl;
-       
-       
     }   
 #ifndef NDEBUG
     printDebugInfo(obj);
