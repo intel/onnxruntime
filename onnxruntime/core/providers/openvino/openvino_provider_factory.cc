@@ -221,10 +221,19 @@ struct OpenVINO_Provider : Provider {
             continue;
           }
 
-          // Ensure that the value for each device is an object (PROPERTY -> VALUE)
-          if (!value.is_object()) {
-            ORT_THROW("Invalid JSON structure: Expected an object for device properties.");
-          }
+          for (auto& [key, value] : json_config.items()) {
+            ov::AnyMap inner_map;
+            std::set<std::string> valid_ov_devices = {"CPU", "GPU", "NPU", "AUTO", "HETERO", "MULTI"};
+            // Ensure the key is one of "CPU", "GPU", or "NPU"
+            if (valid_ov_devices.find(key) == valid_ov_devices.end()) {
+              LOGS_DEFAULT(WARNING) << "Unsupported device key: " << key << ". Skipping entry.\n";
+              continue;
+            }
+
+            // Ensure that the value for each device is an object (PROPERTY -> VALUE)
+            if (!value.is_object()) {
+              ORT_THROW("Invalid JSON structure: Expected an object for device properties.");
+            }
 
           for (auto& [inner_key, inner_value] : value.items()) {
             if (inner_value.is_string()) {
