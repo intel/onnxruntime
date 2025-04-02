@@ -214,36 +214,30 @@ OVExeNetwork OVCore::ImportModel(std::istream& model_stream,
         std::shared_ptr<ov::Model> model = core.read_model(xml_content, weights_tensor);
 
 
-        if (true) {
-          ov::AnyMap config = device_config;
+        ov::AnyMap config = device_config;
           
-          std::cout << "already a stateful model since it came from EPCtx:" << std::endl;
-          logBasicModelInfo(model);
+        std::cout << "already a stateful model since it came from EPCtx:" << std::endl;
+        logBasicModelInfo(model);
 
-          // This patches the model so that it only produces the logits required for sampling.
-          // Actually either way that happens within NPUW::LLMCompiledModel creation, but this is
-          // here mostly to align this behavior for other devices (CPU, GPU).
-          apply_slice_before_matmul_transformation(model);
+        auto kv_pos = get_kv_axes_pos(model);
+        std::cout << "kv_pos.batch = " << kv_pos.batch << std::endl;
+        std::cout << "kv_pos.seq_len = " << kv_pos.seq_len << std::endl;
 
-          auto kv_pos = get_kv_axes_pos(model);
-          std::cout << "kv_pos.batch = " << kv_pos.batch << std::endl;
-          std::cout << "kv_pos.seq_len = " << kv_pos.seq_len << std::endl;
+        if (hw_target.find("NPU") != std::string::npos) {
+          KVDesc kv_desc;
+          kv_desc.max_prompt_len = pop_int_and_cast(config, "MAX_PROMPT_LEN").value_or(1024u);
+          kv_desc.min_response_len = pop_int_and_cast(config, "MIN_RESPONSE_LEN").value_or(128u);
 
-          if (hw_target.find("NPU") != std::string::npos) {
-            KVDesc kv_desc;
-            kv_desc.max_prompt_len = pop_int_and_cast(config, "MAX_PROMPT_LEN").value_or(1024u);
-            kv_desc.min_response_len = pop_int_and_cast(config, "MIN_RESPONSE_LEN").value_or(128u);
+          std::cout << "kv_desc.max_prompt_len = " << kv_desc.max_prompt_len << std::endl;
+          std::cout << "kv_desc.min_response_len = " << kv_desc.min_response_len << std::endl;
 
-            std::cout << "kv_desc.max_prompt_len = " << kv_desc.max_prompt_len << std::endl;
-            std::cout << "kv_desc.min_response_len = " << kv_desc.min_response_len << std::endl;
+          update_npu_config(config, model, kv_pos, kv_desc);
+        }
 
-            update_npu_config(config, model, kv_pos, kv_desc);
-          }
-
-          std::cout << "calling compile on stateful model for" << hw_target  << " ... " << std::endl;
-          obj = core.compile_model(model, hw_target, config);
-          std::cout << "done calling compile on stateful model..." << std::endl;
-        } else {
+         std::cout << "calling compile on stateful model for" << hw_target  << " ... " << std::endl;
+         obj = core.compile_model(model, hw_target, config);
+         std::cout << "done calling compile on stateful model..." << std::endl;
+         else {
           // Compile the model
           obj = core.compile_model(model, hw_target, device_config);
         }
