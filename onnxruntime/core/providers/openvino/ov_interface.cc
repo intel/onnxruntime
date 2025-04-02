@@ -237,10 +237,8 @@ OVExeNetwork OVCore::ImportModel(std::istream& model_stream,
          std::cout << "calling compile on stateful model for" << hw_target  << " ... " << std::endl;
          obj = core.compile_model(model, hw_target, config);
          std::cout << "done calling compile on stateful model..." << std::endl;
-         else {
-          // Compile the model
-          obj = core.compile_model(model, hw_target, device_config);
-        }
+       
+       
     }   
 #ifndef NDEBUG
     printDebugInfo(obj);
