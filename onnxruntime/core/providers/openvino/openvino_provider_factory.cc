@@ -17,6 +17,7 @@
 
 namespace onnxruntime {
 namespace openvino_ep {
+
 void ParseConfigOptions(ProviderInfo& pi, const ConfigOptions& config_options) {
   pi.so_disable_cpu_ep_fallback = config_options.GetConfigOrDefault(kOrtSessionOptionsDisableCPUEPFallback, "0") == "1";
   pi.so_context_enable = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") == "1";
@@ -298,7 +299,9 @@ struct OpenVINO_Provider : Provider {
 
     // Always true for NPU plugin or when passed .
     if (pi.device_type.find("NPU") != std::string::npos) {
-      pi.disable_dynamic_shapes = true;
+      // For Stateful PoC, we want control to pass through dynamic shape paths,
+      // so just force this to false right now.
+      pi.disable_dynamic_shapes = false;
     }
 
     // Append values to config to support weight-as-inputs conversion for shared contexts

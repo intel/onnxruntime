@@ -8,6 +8,9 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/backend_utils.h"
 
+// for make stateful utility function(s)
+#include "core/providers/openvino/ov_stateful_patch_utils.h"
+
 using Exception = ov::Exception;
 
 namespace onnxruntime {
@@ -77,7 +80,52 @@ OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_netwo
                                   const std::string& name) {
   ov::CompiledModel obj;
   try {
-    obj = core.compile_model(ie_cnn_network, hw_target, device_config);
+    if (true) {
+      ov::AnyMap config;
+
+      // Create a clone of ie_cnn_network, since it's a const ov::Model, and we need to patch it..
+      //  Note! With this default path, the model runs but produces garbage (for NPUW). For CPU it's fine.
+      auto mutable_model = ie_cnn_network->clone();
+
+      // uncomment to override ov::Model with one produced by OV's ONNX front-end.
+      // For some reason, this makes it work -- even though model.onnx is the same model read by ORT GenAI.
+      // auto mutable_model = core.read_model("C:\\Users\\LNL\\Workspace\\ORT\\deepseek_r1_distill_qwen_1.5B_int4_ort_qdq\\model.onnx");
+
+      std::cout << "stateless model" << std::endl;
+      logBasicModelInfo(mutable_model);
+
+      std::cout << "making stateful..." << std::endl;
+      patch_stateful_decoder(mutable_model);
+
+      std::cout << "after stateful transition:" << std::endl;
+      logBasicModelInfo(mutable_model);
+
+      // This patches the model so that it only produces the logits required for sampling.
+      // Actually either way that happens within NPUW::LLMCompiledModel creation, but this is
+      // here mostly to align this behavior for other devices (CPU, GPU).
+      apply_slice_before_matmul_transformation(mutable_model);
+
+      auto kv_pos = get_kv_axes_pos(mutable_model);
+      std::cout << "kv_pos.batch = " << kv_pos.batch << std::endl;
+      std::cout << "kv_pos.seq_len = " << kv_pos.seq_len << std::endl;
+
+      if (hw_target.find("NPU") != std::string::npos) {
+        KVDesc kv_desc;
+        kv_desc.max_prompt_len = pop_int_and_cast(device_config, "MAX_PROMPT_LEN").value_or(1024u);
+        kv_desc.min_response_len = pop_int_and_cast(device_config, "MIN_RESPONSE_LEN").value_or(128u);
+
+        std::cout << "kv_desc.max_prompt_len = " << kv_desc.max_prompt_len << std::endl;
+        std::cout << "kv_desc.min_response_len = " << kv_desc.min_response_len << std::endl;
+
+        update_npu_config(config, mutable_model, kv_pos, kv_desc);
+      }
+
+      std::cout << "calling compile on stateful model..." << std::endl;
+      obj = core.compile_model(mutable_model, hw_target, config);
+      std::cout << "done calling compile on stateful model..." << std::endl;
+    } else {
+      obj = core.compile_model(ie_cnn_network, hw_target, device_config);
+    }
 #ifndef NDEBUG
     printDebugInfo(obj);
 #endif
@@ -115,7 +163,83 @@ OVExeNetwork OVCore::ImportModel(std::istream& model_stream,
                                  std::string name) {
   try {
     ov::CompiledModel obj;
-    obj = core.import_model(model_stream, hw_target, device_config);
+
+    //Check if it's XML
+    std::streampos originalPos = model_stream.tellg();
+    std::string header(5, '\0');  // Allocate space for "<?xml"
+    model_stream.read(&header[0], 5);
+
+    // Restore the stream position (important for reusing the stream)
+    model_stream.clear(); // Clear any read errors
+    model_stream.seekg(originalPos);
+
+    if (header != "<?xml") {
+        obj = core.import_model(model_stream, hw_target, device_config);
+
+    } else {
+
+        //Get path to bin file
+        std::string bin_file;
+        if (name.size() >= 5 && name.substr(name.size() - 5) == ".onnx") {
+            bin_file = name;
+            bin_file.replace(name.size() - 5, 5, ".bin");
+        } else {
+            throw std::runtime_error("Invalid model name. Make sure *.onnx, *.xml, and *.bin carry the same name." );
+        }
+
+        // Read the model XML into a string    
+        std::stringstream xml_stream;    
+        xml_stream << model_stream.rdbuf();    
+        std::string xml_content = xml_stream.str();     
+
+        // Read model.bin into a vector    
+        std::ifstream bin_stream;
+        bin_stream.open(bin_file, std::ios::binary);
+        if (!bin_stream.is_open()) {
+            throw std::runtime_error("Failed to open " + bin_file);    
+        }     
+
+        bin_stream.seekg(0, std::ios::end);
+        std::streamsize size = bin_stream.tellg();
+        bin_stream.seekg(0, std::ios::beg);
+        std::vector<uint8_t> bin_data(size);
+        if (!bin_stream.read(reinterpret_cast<char*>(bin_data.data()), size)) {
+            throw std::runtime_error("Failed to read binary data from " + bin_file);
+        }
+
+        // Create an ov::Tensor for weights
+        ov::Tensor weights_tensor(ov::element::u8, {bin_data.size()}, bin_data.data());
+
+        // Load the model explicitly with XML content and weights
+        std::shared_ptr<ov::Model> model = core.read_model(xml_content, weights_tensor);
+
+
+        ov::AnyMap config = device_config;
+          
+        std::cout << "already a stateful model since it came from EPCtx:" << std::endl;
+        logBasicModelInfo(model);
+
+        auto kv_pos = get_kv_axes_pos(model);
+        std::cout << "kv_pos.batch = " << kv_pos.batch << std::endl;
+        std::cout << "kv_pos.seq_len = " << kv_pos.seq_len << std::endl;
+
+        if (hw_target.find("NPU") != std::string::npos) {
+          KVDesc kv_desc;
+          kv_desc.max_prompt_len = pop_int_and_cast(config, "MAX_PROMPT_LEN").value_or(1024u);
+          kv_desc.min_response_len = pop_int_and_cast(config, "MIN_RESPONSE_LEN").value_or(128u);
+
+          std::cout << "kv_desc.max_prompt_len = " << kv_desc.max_prompt_len << std::endl;
+          std::cout << "kv_desc.min_response_len = " << kv_desc.min_response_len << std::endl;
+
+          update_npu_config(config, model, kv_pos, kv_desc);
+        } else {
+          apply_slice_before_matmul_transformation(model);
+        }
+
+         std::cout << "calling compile on stateful model for" << hw_target  << " ... " << std::endl;
+         obj = core.compile_model(model, hw_target, config);
+         std::cout << "done calling compile on stateful model..." << std::endl;
+    }   
 #ifndef NDEBUG
     printDebugInfo(obj);
 #endif
@@ -127,6 +251,9 @@ OVExeNetwork OVCore::ImportModel(std::istream& model_stream,
     ORT_THROW(log_tag + " Exception while Loading Network for graph " + name);
   }
 }
+
+
+
 
 void OVCore::SetCache(const std::string& cache_dir_path) {
   core.set_property(ov::cache_dir(cache_dir_path));
@@ -245,6 +372,16 @@ std::string OVInferRequest::GetInputTensorName(uint32_t index) {
 void OVInferRequest::SetTensor(const std::string& name, OVTensorPtr& blob) {
   try {
     ovInfReq.set_tensor(name, *(blob.get()));
+
+    if (name == "input_ids") {
+      // Since we can't seem to set at ORT GenAI layer right now, we just set it here
+      // as a workaround.
+      // TODO: Fix this.
+      ov::Tensor beam_idx = ov::Tensor(ov::element::i32, {1});
+      std::fill_n(beam_idx.data<int32_t>(), 1, 0);
+      ovInfReq.set_tensor("beam_idx", beam_idx);
+    }
+
   } catch (const Exception& e) {
     ORT_THROW(log_tag + " Cannot set Remote Blob for output: " + name + e.what());
   } catch (...) {
