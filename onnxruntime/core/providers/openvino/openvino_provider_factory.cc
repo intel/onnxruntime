@@ -62,6 +62,7 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
   std::unordered_set<std::string> supported_device_modes = {"AUTO", "HETERO", "MULTI"};
   std::vector<std::string> devices_to_check;
   std::string selected_device;
+  std::vector<std::string> luid_list;
   std::string device_mode = "";
 
   if (provider_options.contains("device_type")) {
@@ -104,6 +105,12 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
 #endif
   }
 
+  if (provider_options.contains("device_luid")) {
+    std::string luid_str = provider_options.at("device_luid");
+    ORT_ENFORCE(selected_device.find("GPU") != std::string::npos, "LUID is supported only for GPU");
+    std::erase(luid_str, ' ');
+    luid_list = split(luid_str, ',');
+  }
   bool all_devices_found = true;
   for (auto device : devices_to_check) {
     bool device_found = false;
@@ -124,6 +131,30 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
         // Here we need to find the full device name (with .idx, but without _precision)
         if (std::find(std::begin(available_devices), std::end(available_devices), device) != std::end(available_devices))
           device_found = true;
+        if (device_prefix == "GPU" and luid_list.size() > 0) {
+          std::map<std::string, std::string> ov_luid_map;
+          for (auto gpu_dev : available_devices) {
+            ov::device::LUID ov_luid = OVCore::Get()->core.get_property(gpu_dev, ov::device::luid);
+            std::stringstream ov_luid_str;
+            ov_luid_str << ov_luid;
+            ov_luid_map.emplace(ov_luid_str.str(), gpu_dev);
+          }
+          for (auto luid_str : luid_list) {
+            if (ov_luid_map.contains(luid_str)) {
+              auto ov_dev = ov_luid_map.at(luid_str);
+              if (!device_mode.empty()) {
+                selected_device = device_mode + ":" + ov_dev;
+                for (auto dev_str : devices_to_check) {
+                  if (dev_str.find("GPU") != std::string::npos)
+                    selected_device = selected_device + "," + dev_str;
+                }
+              } else
+                selected_device = ov_dev;
+            } else {
+              ORT_THROW("Invalid device_luid is set");
+            }
+          }
+        }
       } catch (const char* msg) {
         ORT_THROW(msg);
       }
