@@ -347,13 +347,22 @@ static void ParseProviderInfo(const ProviderOptions& provider_options,
 
     pi.enable_qdq_optimizer = ParseBooleanOption(provider_options, "enable_qdq_optimizer");
 
+    pi.enable_causallm = ParseBooleanOption(provider_options, "enable_causallm");
+
     pi.disable_dynamic_shapes = ParseBooleanOption(provider_options, "disable_dynamic_shapes");
+    }
   } catch (std::string msg) {
     ORT_THROW(msg);
   }
   // Always true for NPU plugin or when passed .
   if (pi.device_type.find("NPU") != std::string::npos) {
-    pi.disable_dynamic_shapes = true;
+    // For Stateful PoC, we want control to pass through dynamic shape paths,
+    // so just force this to false right now.
+    if (pi.enable_causallm) {
+      pi.disable_dynamic_shapes = false;
+    } else {
+      pi.disable_dynamic_shapes = true;
+    }
   }
 }
 
