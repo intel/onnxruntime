@@ -57,22 +57,23 @@ bool ParseBooleanOption(const ProviderOptions& provider_options, std::string opt
   return false;
 }
 
-std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptions& provider_options, std::string option_name) {
+std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptions& provider_options) {
   std::unordered_set<std::string> supported_device_types = {"CPU", "GPU", "NPU"};
-  std::unordered_set<std::string> supported_device_modes = {"AUTO", "HETERO", "MULTI", "BATCH"};
+  std::unordered_set<std::string> supported_device_modes = {"AUTO", "HETERO", "MULTI"};
   std::vector<std::string> devices_to_check;
   std::string selected_device;
   std::string device_mode = "";
 
   if (provider_options.contains("device_type")) {
-    selected_device = provider_options.at(option_name);
-    if (supported_device_modes.contains(selected_device)) return selected_device;
+    selected_device = provider_options.at("device_type");
+    if (selected_device == "AUTO") return selected_device;
 
     if (auto delimit = selected_device.find(":"); delimit != std::string::npos) {
       device_mode = selected_device.substr(0, delimit);
       if (supported_device_modes.contains(device_mode)) {
         const auto& devices = selected_device.substr(delimit + 1);
         devices_to_check = split(devices, ',');
+        ORT_ENFORCE(devices_to_check.size() > 0, "Modes should have devices listed based on priority");
       } else {
         ORT_THROW("[ERROR] [OpenVINO] Invlid device_type is selected");
       }
@@ -179,12 +180,22 @@ struct OpenVINO_Provider : Provider {
     ProviderInfo pi;
     pi.config_options = config_options;
 
+    // Lambda function to check for invalid keys and throw an error
+    auto validateKeys = [&]() {
+      for (const auto& pair : provider_options) {
+        if (pi.valid_provider_keys.find(pair.first) == pi.valid_provider_keys.end()) {
+          ORT_THROW("Invalid provider_option key: " + pair.first);
+        }
+      }
+    };
+    validateKeys();
+
     std::string bool_flag = "";
 
     // Minor optimization: we'll hold an OVCore reference to ensure we don't create a new core between ParseDeviceType and
     // (potential) SharedContext creation.
     auto ov_core = OVCore::Get();
-    pi.device_type = ParseDeviceType(ov_core, provider_options, "device_type");
+    pi.device_type = ParseDeviceType(ov_core, provider_options);
 
     if (provider_options.contains("device_id")) {
       std::string dev_id = provider_options.at("device_id").data();
@@ -307,12 +318,15 @@ struct OpenVINO_Provider : Provider {
                               << "Executing with num_streams=1";
       }
     }
-    pi.enable_opencl_throttling = ParseBooleanOption(provider_options, "enable_opencl_throttling");
+    try {
+      pi.enable_opencl_throttling = ParseBooleanOption(provider_options, "enable_opencl_throttling");
 
-    pi.enable_qdq_optimizer = ParseBooleanOption(provider_options, "enable_qdq_optimizer");
+      pi.enable_qdq_optimizer = ParseBooleanOption(provider_options, "enable_qdq_optimizer");
 
-    pi.disable_dynamic_shapes = ParseBooleanOption(provider_options, "disable_dynamic_shapes");
-
+      pi.disable_dynamic_shapes = ParseBooleanOption(provider_options, "disable_dynamic_shapes");
+    } catch (std::string msg) {
+      ORT_THROW(msg);
+    }
     // Always true for NPU plugin or when passed .
     if (pi.device_type.find("NPU") != std::string::npos) {
       pi.disable_dynamic_shapes = true;
