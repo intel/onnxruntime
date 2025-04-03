@@ -306,13 +306,19 @@ struct OpenVINO_Provider : Provider {
 
     pi.enable_qdq_optimizer = ParseBooleanOption(provider_options, "enable_qdq_optimizer");
 
+    pi.enable_causallm = ParseBooleanOption(provider_options, "enable_causallm");
+
     pi.disable_dynamic_shapes = ParseBooleanOption(provider_options, "disable_dynamic_shapes");
 
     // Always true for NPU plugin or when passed .
     if (pi.device_type.find("NPU") != std::string::npos) {
       // For Stateful PoC, we want control to pass through dynamic shape paths,
       // so just force this to false right now.
-      pi.disable_dynamic_shapes = false;
+      if (pi.enable_causallm) {
+        pi.disable_dynamic_shapes = false;
+      } else {
+        pi.disable_dynamic_shapes = true;
+      }
     }
 
     return std::make_shared<OpenVINOProviderFactory>(pi, SharedContext::Get());
