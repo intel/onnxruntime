@@ -99,38 +99,47 @@ OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_netwo
       //  Note! With this default path, the model runs but produces garbage (for NPUW). For CPU it's fine.
       auto mutable_model = ie_cnn_network->clone();
 
-      std::cout << "stateless model" << std::endl;
-      logBasicModelInfo(mutable_model);
+      if (onnxruntime::openvino_ep::backend_utils::IsDebugEnabled()) {
+        std::cout << "Stateless OV Model Statistic" << std::endl;
+        LogBasicModelInfo(mutable_model);
+      }
+      LogBasicModelInfo(mutable_model);
 
-      std::cout << "making stateful..." << std::endl;
-      patch_stateful_decoder(mutable_model);
+      LOGS_DEFAULT(INFO) << log_tag << "Converting from Stateless OV Model to Stateful OV Model" << std::endl;
+      PatchStatefulDecoder(mutable_model);
 
-      std::cout << "after stateful transition:" << std::endl;
-      logBasicModelInfo(mutable_model);
+      if (onnxruntime::openvino_ep::backend_utils::IsDebugEnabled()) {
+        std::cout << "Stateful OV Model Statistic" << std::endl;
+        LogBasicModelInfo(mutable_model);
+      }
 
       // This patches the model so that it only produces the logits required for sampling.
       // Actually either way that happens within NPUW::LLMCompiledModel creation, but this is
       // here mostly to align this behavior for other devices (CPU, GPU).
-      apply_slice_before_matmul_transformation(mutable_model);
+      ApplySliceBeforeMatmulTransformation(mutable_model);
 
-      auto kv_pos = get_kv_axes_pos(mutable_model);
-      std::cout << "kv_pos.batch = " << kv_pos.batch << std::endl;
-      std::cout << "kv_pos.seq_len = " << kv_pos.seq_len << std::endl;
+      auto kv_pos = GetKVAxesPos(mutable_model);
+      if (onnxruntime::openvino_ep::backend_utils::IsDebugEnabled()) {
+        std::cout << "kv_pos.batch = " << kv_pos.batch << std::endl;
+        std::cout << "kv_pos.seq_len = " << kv_pos.seq_len << std::endl;
+      }
 
       if (hw_target.find("NPU") != std::string::npos) {
         KVDesc kv_desc;
-        kv_desc.max_prompt_len = pop_int_and_cast(device_config, "MAX_PROMPT_LEN").value_or(1024u);
-        kv_desc.min_response_len = pop_int_and_cast(device_config, "MIN_RESPONSE_LEN").value_or(128u);
+        kv_desc.max_prompt_len = PopIntAndCast(device_config, "MAX_PROMPT_LEN").value_or(1024u);
+        kv_desc.min_response_len = PopIntAndCast(device_config, "MIN_RESPONSE_LEN").value_or(128u);
 
-        std::cout << "kv_desc.max_prompt_len = " << kv_desc.max_prompt_len << std::endl;
-        std::cout << "kv_desc.min_response_len = " << kv_desc.min_response_len << std::endl;
+        if (onnxruntime::openvino_ep::backend_utils::IsDebugEnabled()) {
+          std::cout << "kv_desc.max_prompt_len = " << kv_desc.max_prompt_len << std::endl;
+          std::cout << "kv_desc.min_response_len = " << kv_desc.min_response_len << std::endl;
+        }
 
-        update_npu_config(config, mutable_model, kv_pos, kv_desc);
+        UpdateNPUConfig(config, kv_pos, kv_desc);
       }
 
-      std::cout << "calling compile on stateful model..." << std::endl;
+      std::cout << "Compiling Stateful OV Model..." << std::endl;
       obj = core.compile_model(mutable_model, hw_target, config);
-      std::cout << "done calling compile on stateful model..." << std::endl;
+      std::cout << "Stateful OV Model Compilation Complete" << std::endl;
     } else {
       obj = core.compile_model(ie_cnn_network, hw_target, device_config);
     }
