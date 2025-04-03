@@ -31,8 +31,6 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
   std::string& hw_target = session_context_.device_type;
   auto enable_causallm = session_context_.enable_causallm;
 
-  std::cout << "CausalLM enabled: " << enable_causallm << std::endl;
-
   if (ValidateSubgraph(const_outputs_map_))
     return;
 
