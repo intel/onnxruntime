@@ -58,8 +58,8 @@ bool ParseBooleanOption(const ProviderOptions& provider_options, std::string opt
 }
 
 std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptions& provider_options) {
-  std::unordered_set<std::string> supported_device_types = {"CPU", "GPU", "NPU"};
-  std::unordered_set<std::string> supported_device_modes = {"AUTO", "HETERO", "MULTI"};
+  std::set<std::string> supported_device_types = {"CPU", "GPU", "NPU"};
+  std::set<std::string> supported_device_modes = {"AUTO", "HETERO", "MULTI"};
   std::vector<std::string> devices_to_check;
   std::string selected_device;
   std::vector<std::string> luid_list;
@@ -76,7 +76,7 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
         devices_to_check = split(devices, ',');
         ORT_ENFORCE(devices_to_check.size() > 0, "Modes should have devices listed based on priority");
       } else {
-        ORT_THROW("[ERROR] [OpenVINO] Invlid device_type is selected");
+        ORT_THROW("[ERROR] [OpenVINO] Invalid device_type is selected");
       }
     } else {
       devices_to_check.push_back(selected_device);
@@ -131,7 +131,7 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
         // Here we need to find the full device name (with .idx, but without _precision)
         if (std::find(std::begin(available_devices), std::end(available_devices), device) != std::end(available_devices))
           device_found = true;
-        if (device_prefix == "GPU" and luid_list.size() > 0) {
+        if (device_prefix == "GPU" && luid_list.size() > 0) {
           std::map<std::string, std::string> ov_luid_map;
           for (auto gpu_dev : available_devices) {
             ov::device::LUID ov_luid = OVCore::Get()->core.get_property(gpu_dev, ov::device::luid);
@@ -148,8 +148,9 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
                   if (dev_str.find("GPU") != std::string::npos)
                     selected_device = selected_device + "," + dev_str;
                 }
-              } else
+              } else {
                 selected_device = ov_dev;
+              }
             } else {
               ORT_THROW("Invalid device_luid is set");
             }
@@ -161,7 +162,7 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
     }
     all_devices_found = all_devices_found && device_found;
   }
-  // If invalid device is choosen error is thrown
+  // If invalid device is chosen error is thrown
   if (!all_devices_found)
     ORT_THROW(
         "[ERROR] [OpenVINO] You have selected wrong configuration value for the key 'device_type'. "
