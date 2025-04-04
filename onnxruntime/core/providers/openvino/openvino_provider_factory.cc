@@ -64,9 +64,11 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
   std::string selected_device;
   std::vector<std::string> luid_list;
   std::string device_mode = "";
+  std::map<std::string, std::string> ov_luid_map;
 
   if (provider_options.contains("device_type")) {
     selected_device = provider_options.at("device_type");
+    std::erase(selected_device, ' ');
     if (selected_device == "AUTO") return selected_device;
 
     if (auto delimit = selected_device.find(":"); delimit != std::string::npos) {
@@ -76,7 +78,7 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
         devices_to_check = split(devices, ',');
         ORT_ENFORCE(devices_to_check.size() > 0, "Modes should have devices listed based on priority");
       } else {
-        ORT_THROW("[ERROR] [OpenVINO] Invalid device_type is selected");
+        ORT_THROW("[ERROR] [OpenVINO] Invalid device_type is selected. Supported modes are AUTO/HETERO/MULTI");
       }
     } else {
       devices_to_check.push_back(selected_device);
@@ -105,13 +107,16 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
 #endif
   }
 
+  // Get the LUID passed from the provider option in a comma separated string list
+  // Compare each of the LUID's against the LUID obtained using ov property and map with the right device
   if (provider_options.contains("device_luid")) {
     std::string luid_str = provider_options.at("device_luid");
-    ORT_ENFORCE(selected_device.find("GPU") != std::string::npos, "LUID is supported only for GPU");
     std::erase(luid_str, ' ');
     luid_list = split(luid_str, ',');
   }
+
   bool all_devices_found = true;
+
   for (auto device : devices_to_check) {
     bool device_found = false;
     // Check deprecated device format (CPU_FP32, GPU.0_FP16, etc.) and remove the suffix in place
@@ -124,36 +129,18 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
     // Check if device index is appended (.0, .1, etc.), if so, remove it
     if (auto delimit = device_prefix.find("."); delimit != std::string::npos)
       device_prefix = device_prefix.substr(0, delimit);
-
     if (supported_device_types.contains(device_prefix)) {
       try {
         std::vector<std::string> available_devices = ov_core->GetAvailableDevices(device_prefix);
         // Here we need to find the full device name (with .idx, but without _precision)
         if (std::find(std::begin(available_devices), std::end(available_devices), device) != std::end(available_devices))
           device_found = true;
-        if (device_prefix == "GPU" && luid_list.size() > 0) {
-          std::map<std::string, std::string> ov_luid_map;
-          for (auto gpu_dev : available_devices) {
-            ov::device::LUID ov_luid = OVCore::Get()->core.get_property(gpu_dev, ov::device::luid);
+        if (device_prefix != "CPU" && luid_list.size() > 0) {
+          for (auto dev : available_devices) {
+            ov::device::LUID ov_luid = OVCore::Get()->core.get_property(dev, ov::device::luid);
             std::stringstream ov_luid_str;
             ov_luid_str << ov_luid;
-            ov_luid_map.emplace(ov_luid_str.str(), gpu_dev);
-          }
-          for (auto luid_str : luid_list) {
-            if (ov_luid_map.contains(luid_str)) {
-              auto ov_dev = ov_luid_map.at(luid_str);
-              if (!device_mode.empty()) {
-                selected_device = device_mode + ":" + ov_dev;
-                for (auto dev_str : devices_to_check) {
-                  if (dev_str.find("GPU") != std::string::npos)
-                    selected_device = selected_device + "," + dev_str;
-                }
-              } else {
-                selected_device = ov_dev;
-              }
-            } else {
-              ORT_THROW("Invalid device_luid is set");
-            }
+            ov_luid_map.emplace(ov_luid_str.str(), dev);
           }
         }
       } catch (const char* msg) {
@@ -161,6 +148,27 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
       }
     }
     all_devices_found = all_devices_found && device_found;
+  }
+  if (luid_list.size() > 0) {
+    std::string ov_luid_devices;
+    for (auto luid_str : luid_list) {
+      if (ov_luid_map.contains(luid_str)) {
+        if (!ov_luid_devices.empty()) ov_luid_devices = ov_luid_devices + ",";
+        ov_luid_devices = ov_luid_devices + ov_luid_map.at(luid_str);
+      } else {
+        ORT_THROW("Invalid device_luid is set");
+      }
+    }
+    if (!device_mode.empty()) {
+      selected_device = device_mode + ":" + ov_luid_devices;
+      for (auto dev_str : devices_to_check) {
+        auto default_dev = split(dev_str, '.')[0];
+        if (ov_luid_devices.find(default_dev) == std::string::npos)
+          selected_device = selected_device + "," + dev_str;
+      }
+    } else {
+      selected_device = ov_luid_devices;
+    }
   }
   // If invalid device is chosen error is thrown
   if (!all_devices_found)
