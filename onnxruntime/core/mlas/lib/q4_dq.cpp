@@ -1614,6 +1614,26 @@ MlasQuantizeBlockwise(
             }
             break;
 
+        case 3072:
+            if (columnwise) {
+                BlockwiseQuantizer<T, 3072, qbits, true>::quantizeAndTranspose(
+                    dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool);
+            } else {
+                BlockwiseQuantizer<T, 3072, qbits, false>::quantizeAndTranspose(
+                    dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool);
+            }
+            break;
+
+        case 8192:
+            if (columnwise) {
+                BlockwiseQuantizer<T, 8192, qbits, true>::quantizeAndTranspose(
+                    dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool);
+            } else {
+                BlockwiseQuantizer<T, 8192, qbits, false>::quantizeAndTranspose(
+                    dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool);
+            }
+            break;
+
         default:
             // Only block size 16, 32, 64, 128, 256 are supported.
             break;
