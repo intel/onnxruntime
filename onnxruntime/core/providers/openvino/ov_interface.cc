@@ -85,6 +85,61 @@ std::shared_ptr<OVNetwork> OVCore::ReadModel(std::string&& model, const std::str
   }
 }
 
+OVExeNetwork OVCore::StatefulCompileModel(std::shared_ptr<OVNetwork>& model,
+                                          std::string& hw_target,
+                                          const ov::AnyMap& device_config) {
+  ov::CompiledModel compiled_model;
+  ov::AnyMap config = device_config;
+
+  if (onnxruntime::openvino_ep::backend_utils::IsDebugEnabled()) {
+    std::cout << "Stateless OV Model Statistic:" << std::endl;
+    LogBasicModelInfo(model);
+  }
+
+  LOGS_DEFAULT(INFO) << log_tag << "Converting from Stateless OV Model to Stateful OV Model" << std::endl;
+  bool status = IsStateful(model);
+  std::cout << "IsStateful Status:\t" << status << std::endl;
+  if (!status) {
+    PatchStatefulDecoder(model);
+  }
+
+  if (onnxruntime::openvino_ep::backend_utils::IsDebugEnabled()) {
+    std::cout << "Stateful OV Model Statistic:" << std::endl;
+    LogBasicModelInfo(model);
+  }
+
+  auto kv_pos = GetKVAxesPos(model);
+  if (onnxruntime::openvino_ep::backend_utils::IsDebugEnabled()) {
+    std::cout << "kv_pos.batch = " << kv_pos.batch << std::endl;
+    std::cout << "kv_pos.seq_len = " << kv_pos.seq_len << std::endl;
+  }
+
+  if (hw_target.find("NPU") != std::string::npos) {
+    KVDesc kv_desc;
+    kv_desc.max_prompt_len = PopIntAndCast(config, "MAX_PROMPT_LEN").value_or(1024u);
+    kv_desc.min_response_len = PopIntAndCast(config, "MIN_RESPONSE_LEN").value_or(128u);
+
+    if (onnxruntime::openvino_ep::backend_utils::IsDebugEnabled()) {
+      std::cout << "kv_desc.max_prompt_len:\t" << kv_desc.max_prompt_len << std::endl;
+      std::cout << "kv_desc.min_response_len:\t" << kv_desc.min_response_len << std::endl;
+    }
+
+    UpdateNPUConfig(config, kv_pos, kv_desc);
+  } else {
+    // This patches the model so that it only produces the logits required for sampling.
+    // Actually either way that happens within NPUW::LLMCompiledModel creation, but this is
+    // here mostly to align this behavior for other devices (CPU, GPU).
+    ApplySliceBeforeMatmulTransformation(model);
+  }
+
+  std::cout << "Compiling Stateful OV Model ..." << std::endl;
+  compiled_model = OVCore::Get()->core.compile_model(model, hw_target, config);
+  std::cout << "Stateful OV Model Compilation Complete" << std::endl;
+
+  OVExeNetwork exe(compiled_model);
+  return exe;
+}
+
 OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_network,
                                   std::string& hw_target,
                                   ov::AnyMap& device_config,
@@ -93,53 +148,9 @@ OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_netwo
   ov::CompiledModel obj;
   try {
     if (enable_causallm) {
-      ov::AnyMap config;
-
-      // Create a clone of ie_cnn_network, since it's a const ov::Model, and we need to patch it..
-      //  Note! With this default path, the model runs but produces garbage (for NPUW). For CPU it's fine.
       auto mutable_model = ie_cnn_network->clone();
-
-      if (onnxruntime::openvino_ep::backend_utils::IsDebugEnabled()) {
-        std::cout << "Stateless OV Model Statistic" << std::endl;
-        LogBasicModelInfo(mutable_model);
-      }
-      LogBasicModelInfo(mutable_model);
-
-      LOGS_DEFAULT(INFO) << log_tag << "Converting from Stateless OV Model to Stateful OV Model" << std::endl;
-      PatchStatefulDecoder(mutable_model);
-
-      if (onnxruntime::openvino_ep::backend_utils::IsDebugEnabled()) {
-        std::cout << "Stateful OV Model Statistic" << std::endl;
-        LogBasicModelInfo(mutable_model);
-      }
-
-      // This patches the model so that it only produces the logits required for sampling.
-      // Actually either way that happens within NPUW::LLMCompiledModel creation, but this is
-      // here mostly to align this behavior for other devices (CPU, GPU).
-      ApplySliceBeforeMatmulTransformation(mutable_model);
-
-      auto kv_pos = GetKVAxesPos(mutable_model);
-      if (onnxruntime::openvino_ep::backend_utils::IsDebugEnabled()) {
-        std::cout << "kv_pos.batch = " << kv_pos.batch << std::endl;
-        std::cout << "kv_pos.seq_len = " << kv_pos.seq_len << std::endl;
-      }
-
-      if (hw_target.find("NPU") != std::string::npos) {
-        KVDesc kv_desc;
-        kv_desc.max_prompt_len = PopIntAndCast(device_config, "MAX_PROMPT_LEN").value_or(1024u);
-        kv_desc.min_response_len = PopIntAndCast(device_config, "MIN_RESPONSE_LEN").value_or(128u);
-
-        if (onnxruntime::openvino_ep::backend_utils::IsDebugEnabled()) {
-          std::cout << "kv_desc.max_prompt_len = " << kv_desc.max_prompt_len << std::endl;
-          std::cout << "kv_desc.min_response_len = " << kv_desc.min_response_len << std::endl;
-        }
-
-        UpdateNPUConfig(config, kv_pos, kv_desc);
-      }
-
-      std::cout << "Compiling Stateful OV Model..." << std::endl;
-      obj = core.compile_model(mutable_model, hw_target, config);
-      std::cout << "Stateful OV Model Compilation Complete" << std::endl;
+      auto compiled_model = OVCore::Get()->StatefulCompileModel(mutable_model, hw_target, device_config);
+      obj = compiled_model.Get();
     } else {
       obj = core.compile_model(ie_cnn_network, hw_target, device_config);
     }
@@ -177,10 +188,68 @@ OVExeNetwork OVCore::CompileModel(const std::string& onnx_model,
 OVExeNetwork OVCore::ImportModel(std::istream& model_stream,
                                  std::string hw_target,
                                  const ov::AnyMap& device_config,
+                                 bool enable_causallm,
                                  std::string name) {
   try {
     ov::CompiledModel obj;
-    obj = core.import_model(model_stream, hw_target, device_config);
+
+    // Check if it's XML
+    std::streampos originalPos = model_stream.tellg();
+    // Allocate space for "<?xml"
+    std::string header(5, '\0');
+    model_stream.read(&header[0], 5);
+
+    // Clear any read errors
+    model_stream.clear();
+    // Restore the stream position (important for reusing the stream)
+    model_stream.seekg(originalPos);
+
+    if (header != "<?xml") {
+      obj = core.import_model(model_stream, hw_target, device_config);
+    } else {
+      // Get path to bin file
+      std::string bin_file;
+      if (name.size() >= 5 && name.substr(name.size() - 5) == ".onnx") {
+        bin_file = name;
+        bin_file.replace(name.size() - 5, 5, ".bin");
+      } else {
+        throw std::runtime_error("Invalid model name. Make sure *.onnx, *.xml, and *.bin carry the same name.");
+      }
+
+      // Read the model XML into a string
+      std::stringstream xml_stream;
+      xml_stream << model_stream.rdbuf();
+      std::string xml_content = xml_stream.str();
+
+      // Read model.bin into a vector
+      std::ifstream bin_stream;
+      bin_stream.open(bin_file, std::ios::binary);
+      if (!bin_stream.is_open()) {
+        throw std::runtime_error("Failed to open " + bin_file);
+      }
+
+      bin_stream.seekg(0, std::ios::end);
+      std::streamsize size = bin_stream.tellg();
+      bin_stream.seekg(0, std::ios::beg);
+      std::vector<uint8_t> bin_data(size);
+      if (!bin_stream.read(reinterpret_cast<char*>(bin_data.data()), size)) {
+        throw std::runtime_error("Failed to read binary data from " + bin_file);
+      }
+
+      // Create an ov::Tensor for weights
+      ov::Tensor weights_tensor(ov::element::u8, {bin_data.size()}, bin_data.data());
+
+      // Load the model explicitly with XML content and weights
+      std::shared_ptr<ov::Model> model = core.read_model(xml_content, weights_tensor);
+
+      if (enable_causallm) {
+        auto compiled_model = OVCore::Get()->StatefulCompileModel(model, hw_target, device_config);
+        obj = compiled_model.Get();
+      } else {
+        obj = core.compile_model(model, hw_target, device_config);
+      }
+    }
+
 #ifndef NDEBUG
     printDebugInfo(obj);
 #endif

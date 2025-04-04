@@ -62,5 +62,7 @@ void UpdateNPUConfig(ov::AnyMap& config, const KVAxesPosition& kv_pos, const KVD
 std::optional<ov::Any> PopOptionNew(ov::AnyMap& config, const std::string& option_name);
 std::optional<uint32_t> PopIntAndCast(ov::AnyMap& config, const std::string& key);
 
+bool IsStateful(const std::shared_ptr<ov::Model>& model);
+
 }  // namespace openvino_ep
 }  // namespace onnxruntime

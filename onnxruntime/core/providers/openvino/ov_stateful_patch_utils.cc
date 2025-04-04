@@ -6,8 +6,7 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
-
-  void LogBasicModelInfo(const std::shared_ptr<const ov::Model>& model) {
+void LogBasicModelInfo(const std::shared_ptr<const ov::Model>& model) {
   std::cout << "Model Name: " << model->get_friendly_name() << std::endl;
 
   // Dump information about model inputs/outputs
@@ -37,7 +36,7 @@ namespace openvino_ep {
   return;
 }
 
-  bool ModelHasInputOutputNames(std::shared_ptr<ov::Model> model, const std::string& name_to_match) {
+bool ModelHasInputOutputNames(std::shared_ptr<ov::Model> model, const std::string& name_to_match) {
   for (const ov::Output<ov::Node>& input : model->inputs()) {
     auto& names = input.get_names();
 
@@ -60,10 +59,10 @@ namespace openvino_ep {
   return false;
 }
 
- void FuseCacheReorder(std::shared_ptr<ov::Model> ov_model,
-                               std::vector<std::string>& not_kv_inputs,
-                               const std::vector<std::string>& key_value_input_names,
-                               int gather_dim) {
+void FuseCacheReorder(std::shared_ptr<ov::Model> ov_model,
+                      std::vector<std::string>& not_kv_inputs,
+                      const std::vector<std::string>& key_value_input_names,
+                      int gather_dim) {
   if (ModelHasInputOutputNames(ov_model, "beam_idx")) {
     throw std::runtime_error("Model already has fused cache");
   }
@@ -101,9 +100,9 @@ namespace openvino_ep {
   ov_model->validate_nodes_and_infer_types();
 }
 
- void MakeStateful(std::shared_ptr<ov::Model>& ov_model,
-                          const std::vector<std::string>& key_value_input_names,
-                          const std::vector<std::string>& key_value_output_names) {
+void MakeStateful(std::shared_ptr<ov::Model>& ov_model,
+                  const std::vector<std::string>& key_value_input_names,
+                  const std::vector<std::string>& key_value_output_names) {
   std::map<std::string, std::string> input_output_map;
 
   // Create mapping for KV-cache inputs and outputs
@@ -119,7 +118,7 @@ namespace openvino_ep {
 
 // Converted to C++ from here:
 // https://github.com/huggingface/optimum-intel/blob/main/optimum/exporters/openvino/stateful.py#L281
- void PatchStatefulDecoder(std::shared_ptr<ov::Model> model) {
+void PatchStatefulDecoder(std::shared_ptr<ov::Model> model) {
   std::vector<std::string> key_value_input_names;
   std::vector<std::string> not_kv_inputs;
   for (const ov::Output<ov::Node>& input : model->inputs()) {
@@ -166,7 +165,7 @@ namespace openvino_ep {
 }
 
 // Some other utility functions copied from OpenVINO GenAI
- bool HasOpWithType(const std::shared_ptr<const ov::Model>& function, const std::string& type_name) {
+bool HasOpWithType(const std::shared_ptr<const ov::Model>& function, const std::string& type_name) {
   for (const auto& op : function->get_ops()) {
     if (op->get_type_name() == type_name) {
       return true;
@@ -175,7 +174,7 @@ namespace openvino_ep {
   return false;
 }
 
- std::tuple<std::shared_ptr<ov::Node>, int64_t> FindLLMMatmul(const std::shared_ptr<ov::Model>& model) {
+std::tuple<std::shared_ptr<ov::Node>, int64_t> FindLLMMatmul(const std::shared_ptr<ov::Model>& model) {
   auto last_node = model->output(0).get_node()->input_value(0).get_node_shared_ptr();
   std::shared_ptr<ov::Node> matmul = ov::as_type_ptr<ov::op::v0::MatMul>(last_node);
 
@@ -206,7 +205,7 @@ namespace openvino_ep {
   return std::make_tuple(matmul, slice_gather_dim);
 }
 
- void ApplySliceBeforeMatmulTransformation(std::shared_ptr<ov::Model> model) {
+void ApplySliceBeforeMatmulTransformation(std::shared_ptr<ov::Model> model) {
   std::shared_ptr<ov::Node> matmul = nullptr;
   int64_t slice_gather_dim = -1;
   std::tie(matmul, slice_gather_dim) = FindLLMMatmul(model);
@@ -221,13 +220,13 @@ namespace openvino_ep {
   }
 }
 
- void UpdateConfig(ov::AnyMap& config, const std::pair<std::string, ov::Any>& pair) {
+void UpdateConfig(ov::AnyMap& config, const std::pair<std::string, ov::Any>& pair) {
   if (config.count(pair.first) == 0) {
     config.insert(pair);
   }
 }
 
- std::optional<ov::Any> PopOption(ov::AnyMap& config, const std::string& option_name) {
+std::optional<ov::Any> PopOption(ov::AnyMap& config, const std::string& option_name) {
   if (auto it = config.find(option_name); it != config.end()) {
     std::optional<ov::Any> found = std::make_optional(it->second);
     config.erase(it);
@@ -236,13 +235,12 @@ namespace openvino_ep {
   return std::nullopt;
 }
 
- void RenameKey(ov::AnyMap& config, const std::string& old_key, const std::string& new_key) {
+void RenameKey(ov::AnyMap& config, const std::string& old_key, const std::string& new_key) {
   if (config.count(old_key) != 0) {
     auto opt_value = PopOption(config, old_key);
     config[new_key] = opt_value.value();
   }
 }
-
 
 KVAxesPosition GetKVAxesPos(std::shared_ptr<const ov::Model> model) {
   // sequence length axis in key/values tensors, for most cases [BATCH_SIZE, num_kv_heads, seq_len, head_size],
@@ -324,6 +322,17 @@ std::optional<uint32_t> PopIntAndCast(ov::AnyMap& config, const std::string& key
   return std::nullopt;
 }
 
+bool IsStateful(const std::shared_ptr<ov::Model>& model) {
+  for (auto&& ptr : model->get_ordered_ops()) {
+    if (ov::is_type<ov::op::v3::ReadValue>(ptr) ||
+        ov::is_type<ov::op::v6::ReadValue>(ptr) ||
+        ov::is_type<ov::op::v3::Assign>(ptr) ||
+        ov::is_type<ov::op::v6::Assign>(ptr)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 }  // namespace openvino_ep
 }  // namespace onnxruntime
