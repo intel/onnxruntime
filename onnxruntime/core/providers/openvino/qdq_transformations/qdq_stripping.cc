@@ -449,13 +449,12 @@ static void AddStandaloneNodeUnit(onnxruntime::Graph& dst_graph, const onnxrunti
                                   const NodeUnit& node_unit,
                                   std::set<std::string>& initializers_to_keep,
                                   const logging::Logger& /* logger */,
-                                  bool enable_ovep_qdq_optimizer,
-                                  bool enable_ovep_weight_sharing) {
+                                  bool IsWeightSharingWithoutOVEPQDQStripping) {
   assert(node_unit.UnitType() == NodeUnit::Type::SingleNode);
 
   // this is the scenario where WAI is enabled and ovep stripping is disabled
   // do not strip off any Q or DQ node
-  if (enable_ovep_weight_sharing && !enable_ovep_qdq_optimizer) {
+  if (IsWeightSharingWithoutOVEPQDQStripping) {
     AddNode(initializers_to_keep, src_graph, dst_graph, node_unit.GetNode());
     return;
   }
@@ -522,8 +521,7 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
                            const NodeUnit& node_unit,
                            std::set<std::string>& initializers_to_keep,
                            const logging::Logger& /* logger */,
-                           bool enable_ovep_qdq_optimizer,
-                           bool enable_ovep_weight_sharing) {
+                           bool IsWeightSharingWithoutOVEPQDQStripping) {
   assert(node_unit.UnitType() == NodeUnit::Type::QDQGroup);
 
   // Collect inputs coming into the node unit.
@@ -541,7 +539,7 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
     SkipReason reason = SkipReason::Other;
     bool keep_dq = CheckDQRuleSet(node_unit, dq_node, src_graph, reason);
 
-    if (keep_dq || (enable_ovep_weight_sharing && !enable_ovep_qdq_optimizer)) {
+    if (IsWeightSharingWithoutOVEPQDQStripping || keep_dq) {
       AddNode(initializers_to_keep, src_graph, dst_graph, *dq_node);
       dq_node_args_to_keep.insert({input_defs.at(0)->Name(),
                                    &dst_graph.GetOrCreateNodeArg(dq_node->OutputDefs().at(0)->Name(),
@@ -609,7 +607,7 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
 
       bool keep_q = CheckQRuleSet(node_unit, q_node, src_graph, reason);
 
-      if (keep_q || (enable_ovep_weight_sharing && !enable_ovep_qdq_optimizer)) {
+      if (IsWeightSharingWithoutOVEPQDQStripping || keep_q) {
         AddNode(initializers_to_keep, src_graph, dst_graph, *q_node);
         // if keep_q, then output defs of the target node doesn't change
         output_args.push_back(&dst_graph.GetOrCreateNodeArg(target_node.OutputDefs().at(i)->Name(),
@@ -779,10 +777,12 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
       continue;  // Already handled this node unit
     }
 
+    bool IsWeightSharingWithoutOVEPQDQStripping = enable_ovep_weight_sharing && !enable_ovep_qdq_optimizer;
+
     if (node_unit->UnitType() == NodeUnit::Type::SingleNode) {
-      AddStandaloneNodeUnit(dst_graph, src_graph, *node_unit, initializers_to_keep, logger, enable_ovep_qdq_optimizer, enable_ovep_weight_sharing);
+      AddStandaloneNodeUnit(dst_graph, src_graph, *node_unit, initializers_to_keep, logger, IsWeightSharingWithoutOVEPQDQStripping);
     } else {
-      AddQDQNodeUnit(dst_graph, src_graph, *node_unit, initializers_to_keep, logger, enable_ovep_qdq_optimizer, enable_ovep_weight_sharing);
+      AddQDQNodeUnit(dst_graph, src_graph, *node_unit, initializers_to_keep, logger, IsWeightSharingWithoutOVEPQDQStripping);
     }
 
     seen_node_units.insert(node_unit);
