@@ -37,6 +37,8 @@ typedef ov::intel_gpu::ocl::ClContext* OVRemoteContextPtr;
 typedef ov::RemoteContext OVRemoteContext;
 #endif
 
+std::optional<bool> queryOVProperty(const std::string& property, const std::string& device_type);
+
 template <typename T>
 class WeakSingleton {
  public:
