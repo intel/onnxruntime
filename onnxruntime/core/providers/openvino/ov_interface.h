@@ -69,6 +69,9 @@ struct OVCore : WeakSingleton<OVCore> {
   // OV Interface For Reading Model
   std::shared_ptr<OVNetwork> ReadModel(std::string&& model_stream, const std::string& model_path);
 
+  OVExeNetwork StatefulCompileModel(std::shared_ptr<OVNetwork>& model,
+                                    std::string& hw_target,
+                                    const ov::AnyMap& device_config);
   // OV Interface for Compiling OV Model Type
   OVExeNetwork CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_network,
                             std::string& hw_target,
@@ -84,6 +87,7 @@ struct OVCore : WeakSingleton<OVCore> {
   OVExeNetwork ImportModel(std::istream& model_stream,
                            std::string hw_target,
                            const ov::AnyMap& device_config,
+                           bool enable_causallm,
                            std::string name);
 #ifdef IO_BUFFER_ENABLED
   OVExeNetwork CompileModel(std::shared_ptr<const OVNetwork>& model,

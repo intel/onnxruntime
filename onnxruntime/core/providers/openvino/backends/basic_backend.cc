@@ -85,13 +85,14 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
     auto auto_unified_compile = ((hw_target.find("AUTO") == std::string::npos) ||
                                  (session_context_.OpenVINO_Version.at(0) >= 2024 &&
                                   session_context_.OpenVINO_Version.at(1) > 2));
-    if (subgraph_context_.is_ep_ctx_graph) {
+    if (subgraph_context_.is_ep_ctx_graph && enable_causallm) {
       // If the blob is held in an EPContext node, then skip FE+Compile
       // and directly move on to creating a backend with the executable blob
       exe_network_ = OVCore::Get()->ImportModel(*model_stream,
                                                 hw_target,
                                                 device_config,
-                                                subgraph_context_.subgraph_name);
+                                                enable_causallm,
+                                                session_context_.onnx_model_path_name.string());
       model_stream.reset();  // Delete stream after it is no longer needed
     } else if (!session_context_.has_external_weights &&
                !subgraph_context_.has_dynamic_input_shape &&
@@ -285,7 +286,7 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
       //// Parse to get the device mode (e.g., "AUTO:CPU,GPU" -> "AUTO")
       std::unordered_set<std::string> supported_mode = {"AUTO", "HETERO", "MULTI"};
       auto device_mode = find_device_type_mode(session_context_.device_type);
-      ORT_ENFORCE(supported_mode.find(device_mode)!=supported_mode.end(), " Invalid device mode is passed : " , session_context_.device_type);
+      ORT_ENFORCE(supported_mode.find(device_mode) != supported_mode.end(), " Invalid device mode is passed : ", session_context_.device_type);
       // Parse individual devices (e.g., "AUTO:CPU,GPU" -> ["CPU", "GPU"])
       auto individual_devices = parse_individual_devices(session_context_.device_type);
       if (!device_mode.empty()) individual_devices.emplace_back(device_mode);
@@ -379,7 +380,7 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
       // for the stateful PoC, the ONNX model will have KV cache (past/present) tensors, but
       // we internally converted it to stateful, which removed these. So, we just continue here
       // to avoid runtime exception.
-      if (input_name.empty()) continue;
+      if (input_name.empty() || input_name == "beam_idx") continue;
 
       ORT_ENFORCE(!input_name.empty(), log_tag,
                   "Input names mismatch between OpenVINO and ONNX. ", onnx_input_name,
