@@ -295,6 +295,24 @@ common::Status OpenVINOExecutionProvider::SetEpDynamicOptions(gsl::span<const ch
           ov_compiled_model.set_property(ov::workload_type(workload_type));
         }
       }
+    } else if (key == "kvcache_rewind") {
+      // convert kvcache_rewind value to int64_t
+      int64_t index;
+      try {
+        index = std::stoll(value);
+      } catch (const std::exception& e) {
+        LOGS_DEFAULT(WARNING) << "Could not convert kvcache_rewind value string to index. Exception: " + std::string(e.what());
+        return Status::OK();
+      }
+
+      // Trigger KVCache rewind for backed
+      for (auto& backend : backend_managers_) {
+        if (index >= 0) {
+          backend.RewindKVCache(static_cast<size_t>(index));
+        } else {
+          LOGS_DEFAULT(WARNING) << "kvcache_rewind index is < 0: " << index;
+        }
+      }
     } else {
       // Handle unknown options
       LOGS_DEFAULT(WARNING) << "Unknown key/value pair - ignoring " << key << "/" << value;
