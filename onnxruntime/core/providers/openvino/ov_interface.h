@@ -8,6 +8,7 @@
 #include <fstream>
 #include <sstream>
 #include <utility>
+#include <optional>
 
 #include "openvino/openvino.hpp"
 #include "openvino/runtime/intel_npu/properties.hpp"
