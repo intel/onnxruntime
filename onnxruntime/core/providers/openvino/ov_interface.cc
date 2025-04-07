@@ -105,7 +105,7 @@ OVExeNetwork OVCore::StatefulCompileModel(std::shared_ptr<OVNetwork>& model,
 
   if (hw_target.find("NPU") != std::string::npos) {
     KVDesc kv_desc;
-    kv_desc.max_prompt_len = PopIntAndCast(config, "MAX_PROMPT_LEN").value_or(1024u);
+    kv_desc.max_prompt_len = PopIntAndCast(config, "MAX_PROMPT_LEN").value_or(3072u);
     kv_desc.min_response_len = PopIntAndCast(config, "MIN_RESPONSE_LEN").value_or(128u);
 
     if (onnxruntime::openvino_ep::backend_utils::IsDebugEnabled()) {
@@ -125,7 +125,7 @@ OVExeNetwork OVCore::StatefulCompileModel(std::shared_ptr<OVNetwork>& model,
   compiled_model = OVCore::Get()->core.compile_model(model, hw_target, config);
   std::cout << "Stateful OV Model Compilation Complete" << std::endl;
 
-  OVExeNetwork exe(compiled_model);
+  OVExeNetwork exe(compiled_model, hw_target, true);
   return exe;
 }
 
@@ -134,19 +134,18 @@ OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_netwo
                                   ov::AnyMap& device_config,
                                   bool enable_causallm,
                                   const std::string& name) {
-  ov::CompiledModel obj;
+  OVExeNetwork exe;
   try {
     if (enable_causallm) {
       auto mutable_model = ie_cnn_network->clone();
-      auto compiled_model = OVCore::Get()->StatefulCompileModel(mutable_model, hw_target, device_config);
-      obj = compiled_model.Get();
+      exe = OVCore::Get()->StatefulCompileModel(mutable_model, hw_target, device_config);
     } else {
-      obj = core.compile_model(ie_cnn_network, hw_target, device_config);
+      auto obj = core.compile_model(ie_cnn_network, hw_target, device_config);
+      exe = OVExeNetwork(obj, hw_target);
     }
 #ifndef NDEBUG
     printDebugInfo(obj);
 #endif
-    OVExeNetwork exe(obj);
     return exe;
   } catch (const Exception& e) {
     ORT_THROW(log_tag + " Exception while Loading Network for graph: " + name + e.what());
@@ -165,7 +164,7 @@ OVExeNetwork OVCore::CompileModel(const std::string& onnx_model,
 #ifndef NDEBUG
     printDebugInfo(obj);
 #endif
-    OVExeNetwork exe(obj);
+    OVExeNetwork exe(obj, hw_target);
     return exe;
   } catch (const Exception& e) {
     ORT_THROW(log_tag + " Exception while Loading Network for graph: " + name + e.what());
@@ -180,7 +179,7 @@ OVExeNetwork OVCore::ImportModel(std::istream& model_stream,
                                  bool enable_causallm,
                                  std::string name) {
   try {
-    ov::CompiledModel obj;
+    OVExeNetwork exe;
 
     // Check if it's XML
     std::streampos originalPos = model_stream.tellg();
@@ -194,7 +193,8 @@ OVExeNetwork OVCore::ImportModel(std::istream& model_stream,
     model_stream.seekg(originalPos);
 
     if (header != "<?xml") {
-      obj = core.import_model(model_stream, hw_target, device_config);
+      auto obj = core.import_model(model_stream, hw_target, device_config);
+      exe = OVExeNetwork(obj, hw_target);
     } else {
       // Get path to bin file
       std::string bin_file;
@@ -232,17 +232,16 @@ OVExeNetwork OVCore::ImportModel(std::istream& model_stream,
       std::shared_ptr<ov::Model> model = core.read_model(xml_content, weights_tensor);
 
       if (enable_causallm) {
-        auto compiled_model = OVCore::Get()->StatefulCompileModel(model, hw_target, device_config);
-        obj = compiled_model.Get();
+        exe = OVCore::Get()->StatefulCompileModel(model, hw_target, device_config);
       } else {
-        obj = core.compile_model(model, hw_target, device_config);
+        auto obj = core.compile_model(model, hw_target, device_config);
+        exe = OVExeNetwork(obj, hw_target);
       }
     }
 
 #ifndef NDEBUG
     printDebugInfo(obj);
 #endif
-    OVExeNetwork exe(obj);
     return exe;
   } catch (const Exception& e) {
     ORT_THROW(log_tag + " Exception while Loading Network for graph: " + name + e.what());
@@ -330,11 +329,16 @@ void OVCore::SetStreams(const std::string& device_type, int num_streams) {
   core.set_property(device_type, {ov::num_streams(num_streams)});
 }
 
-OVInferRequest OVExeNetwork::CreateInferRequest() {
+std::shared_ptr<OVInferRequest> OVExeNetwork::CreateInferRequest() {
   try {
     auto infReq = obj.create_infer_request();
-    OVInferRequest inf_obj(std::move(infReq));
-    return inf_obj;
+    std::shared_ptr<OVInferRequest> ovInfReq;
+    if (_stateful_llm) {
+      ovInfReq = std::make_shared<StatefulOVInferRequest>(std::move(infReq), _device);
+    } else {
+      ovInfReq = std::make_shared<OVInferRequest>(std::move(infReq));
+    }
+    return ovInfReq;
   } catch (const Exception& e) {
     ORT_THROW(log_tag + "Exception while creating InferRequest object: " + e.what());
   } catch (...) {
@@ -368,16 +372,6 @@ std::string OVInferRequest::GetInputTensorName(uint32_t index) {
 void OVInferRequest::SetTensor(const std::string& name, OVTensorPtr& blob) {
   try {
     ovInfReq.set_tensor(name, *(blob.get()));
-
-    if (name == "input_ids") {
-      // Since we can't seem to set at ORT GenAI layer right now, we just set it here
-      // as a workaround.
-      // TODO: Fix this.
-      ov::Tensor beam_idx = ov::Tensor(ov::element::i32, {1});
-      std::fill_n(beam_idx.data<int32_t>(), 1, 0);
-      ovInfReq.set_tensor("beam_idx", beam_idx);
-    }
-
   } catch (const Exception& e) {
     ORT_THROW(log_tag + " Cannot set Remote Blob for output: " + name + e.what());
   } catch (...) {
@@ -423,5 +417,76 @@ void OVInferRequest::QueryStatus() {
   std::cout << "ovInfReq.query_state()"
             << " ";
 }
+
+void StatefulOVInferRequest::_pre_infer() {
+  // Since we can't seem to set at ORT GenAI layer right now, we just set it here
+  // as a workaround.
+  // TODO: Fix this.
+  ov::Tensor beam_idx = ov::Tensor(ov::element::i32, {1});
+  std::fill_n(beam_idx.data<int32_t>(), 1, 0);
+  ovInfReq.set_tensor("beam_idx", beam_idx);
+
+  // For NPU, we need to cache input_ids and position_ids for
+  // chat-mode support.
+  if (device.find("NPU") != std::string::npos) {
+    auto input_ids_tensor = ovInfReq.get_tensor("input_ids");
+
+    // add input_ids to our cache
+    {
+      auto* pData = input_ids_tensor.data<int64_t>();
+      for (size_t i = 0; i < input_ids_tensor.get_size(); i++) {
+        cached_input_ids.push_back(pData[i]);
+      }
+    }
+
+    // add position_ids to our cache
+    {
+      auto position_ids = ovInfReq.get_tensor("position_ids");
+      auto* pData = position_ids.data<int64_t>();
+      for (size_t i = 0; i < position_ids.get_size(); i++) {
+        cached_position_ids.push_back(pData[i]);
+      }
+    }
+
+    // if we're about to run prefill model
+    if (input_ids_tensor.get_size() > 1) {
+      // if the input_ids size doesn't equal cached size of the input_ids
+      //  then it means that we're running 2nd (or later) prompt.
+      if (input_ids_tensor.get_shape()[1] != cached_input_ids.size()) {
+        // set a new input_ids tensor with the content of our cached input_ids
+        {
+          auto new_shape = input_ids_tensor.get_shape();
+          new_shape[1] = cached_input_ids.size();
+          auto new_input_ids = ov::Tensor(input_ids_tensor.get_element_type(), new_shape);
+          auto* pNewInputIds = new_input_ids.data<int64_t>();
+          std::memcpy(pNewInputIds, cached_input_ids.data(), cached_input_ids.size() * sizeof(int64_t));
+          ovInfReq.set_tensor("input_ids", new_input_ids);
+        }
+
+        // set a new position_ids tensor with the content of our cached position_ids
+        {
+          auto position_ids_tensor = ovInfReq.get_tensor("position_ids");
+          auto new_shape = position_ids_tensor.get_shape();
+          new_shape[1] = cached_position_ids.size();
+          auto new_position_ids = ov::Tensor(position_ids_tensor.get_element_type(), new_shape);
+          auto* pNewPositionIds = new_position_ids.data<int64_t>();
+          std::memcpy(pNewPositionIds, cached_position_ids.data(), cached_position_ids.size() * sizeof(int64_t));
+          ovInfReq.set_tensor("position_ids", new_position_ids);
+        }
+      }
+    }
+  }
+}
+
+void StatefulOVInferRequest::StartAsync() {
+  _pre_infer();
+  OVInferRequest::StartAsync();
+}
+
+void StatefulOVInferRequest::Infer() {
+  _pre_infer();
+  OVInferRequest::Infer();
+}
+
 }  // namespace openvino_ep
 }  // namespace onnxruntime
