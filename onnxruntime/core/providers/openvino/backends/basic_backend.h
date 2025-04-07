@@ -41,6 +41,7 @@ class BasicBackend : public IBackend {
   ov::CompiledModel& GetOVCompiledModel() override {
     return exe_network_.Get();
   }
+  void RewindKVCache(size_t index) override;
 
  private:
   void PopulateCompiledDirectory(std::string, std::string&, std::string&, bool&);
