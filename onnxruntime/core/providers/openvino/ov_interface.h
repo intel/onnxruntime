@@ -105,15 +105,18 @@ struct OVCore : WeakSingleton<OVCore> {
 
 class OVExeNetwork {
   ov::CompiledModel obj;
-
+  std::string _device;
+  bool _stateful_llm;
  public:
-  explicit OVExeNetwork(ov::CompiledModel md) : obj(md) {}
+  explicit OVExeNetwork(ov::CompiledModel md, std::string device, bool stateful_llm = false) 
+      : obj(md), _device(device), _stateful_llm(stateful_llm) {}
   OVExeNetwork() : obj(ov::CompiledModel()) {}
   ov::CompiledModel& Get() { return obj; }
-  OVInferRequest CreateInferRequest();
+  std::shared_ptr<OVInferRequest> CreateInferRequest();
 };
 
 class OVInferRequest {
+ protected:
   ov::InferRequest ovInfReq;
 
  public:
@@ -121,8 +124,8 @@ class OVInferRequest {
   OVTensorPtr GetTensor(const std::string& name);
   std::string GetInputTensorName(uint32_t index);
   void SetTensor(const std::string& name, OVTensorPtr& blob);
-  void StartAsync();
-  void Infer();
+  virtual void StartAsync();
+  virtual void Infer();
   void WaitRequest();
   void QueryStatus();
   explicit OVInferRequest(ov::InferRequest obj) : ovInfReq(std::move(obj)) {}
@@ -130,6 +133,25 @@ class OVInferRequest {
   ov::InferRequest& GetNewObj() {
     return ovInfReq;
   }
+  virtual void RewindKVCache(size_t index) {};
 };
+
+class StatefulOVInferRequest : public OVInferRequest {
+ public:
+  explicit StatefulOVInferRequest(ov::InferRequest obj, std::string d) : OVInferRequest(std::move(obj)), device(d) {}
+
+  void StartAsync() override;
+  void Infer() override;
+  void RewindKVCache(size_t index) override;
+
+ private:
+  void _pre_infer();
+  std::string device;
+
+  // For NPU, we need to cache input_ids & position_ids to support chat-mode.
+  std::vector<int64_t> cached_input_ids;
+  std::vector<int64_t> cached_position_ids;
+};
+
 }  // namespace openvino_ep
 }  // namespace onnxruntime
