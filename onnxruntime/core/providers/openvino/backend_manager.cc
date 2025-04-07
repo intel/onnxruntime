@@ -550,5 +550,11 @@ void BackendManager::ShutdownBackendManager() {
   concrete_backend_.reset();
 }
 
+void BackendManager::RewindKVCache(size_t index) {
+  if (concrete_backend_) {
+    concrete_backend_->RewindKVCache(index);
+  }
+}
+
 }  // namespace openvino_ep
 }  // namespace onnxruntime
