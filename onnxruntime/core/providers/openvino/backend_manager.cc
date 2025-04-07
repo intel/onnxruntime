@@ -321,9 +321,9 @@ static bool IsQDQGraph(const onnxruntime::GraphViewer& graph_viewer) {
   return false;
 }
 
-static void DumpOpenVINOEPModel(const std::filesystem::path& onnx_model_path_name,
-                                ONNX_NAMESPACE::ModelProto* model_proto,
-                                const onnxruntime::Node& fused_node) {
+static void DumpOpenVINOEPModel([[maybe_unused]] const std::filesystem::path& onnx_model_path_name,
+                                [[maybe_unused]] ONNX_NAMESPACE::ModelProto* model_proto,
+                                [[maybe_unused]] const onnxruntime::Node& fused_node) {
 #ifndef NDEBUG
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
     auto model_name = onnx_model_path_name.empty() ? "unknown.onnx" : onnx_model_path_name.filename();
