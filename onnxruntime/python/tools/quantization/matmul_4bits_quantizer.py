@@ -732,16 +732,11 @@ class DefaultWeightOnlyQuantizer:
             raise ValueError("Current int4 block quantization only supports 2D tensors!")
         rows, cols = fp32weight.shape
 
-        block_size = self.config.block_size
+        # block size equal to rows (K) if channel wised quantize enabled
+        block_size = rows if self.config.channel_wised_quantize else self.config.block_size
         k_blocks = (rows + block_size - 1) // block_size
 
         if self.config.quant_format == QuantFormat.QOperator:
-            # channel wised quantization only added for QOperator for now
-            # block size equal to rows (K)
-            if self.config.channel_wised_quantize:
-                block_size = rows
-                k_blocks = (rows + block_size - 1) // block_size
-
             blob_size = block_size // 2
             padded_rows = k_blocks * block_size
             pad_len = padded_rows - rows
@@ -852,7 +847,8 @@ class DefaultWeightOnlyQuantizer:
                 )
                 dq_input_names.append(zp_tensor.name)
                 b_graph.initializer.extend([zp_tensor])
-            dq_kwargs = {"axis": 0, "block_size": self.config.block_size}
+            rows, cols = b_ndarray.shape
+            dq_kwargs = {"axis": 0, "block_size": rows if self.config.channel_wised_quantize else self.config.block_size}
             dq_node = onnx.helper.make_node(
                 "DequantizeLinear",
                 inputs=dq_input_names,
