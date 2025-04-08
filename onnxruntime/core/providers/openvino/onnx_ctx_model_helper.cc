@@ -142,7 +142,7 @@ bool EPCtxHandler::CheckForOVEPCtxNode(const Node& node) const {
   if (node.OpType() == EPCONTEXT_OP) {
     auto& attrs = node.GetAttributes();
     bool result = (attrs.count(SOURCE) == 1) && (attrs.at(SOURCE).s() == kOpenVINOExecutionProvider);
-    result &= (attrs.count(EP_SDK_VER) == 1) && (attrs.at(EP_SDK_VER).s() == openvino_sdk_version_);
+    // result &= (attrs.count(EP_SDK_VER) == 1) && (attrs.at(EP_SDK_VER).s() == openvino_sdk_version_);
     result &= attrs.count(EMBED_MODE) == 1;
     result &= attrs.count(EP_CACHE_CONTEXT) == 1;
     return result;
