@@ -143,9 +143,11 @@ OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_netwo
       auto obj = core.compile_model(ie_cnn_network, hw_target, device_config);
       exe = OVExeNetwork(obj, hw_target);
     }
+
 #ifndef NDEBUG
-    printDebugInfo(obj);
+    printDebugInfo(exe.Get());
 #endif
+
     return exe;
   } catch (const Exception& e) {
     ORT_THROW(log_tag + " Exception while Loading Network for graph: " + name + e.what());
@@ -240,7 +242,7 @@ OVExeNetwork OVCore::ImportModel(std::istream& model_stream,
     }
 
 #ifndef NDEBUG
-    printDebugInfo(obj);
+    printDebugInfo(exe.Get());
 #endif
     return exe;
   } catch (const Exception& e) {
