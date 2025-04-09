@@ -209,40 +209,18 @@ OVExeNetwork OVCore::ImportModel(std::istream& model_stream,
       auto obj = core.import_model(model_stream, hw_target, device_config);
       exe = OVExeNetwork(obj, hw_target);
     } else {
-      // Get path to bin file
-      std::string bin_file;
+      // If the model is XML, we need to load it with the XML content in read_model()
+      // where weights from bin file is directly consumed
+      std::string xml_file_name = name;
       if (name.size() >= 5 && name.substr(name.size() - 5) == ".onnx") {
-        bin_file = name;
-        bin_file.replace(name.size() - 5, 5, ".bin");
+        xml_file_name = name;
+        xml_file_name.replace(name.size() - 5, 5, ".xml");
       } else {
         throw std::runtime_error("Invalid model name. Make sure *.onnx, *.xml, and *.bin carry the same name.");
       }
 
-      // Read the model XML into a string
-      std::stringstream xml_stream;
-      xml_stream << model_stream.rdbuf();
-      std::string xml_content = xml_stream.str();
-
-      // Read model.bin into a vector
-      std::ifstream bin_stream;
-      bin_stream.open(bin_file, std::ios::binary);
-      if (!bin_stream.is_open()) {
-        throw std::runtime_error("Failed to open " + bin_file);
-      }
-
-      bin_stream.seekg(0, std::ios::end);
-      std::streamsize size = bin_stream.tellg();
-      bin_stream.seekg(0, std::ios::beg);
-      std::vector<uint8_t> bin_data(size);
-      if (!bin_stream.read(reinterpret_cast<char*>(bin_data.data()), size)) {
-        throw std::runtime_error("Failed to read binary data from " + bin_file);
-      }
-
-      // Create an ov::Tensor for weights
-      ov::Tensor weights_tensor(ov::element::u8, {bin_data.size()}, bin_data.data());
-
-      // Load the model explicitly with XML content and weights
-      std::shared_ptr<ov::Model> model = core.read_model(xml_content, weights_tensor);
+      // Load the model explicitly with XML contents
+      std::shared_ptr<ov::Model> model = core.read_model(xml_file_name);
 
       if (enable_causallm) {
         exe = OVCore::Get()->StatefulCompileModel(model, hw_target, device_config);
