@@ -85,7 +85,7 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
     auto auto_unified_compile = ((hw_target.find("AUTO") == std::string::npos) ||
                                  (session_context_.OpenVINO_Version.at(0) >= 2024 &&
                                   session_context_.OpenVINO_Version.at(1) > 2));
-    if (subgraph_context_.is_ep_ctx_graph && enable_causallm) {
+    if (subgraph_context_.is_ep_ctx_graph) {
       // If the blob is held in an EPContext node, then skip FE+Compile
       // and directly move on to creating a backend with the executable blob
       exe_network_ = OVCore::Get()->ImportModel(*model_stream,
