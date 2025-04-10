@@ -17,7 +17,6 @@
 
 namespace onnxruntime {
 namespace openvino_ep {
-
 void ParseConfigOptions(ProviderInfo& pi) {
   if (pi.config_options == nullptr)
     return;
