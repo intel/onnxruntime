@@ -102,12 +102,13 @@ common::Status OpenVINOExecutionProvider::Compile(
         graph_body_viewer_0.DomainToVersionMap().at(kOnnxDomain);
   }
 
+  const auto metadata_path = session_context_.GetEpContextOutputDirectory() / "metadata.bin";
+
   // Temporary code to read metadata before it moves to the .bin
   auto& metadata = shared_context_->shared_weights.metadata;
   if (session_context_.so_share_ep_contexts && metadata.empty()) {
     // Metadata is always read from model location, this could be a source or epctx model
-    fs::path metadata_filename = session_context_.onnx_model_path_name.parent_path() / "metadata.bin";
-    std::ifstream file(metadata_filename, std::ios::binary);
+    std::ifstream file(metadata_path, std::ios::binary);
     if (file) {
       file >> metadata;
     }
@@ -174,20 +175,30 @@ common::Status OpenVINOExecutionProvider::Compile(
   }
 
   if (session_context_.so_share_ep_contexts) {
-    fs::path metadata_filename;
-    if (session_context_.so_context_file_path.empty()) {
-      metadata_filename = session_context_.onnx_model_path_name.parent_path() / "metadata.bin";
+    const auto& sw_path_filename = shared_context_->shared_weights.external_weight_filename;
+    fs::path new_weights_file_path = session_context_.GetNewWeightsFilePath(sw_path_filename);
+    fs::path original_weights_path = session_context_.GetModelDirectory() / sw_path_filename;
+
+    if (!std::filesystem::exists(new_weights_file_path)) {
+      try {
+        std::filesystem::create_hard_link(original_weights_path, new_weights_file_path);
+      } catch (const std::filesystem::filesystem_error& e) {
+        LOGS_DEFAULT(WARNING) << "Failed to create hard link: " << e.what() << " Falling back to copy.";
+        std::filesystem::copy_file(original_weights_path, new_weights_file_path);
+      }
     } else {
-      metadata_filename = session_context_.so_context_file_path.parent_path() / "metadata.bin";
+      LOGS_DEFAULT(WARNING) << "Weights file already exists: " << new_weights_file_path.string() << " Link/Copy.";
     }
 
     // Metadata is generated only for shared contexts
-    // If saving metadata then save it to the provided path or ose the original model path
+    // If saving metadata then save it to the provided path or use the original model path
     // Multiple calls to Compile() will update the metadata and for the last call
     //   the resulting file will contain the aggregated content
-    std::ofstream file(metadata_filename, std::ios::binary);
+    std::ofstream file(metadata_path, std::ios::binary);
     if (file) {
       file << metadata;
+    } else {
+      LOGS_DEFAULT(WARNING) << "Failed to write metadata to file: " << metadata_path.string();
     }
   }
 
