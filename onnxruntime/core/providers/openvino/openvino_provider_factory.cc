@@ -163,7 +163,7 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
           ORT_THROW(" LUID : ", ov_dev, " does not match with device_type : ", selected_device);
         }
       } else {
-        ORT_THROW("Invalid device_luid is passed. Kindly verify that the device type and LUID corresponds to the same HW");
+        ORT_THROW(provider_options.at("device_luid"), " does not exist for the selected device_type : ", selected_device);
       }
     }
     if (!device_mode.empty()) {
