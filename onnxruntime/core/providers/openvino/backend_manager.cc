@@ -84,18 +84,21 @@ BackendManager::BackendManager(SessionContext& session_context,
   std::string device_type = session_context_.device_type;
 
   auto& sw = shared_context_.shared_weights;
-  if (session_context_.so_share_ep_contexts) {
-    std::filesystem::path weight_filename = session_context_.onnx_model_path_name.parent_path();
-    if (sw.external_weight_filename.empty() && !sw.metadata.empty()) {
-      // Reasonable assumption that all metadata entries have the same external file location
-      sw.external_weight_filename = sw.metadata.begin()->second.location;
-    }
-    weight_filename /= sw.external_weight_filename;
-    std::ifstream weight_file(weight_filename);
+  if (sw.external_weight_filename.empty() && !sw.metadata.empty()) {
+    // Reasonable assumption that all metadata entries have the same external file location
+    sw.external_weight_filename = sw.metadata.begin()->second.location;
+  }
 
+  if (session_context_.so_share_ep_contexts) {
+    auto weight_path = session_context_.GetNewWeightsFilePath(sw.external_weight_filename);
+    if (!std::filesystem::exists(weight_path)) {
+      weight_path = session_context_.GetModelDirectory() / sw.external_weight_filename;
+    }
+
+    std::ifstream weight_file(weight_path);
     if (weight_file) {
       if (!sw.mapped_weights) {
-        sw.mapped_weights = std::make_unique<SharedContext::SharedWeights::WeightsFile>(weight_filename);
+        sw.mapped_weights = std::make_unique<SharedContext::SharedWeights::WeightsFile>(weight_path);
       }
       backend_utils::CreateOVTensors(session_context_.device_type, sw.metadata, *sw.mapped_weights);
     }
@@ -241,7 +244,7 @@ Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVie
     std::ofstream blob_file(blob_filename,
                             std::ios::out | std::ios::trunc | std::ios::binary);
     if (!blob_file) {
-      ORT_THROW("Unable to open file for epctx model dump.");
+      ORT_THROW("Unable to open file for epctx model dump." + blob_filename.string());
     }
     compiled_model.export_model(blob_file);
     model_blob_str = blob_filename.filename().string();
@@ -324,7 +327,7 @@ static bool IsQDQGraph(const onnxruntime::GraphViewer& graph_viewer) {
 static void DumpOpenVINOEPModel([[maybe_unused]] const std::filesystem::path& onnx_model_path_name,
                                 [[maybe_unused]] ONNX_NAMESPACE::ModelProto* model_proto,
                                 [[maybe_unused]] const onnxruntime::Node& fused_node) {
-#ifdef  NOT_RELEASE
+#ifdef NOT_RELEASE
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
     auto model_name = onnx_model_path_name.empty() ? "unknown.onnx" : onnx_model_path_name.filename();
 
