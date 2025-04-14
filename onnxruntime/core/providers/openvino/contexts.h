@@ -110,7 +110,7 @@ class SharedContext : public WeakSingleton<SharedContext> {
         if (!fs::exists(shared_bin_filename)) {
           std::ofstream createFile(shared_bin_filename, std::ios::binary);  // Create an empty binary file
           if (!createFile) {
-            throw std::runtime_error("Failed to create the file!");
+            ORT_THROW("Failed to create the shared bin file!");
           }
           createFile.close();
         }
@@ -120,8 +120,7 @@ class SharedContext : public WeakSingleton<SharedContext> {
 
         if ((file_perms & fs::perms::owner_read) == fs::perms::none ||
             (file_perms & fs::perms::owner_write) == fs::perms::none) {
-          std::cerr << "Error: Insufficient permissions for file: " << shared_bin_filename << std::endl;
-          throw std::runtime_error("Failed to open log file! Insufficient permissions.");
+          ORT_THROW("Failed to open shared bin file! Insufficient permissions for file " + shared_bin_filename + ".");
         }
 
         if (!bin_file_.is_open()) {  // Prevent reopening
@@ -130,11 +129,12 @@ class SharedContext : public WeakSingleton<SharedContext> {
           bin_file_.seekg(0, std::ios::beg);  // Reset to the beginning of the file
 
           if (!bin_file_) {
-            throw std::runtime_error("Failed to open log file!");
+            ORT_THROW("Failed to open shared bin file!");
           }
         }
       }
       void readBinFile(SharedContext& shared_context_);
+      void dumpBinFile(SharedContext& shared_context_);
     } shared_bin_file;
 
     fs::path external_weight_filename;

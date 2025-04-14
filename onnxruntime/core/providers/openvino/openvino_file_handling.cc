@@ -47,8 +47,7 @@ void SharedContext::SharedWeights::Metadata::writeMetadataToBinaryFile(SharedCon
                                                                        const SharedContext::SharedWeights::Metadata::Map& metadata) {
   auto& file = shared_context.shared_weights.shared_bin_file.bin_file_;
   if (!file.is_open()) {
-    std::cerr << "Error opening file for writing!" << std::endl;
-    return;
+    ORT_THROW("Error opening shared bin file for writing weight as inputs metadata!")
   }
 
   try {
@@ -75,8 +74,7 @@ void SharedContext::SharedWeights::SubgraphMetadata::writeSubgraphDataToBinaryFi
                                                                                    const SharedContext::SharedWeights::SubgraphMetadata::Map& subgraph_metadata) {
   auto& file = shared_context.shared_weights.shared_bin_file.bin_file_;
   if (!file.is_open()) {
-    std::cerr << "Error opening file for writing!" << std::endl;
-    return;
+    ORT_THROW("Error opening shared bin file for writing subgraph metadata!");
   }
   try {
     size_t subgraph_metadataSize = subgraph_metadata.size();
@@ -118,8 +116,7 @@ void SharedContext::SharedWeights::Metadata::readMetadataFromBinaryFile(SharedCo
                                                                         SharedContext::SharedWeights::Metadata::Map& metadata) {
   auto& file = shared_context.shared_weights.shared_bin_file.bin_file_;
   if (!file) {
-    std::cerr << "Error opening file for reading!" << std::endl;
-    return;
+    ORT_THROW("Error opening shared bin file for reading weight as input metadata!");
   }
 
   size_t metadata_mapSize;
@@ -146,8 +143,7 @@ void SharedContext::SharedWeights::SubgraphMetadata::readSubgraphDataFromBinaryF
                                                                                     SharedContext::SharedWeights::SubgraphMetadata::Map& subgraph_metadata) {
   auto& file = shared_context.shared_weights.shared_bin_file.bin_file_;
   if (!file) {
-    std::cerr << "Error opening file for reading!" << std::endl;
-    return;
+    ORT_THROW("Error opening shared bin file for reading subgraph metadata!");
   }
 
   size_t subgraph_metadata_mapSize;
@@ -169,28 +165,61 @@ void SharedContext::SharedWeights::SharedBinFile::readBinFile(SharedContext& sha
   auto& subgraph_metadata_map = shared_context_.shared_weights.subgraph_metadata;
   auto& metadata_map = shared_context_.shared_weights.metadata;
   auto& sb = shared_context_.shared_weights.shared_bin_file;
-  if (sb.bin_file_.is_open()) {
-    auto header_size = sizeof(SharedContext::SharedWeights::Header);
-    if (sb.bin_size_ > header_size) {
-      sb.bin_file_.read(reinterpret_cast<char*>(&header), header_size);
-    }
-    auto footer_size = sizeof(SharedContext::SharedWeights::Footer);
-    if (header.footer_offset < sb.bin_size_ && footer_size <= sb.bin_size_ &&
-        (header.footer_offset <= sb.bin_size_ - footer_size)) {
-      sb.bin_file_.seekp(header.footer_offset, std::ios::beg);
-      sb.bin_file_.read(reinterpret_cast<char*>(&footer), footer_size);
-    }
+  try {
+    if (sb.bin_file_.is_open()) {
+      auto header_size = sizeof(SharedContext::SharedWeights::Header);
+      if (sb.bin_size_ > header_size) {
+        sb.bin_file_.read(reinterpret_cast<char*>(&header), header_size);
+      }
+      auto footer_size = sizeof(SharedContext::SharedWeights::Footer);
+      if (header.footer_offset < sb.bin_size_ && footer_size <= sb.bin_size_ &&
+          (header.footer_offset <= sb.bin_size_ - footer_size)) {
+        sb.bin_file_.seekp(header.footer_offset, std::ios::beg);
+        sb.bin_file_.read(reinterpret_cast<char*>(&footer), footer_size);
+      }
 
-    if (footer.subgraph_offset < sb.bin_size_ && footer.subgraph_length <= sb.bin_size_ &&
-        (footer.subgraph_offset <= sb.bin_size_ - footer.subgraph_length)) {
-      sb.bin_file_.seekp(footer.subgraph_offset, std::ios::beg);
-      shared_context_.shared_weights.subgraph_metadata_.readSubgraphDataFromBinaryFile(shared_context_, subgraph_metadata_map);
+      if (footer.subgraph_offset < sb.bin_size_ && footer.subgraph_length <= sb.bin_size_ &&
+          (footer.subgraph_offset <= sb.bin_size_ - footer.subgraph_length)) {
+        sb.bin_file_.seekp(footer.subgraph_offset, std::ios::beg);
+        shared_context_.shared_weights.subgraph_metadata_.readSubgraphDataFromBinaryFile(shared_context_, subgraph_metadata_map);
+      }
+      if (footer.metadata_offset < sb.bin_size_ && footer.metadata_length <= sb.bin_size_ &&
+          (footer.metadata_offset <= sb.bin_size_ - footer.metadata_length)) {
+        sb.bin_file_.seekp(footer.metadata_offset, std::ios::beg);
+        shared_context_.shared_weights.metadata_.readMetadataFromBinaryFile(shared_context_, metadata_map);
+      }
     }
-    if (footer.metadata_offset < sb.bin_size_ && footer.metadata_length <= sb.bin_size_ &&
-        (footer.metadata_offset <= sb.bin_size_ - footer.metadata_length)) {
-      sb.bin_file_.seekp(footer.metadata_offset, std::ios::beg);
-      shared_context_.shared_weights.metadata_.readMetadataFromBinaryFile(shared_context_, metadata_map);
+  } catch (std::string msg) {
+    ORT_THROW(msg);
+  }
+}
+
+void SharedContext::SharedWeights::SharedBinFile::dumpBinFile(SharedContext& shared_context_) {
+  auto& header = shared_context_.shared_weights.header_;
+  auto& footer = shared_context_.shared_weights.footer_;
+  auto& subgraph_metadata_map = shared_context_.shared_weights.subgraph_metadata;
+  auto& metadata_map = shared_context_.shared_weights.metadata;
+  auto& sb = shared_context_.shared_weights.shared_bin_file;
+  auto& bin_file = sb.bin_file_;
+  try {
+    if (bin_file.is_open()) {
+      footer.subgraph_offset = static_cast<uint64_t>(bin_file.tellp());
+      shared_context_->shared_weights.subgraph_metadata_.writeSubgraphDataToBinaryFile(*shared_context_, subgraph_metadata);
+      footer.metadata_offset = static_cast<uint64_t>(bin_file.tellp());
+      footer.subgraph_length = static_cast<size_t>(footer.metadata_offset - footer.subgraph_offset);
+      shared_context_->shared_weights.metadata_.writeMetadataToBinaryFile(*shared_context_, metadata);
+      header.footer_offset = static_cast<uint64_t>(bin_file.tellp());
+      footer.metadata_length = static_cast<size_t>(header.footer_offset - footer.metadata_offset);
+
+      // Write footer to the bin file
+      bin_file.write(reinterpret_cast<char*>(&footer), sizeof(SharedContext::SharedWeights::Footer));
+      // Update header with Footer offset at the end
+      bin_file.seekp(0, std::ios::beg);
+      bin_file.write(reinterpret_cast<char*>(&header), sizeof(SharedContext::SharedWeights::Header));
+      bin_file.close();
     }
+  } catch (std::string msg) {
+    ORT_THROW(msg);
   }
 }
 }  // namespace openvino_ep
