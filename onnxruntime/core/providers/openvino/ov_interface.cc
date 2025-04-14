@@ -132,7 +132,9 @@ OVExeNetwork OVCore::ImportModel(std::istream& model_stream,
 #endif
     OVExeNetwork exe(obj);
     return exe;
-  } catch (const Exception& e) {
+  } catch (const ov::Exception& e) {  // Catch OpenVINO-specific exceptions
+    ORT_THROW(log_tag + " Exception while Loading Network for graph: " + name + e.what());
+  } catch (const std::exception& e) {
     ORT_THROW(log_tag + " Exception while Loading Network for graph: " + name + e.what());
   } catch (...) {
     ORT_THROW(log_tag + " Exception while Loading Network for graph " + name);
