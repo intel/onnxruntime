@@ -65,7 +65,7 @@ BackendManager::BackendManager(SessionContext& session_context,
   // Save the indexes of graph inputs among fused_node's inputDefs
   // (which also contains initializers).
   for (uint32_t index = 0; const auto& node : subgraph.GetInputs()) {
-    subgraph_context_.input_names.insert({node->Name(), index++});
+     subgraph_context_.input_names.insert({node->Name(), index++});
   }
 
   for (uint32_t index = 0; const auto& node : subgraph.GetOutputs()) {
