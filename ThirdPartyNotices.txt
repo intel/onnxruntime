@@ -1,6 +1,6 @@
 THIRD PARTY SOFTWARE NOTICES AND INFORMATION
 
-Do Not Translate or Localize
+Do Not Translate or  Localize
 
 This software incorporates material from third parties. Microsoft makes certain
 open source code available at http://3rdpartysource.microsoft.com, or you may
