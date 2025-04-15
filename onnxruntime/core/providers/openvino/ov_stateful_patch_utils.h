@@ -57,6 +57,22 @@ struct KVDesc {
   uint32_t min_response_len;
 };
 
+struct CausalLMConfig {
+  void ApplyConfig(const ov::AnyMap& external_config, ov::AnyMap& genai_config) {
+    if (external_config.find("MAX_PROMPT_LEN") != external_config.end()) {
+      max_prompt_len = external_config.at("MAX_PROMPT_LEN").as<unsigned int>();
+    }
+    if (external_config.find("MIN_RESPONSE_LEN") != external_config.end()) {
+      min_response_len = external_config.at("MIN_RESPONSE_LEN").as<unsigned int>();
+    }
+    genai_config["MAX_PROMPT_LEN"] = ov::Any(max_prompt_len);
+    genai_config["MIN_RESPONSE_LEN"] = ov::Any(min_response_len);
+  }
+
+  unsigned int max_prompt_len = 1024;
+  unsigned int min_response_len = 128;
+};
+
 void UpdateNPUConfig(ov::AnyMap& config, const KVAxesPosition& kv_pos, const KVDesc& kv_desc);
 
 std::optional<ov::Any> PopOptionNew(ov::AnyMap& config, const std::string& option_name);

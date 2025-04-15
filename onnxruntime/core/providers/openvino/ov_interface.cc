@@ -7,8 +7,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/backend_utils.h"
-
-// for make stateful utility function(s)
+#include "core/providers/openvino/backends/basic_backend.h"
 #include "core/providers/openvino/ov_stateful_patch_utils.h"
 
 using Exception = ov::Exception;
@@ -97,9 +96,9 @@ OVExeNetwork OVCore::StatefulCompileModel(std::shared_ptr<OVNetwork>& model,
   }
 
   LOGS_DEFAULT(INFO) << log_tag << "Converting from Stateless OV Model to Stateful OV Model" << std::endl;
-  bool status = IsStateful(model);
-  std::cout << "IsStateful Status:\t" << status << std::endl;
-  if (!status) {
+  bool model_status = IsStateful(model);
+  LOGS_DEFAULT(INFO) << log_tag << "Model IsStateful() Status:\t" << (model_status ? "True" : "False");
+  if (!model_status) {
     PatchStatefulDecoder(model);
   }
 
@@ -109,17 +108,25 @@ OVExeNetwork OVCore::StatefulCompileModel(std::shared_ptr<OVNetwork>& model,
   }
 
   auto kv_pos = GetKVAxesPos(model);
-  if (onnxruntime::openvino_ep::backend_utils::IsDebugEnabled()) {
-    std::cout << "kv_pos.batch = " << kv_pos.batch << std::endl;
-    std::cout << "kv_pos.seq_len = " << kv_pos.seq_len << std::endl;
-  }
 
   if (hw_target.find("NPU") != std::string::npos) {
     KVDesc kv_desc;
-    kv_desc.max_prompt_len = PopIntAndCast(config, "MAX_PROMPT_LEN").value_or(1024u);
-    kv_desc.min_response_len = PopIntAndCast(config, "MIN_RESPONSE_LEN").value_or(128u);
+    auto parse_genai_config = [&](const std::string& key, unsigned int default_value) {
+      return (config.count(key) && !config.at(key).empty() && config.at(key).as<std::string>() != "0") ?
+         config.at(key).as<unsigned int>() : default_value;
+    };
+
+    kv_desc.max_prompt_len = parse_genai_config("MAX_PROMPT_LEN", CausalLMConfig().max_prompt_len);
+    kv_desc.min_response_len = parse_genai_config("MIN_RESPONSE_LEN", CausalLMConfig().min_response_len);
+
+    // For compilation, MAX_PROMPT_LEN & MIN_RESPONSE_LEN should not be 0
+    if (kv_desc.max_prompt_len == 0 || kv_desc.min_response_len == 0) {
+      ORT_THROW(log_tag + "MAX_PROMPT_LEN and MIN_RESPONSE_LEN cannot be 0 or empty");
+    }
 
     if (onnxruntime::openvino_ep::backend_utils::IsDebugEnabled()) {
+      std::cout << "kv_pos.batch = " << kv_pos.batch << std::endl;
+      std::cout << "kv_pos.seq_len = " << kv_pos.seq_len << std::endl;
       std::cout << "kv_desc.max_prompt_len:\t" << kv_desc.max_prompt_len << std::endl;
       std::cout << "kv_desc.min_response_len:\t" << kv_desc.min_response_len << std::endl;
     }
@@ -132,10 +139,8 @@ OVExeNetwork OVCore::StatefulCompileModel(std::shared_ptr<OVNetwork>& model,
     ApplySliceBeforeMatmulTransformation(model);
   }
 
-  std::cout << "Compiling Stateful OV Model ..." << std::endl;
+  LOGS_DEFAULT(INFO) << log_tag << "Compiling OV Model using Stateful Transformation flow";
   compiled_model = OVCore::Get()->core.compile_model(model, hw_target, config);
-  std::cout << "Stateful OV Model Compilation Complete" << std::endl;
-
   OVExeNetwork exe(compiled_model, hw_target, true);
   return exe;
 }

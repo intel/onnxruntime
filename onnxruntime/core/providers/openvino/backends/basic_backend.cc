@@ -15,6 +15,7 @@
 #include "core/providers/openvino/backends/basic_backend.h"
 #include "core/providers/openvino/onnx_ctx_model_helper.h"
 #include "core/providers/openvino/backend_manager.h"
+#include "core/providers/openvino/ov_stateful_patch_utils.h"
 
 namespace onnxruntime {
 
@@ -200,6 +201,15 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
   if (!session_context_.load_config.empty()) {
     const std::map<std::string, ov::AnyMap>& target_config = session_context_.load_config;
 
+    if ((session_context_.device_type.find("NPU") != std::string::npos) && session_context_.enable_causallm) {
+      if (target_config.find("NPU") != target_config.end()) {
+        auto npu_genai_config = target_config.at("NPU");
+        CausalLMConfig().ApplyConfig(npu_genai_config, device_config);
+      } else {
+        LOGS_DEFAULT(WARNING) << "ORT GenAI CausalLMConfig Configuration not found.";
+      }
+    }
+
     if (session_context_.device_type.find("NPU") != std::string::npos) {
       auto npuw_config = target_config.at("NPU");
 
@@ -265,7 +275,8 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
     auto set_target_properties = [&](const std::string& device, const ov::AnyMap& config_options,
                                      const std::vector<ov::PropertyName>& supported_properties) {
       for (const auto& [key, value] : config_options) {
-        if (key.find("NPUW") != std::string::npos) {
+        if ((key.find("NPUW") != std::string::npos) ||
+            ((device_config.find(key) != device_config.end()) && session_context_.enable_causallm)) {
           continue;
         }
         if (is_supported_and_mutable(key, supported_properties)) {
