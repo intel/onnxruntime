@@ -66,8 +66,7 @@ on:
 jobs:
   build_test_pipeline:
     runs-on:
-      - self-hosted
-      - "1ES.Pool=${{ inputs.pool_name }}"
+      - runs-on: [self-hosted, Linux, X64]
     permissions:
       contents: read
       packages: write
