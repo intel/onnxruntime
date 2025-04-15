@@ -1,6 +1,6 @@
 # Use the specified UBI8 base image with GCC 14
-ARG BASEIMAGE="onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_ubi8_gcc14:20250124.1"
-FROM ${BASEIMAGE}
+
+FROM ghcr.io/microsoft/onnxruntime/onnxruntimeopenvino@sha256:11523e9d29143bfe0f57e6cfc8e438c02b3c05e905012ebfd8f559eb61a1a184
 
 ARG BUILD_UID=1000
 ARG BUILD_USER=onnxruntimedev
