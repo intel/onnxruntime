@@ -65,8 +65,7 @@ on:
 
 jobs:
   build_test_pipeline:
-    runs-on:
-      - runs-on: [self-hosted, Linux, X64]
+    runs-on: [self-hosted, Linux, X64]
     permissions:
       contents: read
       packages: write
