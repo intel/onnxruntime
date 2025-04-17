@@ -68,7 +68,7 @@ CreateOVModel(std::string&& model,
 
 void CreateOVTensors(const std::string& device_name,
                      Metadata::Map& metadata_map,
-                     std::filesystem::path& weights_filepath);
+                     byte_iostream &file);
 void DestroyOVTensors(Metadata::Map& metadata_map);
 
 void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,

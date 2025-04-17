@@ -96,10 +96,16 @@ BackendManager::BackendManager(SessionContext& session_context,
   }
 
   if (session_context_.so_share_ep_contexts) {
+    // File is guaranteed to exist at this point
     ORT_ENFORCE(external_weights_.has_value(), "Expected external weight object to be valid");
+    byte_fstream file(external_weights_.value(), std::ios::in | std::ios::binary);
+    file.exceptions(std::ifstream::failbit | std::ifstream::badbit);
     backend_utils::CreateOVTensors(session_context_.device_type,
                                    shared_context_.shared_weights.metadata,
-                                   external_weights_.value());
+                                   file);
+    //backend_utils::CreateOVTensors(session_context_.device_type,
+    //                               shared_context_.shared_weights.metadata,
+    //                               ep_ctx_handle.GetContextBinaryStream());
   }
 
   if (ModelHasSymbolicInputDims(subgraph)) {
@@ -216,7 +222,8 @@ Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVie
   // If not embed_mode, dump the blob here and only pass on the path to the blob
   std::string model_blob_str;
   auto compiled_model = concrete_backend_->GetOVCompiledModel();
-  if (session_context_.so_context_embed_mode) {  // Internal blob
+  if (!session_context_.so_share_ep_contexts &&
+      session_context_.so_context_embed_mode) {  // Internal blob
     std::ostringstream model_blob_stream;
     compiled_model.export_model(model_blob_stream);
     model_blob_str = std::move(model_blob_stream).str();
@@ -245,6 +252,8 @@ Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVie
       ORT_THROW("Unable to open file for epctx model dump.");
     }
     compiled_model.export_model(blob_file);
+    compiled_model.export_model(ep_ctx_handle_.PreInsertBlob());
+    ep_ctx_handle_.PostInsertBlob(std::string{"subgraph_name"});
     model_blob_str = blob_filename.filename().string();
   }
 

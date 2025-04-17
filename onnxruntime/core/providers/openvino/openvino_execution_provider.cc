@@ -113,10 +113,15 @@ common::Status OpenVINOExecutionProvider::Compile(
     } else {
       metadata_filename = session_context_.so_context_file_path.parent_path() / "metadata.bin";
     }
-    std::ifstream file(metadata_filename, std::ios::binary);
+    std::basic_fstream<std::byte> file(metadata_filename, std::ios::in + std::ios::binary);
     if (file) {
       file >> metadata;
     }
+
+    auto bin_name = session_context_.onnx_model_path_name.stem().string() + "_openvino";
+    auto bin_filepath = metadata_filename.parent_path() / bin_name;
+    bin_filepath.replace_extension("bin");
+    ep_ctx_handle_.StartWritingContextBin(bin_filepath);
   }
 
   struct OpenVINOEPFunctionState {
@@ -191,10 +196,24 @@ common::Status OpenVINOExecutionProvider::Compile(
     // If saving metadata then save it to the provided path or ose the original model path
     // Multiple calls to Compile() will update the metadata and for the last call
     //   the resulting file will contain the aggregated content
-    std::ofstream file(metadata_filename, std::ios::binary);
+    std::basic_fstream<std::byte> file(metadata_filename, std::ios::out + std::ios::binary);
     if (file) {
       file << metadata;
     }
+    file.close();
+
+    // Validate offsets in weight map
+    // size_t weights_size = std::filesystem::file_size(weights_filepath);
+
+    // Validate serialization round trip
+    if (auto filein = std::basic_fstream<std::byte>(metadata_filename, std::ios::in + std::ios::binary)) {
+      openvino_ep::Metadata::Map read_metadata;
+      filein >> read_metadata;
+
+      ORT_ENFORCE(read_metadata == metadata);
+    }
+
+    ep_ctx_handle_.FinishWritingContextBin(metadata);
   }
 
   if (session_context_.so_stop_share_ep_contexts) {

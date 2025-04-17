@@ -155,5 +155,97 @@ InlinedVector<const Node*> EPCtxHandler::GetEPCtxNodes() const {
   return InlinedVector<const Node*>(epctx_nodes.begin(), epctx_nodes.end());
 }
 
+// Putting these structures here for now
+struct Header {
+  uint32_t bin_version{current_header_version};
+  std::streampos weight_pos{0};
+  std::streampos blobs_pos{0};
+  std::streampos weight_map_pos{0};
+  std::streampos blob_map_pos{0};
+  constexpr static uint32_t current_header_version = 1;
+};
+static_assert(std::is_trivially_copyable_v<Header>, "Header is not trivial");
+
+bool EPCtxHandler::StartReadingContextBin(const std::filesystem::path& bin_file_path, openvino_ep::Metadata::Map& metadata) {
+  ORT_ENFORCE(!context_binary_.is_open(), "Unexpected open context binary file");
+
+  context_binary_.open(bin_file_path, std::ios::in | std::ios::binary);
+
+  // Get header
+  Header header;
+  context_binary_ >> header;
+
+  ORT_ENFORCE(header.bin_version == header.current_header_version, "Binary file version mismatch");
+
+  // Get weight map
+  context_binary_.seekg(header.weight_map_pos);
+  context_binary_ >> metadata;
+
+  // Get blob information
+  context_binary_.seekg(header.blob_map_pos);
+  // BlobInfoMap blob_info_map;
+  // context_binary_ >> blob_info_map;
+
+  // Get blobs
+  // for (const auto &blob_info : blob_info_map) {
+  //  context_binary_.seekg(blob_info.pos);
+  //  context_binary_.read(p_somewhere, blob_info.size);
+  //}
+
+  // Get weight map
+  context_binary_.seekg(header.weight_map_pos);
+  context_binary_ >> metadata;
+
+  return true;
+}
+
+bool EPCtxHandler::FinishReadingContextBin() {
+  ORT_ENFORCE(context_binary_.is_open(), "Expected open context binary file");
+
+  context_binary_.close();
+
+  return true;
+}
+
+std::ostream& EPCtxHandler::PreInsertBlob() {
+  // Save stream position
+  pre_blob_insert_ = context_binary_.tellg();
+  return *(std::ostream*)&context_binary_;
+}
+
+void EPCtxHandler::PostInsertBlob(const std::string& blob_name) {
+  // Save stream position
+  std::streampos post_blob_insert = context_binary_.tellg();
+
+  // Compute difference
+  //  Enter data in blob map
+}
+
+bool EPCtxHandler::StartWritingContextBin(const std::filesystem::path& bin_file_path) {
+  ORT_ENFORCE(!context_binary_.is_open(), "Unexpected open context binary file");
+
+  // Mock header
+  Header header{3, 4};
+
+  context_binary_.open(bin_file_path, std::ios::out | std::ios::binary);
+  if (context_binary_.is_open()) {
+    context_binary_ << header;
+  }
+
+  return true;
+}
+
+bool EPCtxHandler::FinishWritingContextBin(const openvino_ep::Metadata::Map& metadata) {
+  ORT_ENFORCE(context_binary_.is_open(), "Expected open context binary file");
+
+  // Write maps
+  // context_binary_ << blob_info_map;
+  context_binary_ << metadata;
+
+  context_binary_.close();
+
+  return true;
+}
+
 }  // namespace openvino_ep
 }  // namespace onnxruntime

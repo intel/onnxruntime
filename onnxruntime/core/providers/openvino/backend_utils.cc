@@ -20,89 +20,6 @@ using Exception = ov::Exception;
 namespace onnxruntime {
 namespace openvino_ep {
 
-std::ostream& operator<<(std::ostream& stream, const Metadata::Map& metadata) {
-  try {
-    stream << metadata.size();
-
-    // Write each key-value pair
-    // Put elements in separate lines to facilitate reading
-    for (const auto& [key, value] : metadata) {
-      stream << std::endl
-             << key.name;
-      stream << std::endl
-             << value.location;
-      stream << std::endl
-             << value.data_offset;
-      stream << std::endl
-             << value.size;
-      stream << std::endl
-             << value.dimensions.size();
-      for (const auto& dim : value.dimensions) {
-        stream << std::endl
-               << dim;
-      }
-      stream << std::endl
-             << value.element_type;
-    }
-  } catch (const Exception& e) {
-    ORT_THROW("Error: Failed to write map data.", e.what());
-  } catch (...) {
-    ORT_THROW("Error: Failed to write map data.");
-  }
-
-  ORT_ENFORCE(stream.good(), "Error: Failed to write map data.");
-  return stream;
-}
-
-std::istream& operator>>(std::istream& stream, Metadata::Map& metadata) {
-  size_t map_size{0};
-  try {
-    stream >> map_size;
-
-    while (!stream.eof()) {
-      Metadata::Key key;
-      Metadata::Value value;
-      stream >> key.name;
-      stream >> value.location;
-      stream >> value.data_offset;
-      stream >> value.size;
-      size_t num_dimensions;
-      stream >> num_dimensions;
-
-      if (stream.fail()) {
-        ORT_THROW("Error: Failed to read num_dimensions from stream.");
-      }
-
-      constexpr size_t MAX_SAFE_DIMENSIONS = 1024;
-
-      size_t safe_num_dimensions = num_dimensions;
-
-      if (num_dimensions == 0 || safe_num_dimensions > MAX_SAFE_DIMENSIONS) {
-        ORT_THROW("Invalid number of dimensions provided.");
-      }
-      try {
-        value.dimensions.resize(safe_num_dimensions);
-      } catch (const std::bad_alloc&) {
-        ORT_THROW("Error: Memory allocation failed while resizing dimensions.");
-      }
-
-      for (auto& dim : value.dimensions) {
-        stream >> dim;
-      }
-      stream >> value.element_type;
-      metadata.emplace(key, value);
-    }
-  } catch (const Exception& e) {
-    ORT_THROW("Error: Failed to read map data.", e.what());
-  } catch (...) {
-    ORT_THROW("Error: Failed to read map data.");
-  }
-
-  ORT_ENFORCE(metadata.size() == map_size, "Error: Inconsistent map data.");
-
-  return stream;
-}
-
 namespace backend_utils {
 
 bool IsDebugEnabled() {
@@ -385,16 +302,10 @@ ov::element::Type GetOpenVINOElementType(ONNX_NAMESPACE::TensorProto_DataType dt
 // Function to handle tensor creation from external data
 void CreateOVTensors(const std::string& device_name,
                      Metadata::Map& metadata_map,
-                     std::filesystem::path& weights_filepath) {
-  // File is guaranteed to exist at this point
-  std::ifstream file(weights_filepath, std::ios::in | std::ios::binary);
-  file.exceptions(std::ifstream::failbit | std::ifstream::badbit);
-  size_t weights_size = std::filesystem::file_size(weights_filepath);
-
-  const auto load_weights = [&file, weights_size](size_t file_offset, void* data, size_t size) {
-    ORT_ENFORCE(file_offset < weights_size && size <= weights_size && (file_offset <= weights_size - size), "Error: File offset is out of bounds.");
+                     byte_iostream& file) {
+  const auto load_weights = [&file](std::streampos file_offset, void* data, size_t size) {
     file.seekg(file_offset);
-    file.read(reinterpret_cast<char*>(data), size);
+    file.read(reinterpret_cast<std::byte*>(data), size);
   };
 
   for (auto& [key, value] : metadata_map) {

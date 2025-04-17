@@ -8,6 +8,7 @@
 #include <memory>
 
 #include "core/providers/shared_library/provider_api.h"
+#include "core/providers/openvino/contexts.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -33,11 +34,19 @@ class EPCtxHandler {
                                std::string&& model_blob_str) const;
   std::unique_ptr<std::istream> GetModelBlobStream(const std::filesystem::path& so_context_file_path, const GraphViewer& graph_viewer) const;
   InlinedVector<const Node*> GetEPCtxNodes() const;
+  bool StartReadingContextBin(const std::filesystem::path& bin_file_path, openvino_ep::Metadata::Map& metadata);
+  bool FinishReadingContextBin();
+  std::ostream& PreInsertBlob();
+  void PostInsertBlob(const std::string& blob_name);
+  bool StartWritingContextBin(const std::filesystem::path& bin_file_path);
+  bool FinishWritingContextBin(const openvino_ep::Metadata::Map& metadata);
 
  private:
   const std::string openvino_sdk_version_;
   std::unique_ptr<Model> epctx_model_;
   const logging::Logger& logger_;
+  byte_fstream context_binary_;
+  std::streampos pre_blob_insert_;
 };
 
 }  // namespace openvino_ep

@@ -11,35 +11,37 @@
 #include <filesystem>
 #include <memory>
 #include "core/common/common.h"
+#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/ov_interface.h"
+#include "core/providers/openvino/serialization_helper.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
 
 namespace fs = std::filesystem;
 
-struct Metadata {
-  struct Key {
-    std::string name;
-    bool operator==(const Key&) const = default;
-  };
-  struct Hash {
-    std::size_t operator()(const Key& key) const noexcept {
-      return std::hash<std::string>()(key.name);
-    }
-  };
-  struct Value {
-    std::string location;
-    unsigned int data_offset;
-    unsigned int size;
-    std::vector<size_t> dimensions;
-    std::int32_t element_type;
-    std::shared_ptr<ov::Tensor> tensor;
-  };
-  using Map = std::unordered_map<Key, Value, Hash>;
-  friend std::ostream& operator<<(std::ostream& right, const Metadata::Map& metadata);
-  friend std::istream& operator>>(std::istream& right, Metadata::Map& metadata);
+struct weight_map_key {
+  std::string name;
+
+  bool operator==(const weight_map_key&) const = default;
+  friend byte_iostream& operator<<(byte_iostream& stream, const weight_map_key& value);
+  friend byte_iostream& operator>>(byte_iostream& stream, weight_map_key& value);
 };
+
+struct weight_map_value {
+  std::string location;
+  unsigned int data_offset{0};
+  unsigned int size{0};
+  std::vector<size_t> dimensions;
+  std::int32_t element_type{0};
+  std::shared_ptr<ov::Tensor> tensor;
+
+  bool operator==(const weight_map_value&) const = default;
+  friend byte_iostream& operator<<(byte_iostream& stream, const weight_map_value& value);
+  friend byte_iostream& operator>>(byte_iostream& stream, weight_map_value& value);
+};
+
+using Metadata = io_unordered_map<weight_map_key, weight_map_value>;
 
 class SharedContext : public WeakSingleton<SharedContext> {
   // Keep the core alive as long as the shared SharedContext are alive.
