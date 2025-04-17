@@ -746,8 +746,9 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
             value == "false" || value == "False") {
           ov_options[key] = value;
         } else {
-          ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_causallm' should be a boolean i.e. true or false."
-            " Default value is false. This provider option must be used with CausalLM Models viz. LLMs & SLMs only.\n");
+          ORT_THROW(
+              "[ERROR] [OpenVINO] The value for the key 'enable_causallm' should be a boolean i.e. true or false."
+              " Default value is false. This provider option must be used with CausalLM Models viz. LLMs & SLMs only.\n");
         }
       } else if (key == "disable_dynamic_shapes") {
         if (value == "true" || value == "True" ||
