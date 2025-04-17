@@ -19,10 +19,6 @@
 
 namespace onnxruntime {
 namespace openvino_ep {
-<<<<<<< HEAD
-=======
-
->>>>>>> a36ddbc86a (Stateful PoC: Perform stateless -> stateful conversion of ov::Model)
 void ParseConfigOptions(ProviderInfo& pi) {
   if (pi.config_options == nullptr)
     return;
@@ -350,7 +346,6 @@ static void ParseProviderInfo(const ProviderOptions& provider_options,
     pi.enable_causallm = ParseBooleanOption(provider_options, "enable_causallm");
 
     pi.disable_dynamic_shapes = ParseBooleanOption(provider_options, "disable_dynamic_shapes");
-    }
   } catch (std::string msg) {
     ORT_THROW(msg);
   }

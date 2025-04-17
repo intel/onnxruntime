@@ -112,8 +112,7 @@ OVExeNetwork OVCore::StatefulCompileModel(std::shared_ptr<OVNetwork>& model,
   if (hw_target.find("NPU") != std::string::npos) {
     KVDesc kv_desc;
     auto parse_genai_config = [&](const std::string& key, unsigned int default_value) {
-      return (config.count(key) && !config.at(key).empty() && config.at(key).as<std::string>() != "0") ?
-         config.at(key).as<unsigned int>() : default_value;
+      return (config.count(key) && !config.at(key).empty() && config.at(key).as<std::string>() != "0") ? config.at(key).as<unsigned int>() : default_value;
     };
 
     kv_desc.max_prompt_len = parse_genai_config("MAX_PROMPT_LEN", CausalLMConfig().max_prompt_len);

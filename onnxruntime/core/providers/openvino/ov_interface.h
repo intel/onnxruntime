@@ -110,8 +110,9 @@ class OVExeNetwork {
   ov::CompiledModel obj;
   std::string _device;
   bool _stateful_llm;
+
  public:
-  explicit OVExeNetwork(ov::CompiledModel md, std::string device, bool stateful_llm = false) 
+  explicit OVExeNetwork(ov::CompiledModel md, std::string device, bool stateful_llm = false)
       : obj(md), _device(device), _stateful_llm(stateful_llm) {}
   OVExeNetwork() : obj(ov::CompiledModel()) {}
   ov::CompiledModel& Get() { return obj; }
