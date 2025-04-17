@@ -118,6 +118,20 @@ struct SessionContext : ProviderInfo {
   mutable bool has_external_weights = false;       // Value is set to mutable to modify from capability
   const std::vector<uint32_t> OpenVINO_Version = {OPENVINO_VERSION_MAJOR, OPENVINO_VERSION_MINOR};
   const std::string openvino_sdk_version = std::to_string(OPENVINO_VERSION_MAJOR) + "." + std::to_string(OPENVINO_VERSION_MINOR);
+
+  fs::path GetModelDirectory() const {
+    return onnx_model_path_name.parent_path();
+  }
+
+  fs::path GetEpContextOutputDirectory() const {
+    return so_context_file_path.empty() ? GetModelDirectory() : so_context_file_path.parent_path();
+  }
+
+  fs::path GetNewWeightsFilePath(fs::path external_weights_filename) const {
+    ORT_ENFORCE(!external_weights_filename.empty(), "External weights filename should not be empty.");
+    // Otherwise, use the provided external weights filename.
+    return GetEpContextOutputDirectory() / fs::path(external_weights_filename.filename().string() + "_weights.bin");
+  }
 };
 
 // Holds context specific to subgraph.
