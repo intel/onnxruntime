@@ -36,16 +36,6 @@ byte_iostream& operator>>(byte_iostream& stream, std::string& value) {
   return stream;
 }
 
-byte_iostream& operator<<(byte_iostream& stream, const weight_map_key& value) {
-  stream << value.name;
-  return stream;
-}
-
-byte_iostream& operator>>(byte_iostream& stream, weight_map_key& value) {
-  stream >> value.name;
-  return stream;
-}
-
 byte_iostream& operator<<(byte_iostream& stream, const weight_map_value& value) {
   stream << value.location;
   stream << value.data_offset;
@@ -62,10 +52,6 @@ byte_iostream& operator>>(byte_iostream& stream, weight_map_value& value) {
   stream >> value.dimensions;
   stream >> value.element_type;
   return stream;
-}
-
-bool weight_map_key::operator==(const weight_map_key& other) const {
-  return name == other.name;
 }
 
 bool weight_map_value::operator==(const weight_map_value& other) const {

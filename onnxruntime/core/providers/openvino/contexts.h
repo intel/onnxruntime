@@ -20,24 +20,6 @@ namespace openvino_ep {
 
 namespace fs = std::filesystem;
 
-template <typename T>
-concept has_name = requires(T t) { t.name; };
-
-template <has_name T>
-struct hashable_name {
-  std::size_t operator()(const T& t) const noexcept {
-    return std::hash<std::string>{}(t.name);
-  }
-};
-
-struct weight_map_key : byte_streamable<weight_map_key> {
-  weight_map_key() = default;
-  weight_map_key(auto s) : name{s} {}
-  bool operator==(const weight_map_key&) const;
-
-  std::string name;
-};
-
 struct weight_map_value : byte_streamable<weight_map_value> {
   weight_map_value() = default;
   weight_map_value(auto l, auto d_o, auto s, auto d, auto et) : location{l}, data_offset{d_o}, size{s}, dimensions{d}, element_type{et} {}
@@ -51,7 +33,7 @@ struct weight_map_value : byte_streamable<weight_map_value> {
   std::shared_ptr<ov::Tensor> tensor;
 };
 
-using weight_info_map = io_unordered_map<weight_map_key, weight_map_value, hashable_name<weight_map_key>>;
+using weight_info_map = io_unordered_map<std::string, weight_map_value>;
 
 class SharedContext : public WeakSingleton<SharedContext> {
   // Keep the core alive as long as the shared SharedContext are alive.
@@ -59,10 +41,10 @@ class SharedContext : public WeakSingleton<SharedContext> {
 
  public:
   SharedContext() : OVCore_(OVCore::Get()) {}
-  weight_info_map shared_weight_info;
+  weight_info_map shared_weight_info_;
 
   void clear() {  // Deletes the data stored in the SharedContext
-    shared_weight_info.clear();
+    shared_weight_info_.clear();
   };
 };
 

@@ -166,7 +166,7 @@ struct Header {
 };
 static_assert(std::is_trivially_copyable_v<Header>, "Header is not trivial");
 
-bool EPCtxHandler::StartReadingContextBin(const std::filesystem::path& bin_file_path, openvino_ep::weight_info_map& shared_weight_info) {
+bool EPCtxHandler::StartReadingContextBin(const std::filesystem::path& bin_file_path, openvino_ep::weight_info_map& shared_weight_info_) {
   ORT_ENFORCE(!context_binary_.is_open(), "Unexpected open context binary file");
 
   context_binary_.open(bin_file_path, std::ios::in | std::ios::binary);
@@ -177,24 +177,19 @@ bool EPCtxHandler::StartReadingContextBin(const std::filesystem::path& bin_file_
 
   ORT_ENFORCE(header.bin_version == header.current_header_version, "Binary file version mismatch");
 
-  // Get weight map
-  context_binary_.seekg(header.weight_map_pos);
-  context_binary_ >> shared_weight_info;
-
   // Get blob information
   context_binary_.seekg(header.blob_map_pos);
-  // BlobInfoMap blob_info_map;
-  // context_binary_ >> blob_info_map;
+  context_binary_ >> compiled_models_info_;
+
+  // Get weight map
+  context_binary_.seekg(header.weight_map_pos);
+  context_binary_ >> shared_weight_info_;
 
   // Get blobs
   // for (const auto &blob_info : blob_info_map) {
   //  context_binary_.seekg(blob_info.pos);
   //  context_binary_.read(p_somewhere, blob_info.size);
   //}
-
-  // Get weight map
-  // context_binary_.seekg(header.weight_map_pos);
-  // context_binary_ >> shared_weight_info;
 
   return true;
 }
@@ -235,16 +230,32 @@ bool EPCtxHandler::StartWritingContextBin(const std::filesystem::path& bin_file_
   return true;
 }
 
-bool EPCtxHandler::FinishWritingContextBin(const openvino_ep::weight_info_map& shared_weight_info) {
+bool EPCtxHandler::FinishWritingContextBin(const openvino_ep::weight_info_map& shared_weight_info_) {
   ORT_ENFORCE(context_binary_.is_open(), "Expected open context binary file");
 
   // Write maps
-  // context_binary_ << blob_info_map;
-  context_binary_ << shared_weight_info;
+  context_binary_ << compiled_models_info_;
+  context_binary_ << shared_weight_info_;
 
   context_binary_.close();
 
   return true;
+}
+
+byte_iostream& operator<<(byte_iostream& stream, const EPCtxHandler::compiled_model_info_value& value) {
+  stream << value.start;
+  stream << value.end;
+  return stream;
+}
+
+byte_iostream& operator>>(byte_iostream& stream, EPCtxHandler::compiled_model_info_value& value) {
+  stream >> value.start;
+  stream >> value.end;
+  return stream;
+}
+
+bool EPCtxHandler::compiled_model_info_value::operator==(const EPCtxHandler::compiled_model_info_value& other) const {
+  return (start == other.start) && (end == other.end);
 }
 
 }  // namespace openvino_ep

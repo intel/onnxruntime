@@ -101,10 +101,10 @@ BackendManager::BackendManager(SessionContext& session_context,
     byte_fstream file(external_weights_.value(), std::ios::in | std::ios::binary);
     file.exceptions(std::ifstream::failbit | std::ifstream::badbit);
     backend_utils::CreateOVTensors(session_context_.device_type,
-                                   shared_context_.shared_weight_info,
+                                   shared_context_.shared_weight_info_,
                                    file);
     // backend_utils::CreateOVTensors(session_context_.device_type,
-    //                                shared_context_.shared_weight_info,
+    //                                shared_context_.shared_weight_info_,
     //                                ep_ctx_handle.GetContextBinaryStream());
   }
 
@@ -398,7 +398,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
                                                     logger,
                                                     session_context_.so_share_ep_contexts,
                                                     model,
-                                                    shared_context_.shared_weight_info,
+                                                    shared_context_.shared_weight_info_,
                                                     enable_ovep_qdq_optimizer);
     auto model_proto = model->ToProto();
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);

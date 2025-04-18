@@ -103,9 +103,9 @@ common::Status OpenVINOExecutionProvider::Compile(
         graph_body_viewer_0.DomainToVersionMap().at(kOnnxDomain);
   }
 
-  // Temporary code to read shared_weight_info before it moves to the .bin
-  auto& shared_weight_info = shared_context_->shared_weight_info;
-  if (session_context_.so_share_ep_contexts && shared_weight_info.empty()) {
+  // Temporary code to read shared_weight_info_ before it moves to the .bin
+  auto& shared_weight_info_ = shared_context_->shared_weight_info_;
+  if (session_context_.so_share_ep_contexts && shared_weight_info_.empty()) {
     // Metadata is always read from model location, this could be a source or epctx model
     fs::path metadata_filename;
     if (session_context_.so_context_file_path.empty()) {
@@ -115,7 +115,7 @@ common::Status OpenVINOExecutionProvider::Compile(
     }
     std::basic_fstream<std::byte> file(metadata_filename, std::ios::in + std::ios::binary);
     if (file) {
-      file >> shared_weight_info;
+      file >> shared_weight_info_;
     }
 
     auto bin_name = session_context_.onnx_model_path_name.stem().string() + "_openvino";
@@ -193,12 +193,12 @@ common::Status OpenVINOExecutionProvider::Compile(
     }
 
     // Metadata is generated only for shared contexts
-    // If saving shared_weight_info then save it to the provided path or ose the original model path
-    // Multiple calls to Compile() will update the shared_weight_info and for the last call
+    // If saving shared_weight_info_ then save it to the provided path or ose the original model path
+    // Multiple calls to Compile() will update the shared_weight_info_ and for the last call
     //   the resulting file will contain the aggregated content
     std::basic_fstream<std::byte> file(metadata_filename, std::ios::out + std::ios::binary);
     if (file) {
-      file << shared_weight_info;
+      file << shared_weight_info_;
     }
     file.close();
 
@@ -210,10 +210,10 @@ common::Status OpenVINOExecutionProvider::Compile(
       openvino_ep::weight_info_map read_weight_info;
       filein >> read_weight_info;
 
-      ORT_ENFORCE(read_weight_info == shared_weight_info);
+      ORT_ENFORCE(read_weight_info == shared_weight_info_);
     }
 
-    ep_ctx_handle_.FinishWritingContextBin(shared_weight_info);
+    ep_ctx_handle_.FinishWritingContextBin(shared_weight_info_);
   }
 
   if (session_context_.so_stop_share_ep_contexts) {

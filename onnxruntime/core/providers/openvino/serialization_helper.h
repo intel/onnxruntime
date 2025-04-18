@@ -99,8 +99,8 @@ template <>
 byte_iostream& operator>>(byte_iostream& stream, std::string& value);
 
 // Serializable unordered map
-template <typename K, typename V, typename H = std::hash<K>>
-struct io_unordered_map : std::unordered_map<K, V, H> {
+template <typename K, typename V, typename... Args>
+struct io_unordered_map : std::unordered_map<K, V, Args...> {
   friend byte_iostream& operator<<(byte_iostream& stream, const io_unordered_map& map) {
     try {
       stream << map.size();
