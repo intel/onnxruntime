@@ -64,5 +64,17 @@ byte_iostream& operator>>(byte_iostream& stream, weight_map_value& value) {
   return stream;
 }
 
+bool weight_map_key::operator==(const weight_map_key& other) const {
+  return name == other.name;
+}
+
+bool weight_map_value::operator==(const weight_map_value& other) const {
+  return (location == other.location) &&
+         (data_offset == other.data_offset) &&
+         (size == other.size) &&
+         (dimensions == other.dimensions) &&
+         (element_type == other.element_type);
+}
+
 }  // namespace openvino_ep
 }  // namespace onnxruntime

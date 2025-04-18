@@ -20,28 +20,38 @@ namespace openvino_ep {
 
 namespace fs = std::filesystem;
 
-struct weight_map_key {
-  std::string name;
+template <typename T>
+concept has_name = requires(T t) { t.name; };
 
-  bool operator==(const weight_map_key&) const = default;
-  friend byte_iostream& operator<<(byte_iostream& stream, const weight_map_key& value);
-  friend byte_iostream& operator>>(byte_iostream& stream, weight_map_key& value);
+template <has_name T>
+struct hashable_name {
+  std::size_t operator()(const T& t) const noexcept {
+    return std::hash<std::string>{}(t.name);
+  }
 };
 
-struct weight_map_value {
+struct weight_map_key : byte_streamable<weight_map_key> {
+  weight_map_key() = default;
+  weight_map_key(auto s) : name{s} {}
+  bool operator==(const weight_map_key&) const;
+
+  std::string name;
+};
+
+struct weight_map_value : byte_streamable<weight_map_value> {
+  weight_map_value() = default;
+  weight_map_value(auto l, auto d_o, auto s, auto d, auto et) : location{l}, data_offset{d_o}, size{s}, dimensions{d}, element_type{et} {}
+  bool operator==(const weight_map_value& other) const;
+
   std::string location;
   unsigned int data_offset{0};
   unsigned int size{0};
   std::vector<size_t> dimensions;
   std::int32_t element_type{0};
   std::shared_ptr<ov::Tensor> tensor;
-
-  bool operator==(const weight_map_value&) const = default;
-  friend byte_iostream& operator<<(byte_iostream& stream, const weight_map_value& value);
-  friend byte_iostream& operator>>(byte_iostream& stream, weight_map_value& value);
 };
 
-using Metadata = io_unordered_map<weight_map_key, weight_map_value>;
+using weight_info_map = io_unordered_map<weight_map_key, weight_map_value, hashable_name<weight_map_key>>;
 
 class SharedContext : public WeakSingleton<SharedContext> {
   // Keep the core alive as long as the shared SharedContext are alive.
@@ -49,12 +59,10 @@ class SharedContext : public WeakSingleton<SharedContext> {
 
  public:
   SharedContext() : OVCore_(OVCore::Get()) {}
-  struct SharedWeights {
-    Metadata::Map metadata;
-  } shared_weights;
+  weight_info_map shared_weight_info;
 
   void clear() {  // Deletes the data stored in the SharedContext
-    shared_weights.metadata.clear();
+    shared_weight_info.clear();
   };
 };
 

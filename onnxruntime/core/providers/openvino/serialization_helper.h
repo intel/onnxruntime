@@ -16,6 +16,12 @@ using byte_istream = std::basic_istream<std::byte>;
 using byte_ostream = std::basic_ostream<std::byte>;
 using byte_fstream = std::basic_fstream<std::byte>;
 
+template <typename T>
+struct byte_streamable {
+  friend byte_iostream& operator<<(byte_iostream& stream, const T& value);
+  friend byte_iostream& operator>>(byte_iostream& stream, T& value);
+};
+
 //
 // Write
 //
@@ -93,19 +99,9 @@ template <>
 byte_iostream& operator>>(byte_iostream& stream, std::string& value);
 
 // Serializable unordered map
-template <typename K, typename V>
-struct io_unordered_map {
-  struct Hash {
-    std::size_t operator()(const K& key) const noexcept {
-      return std::hash<std::string>()(key.name);
-    }
-  };
-
-  using Map = std::unordered_map<K, V, Hash>;
-  using Key = K;
-  using Value = V;
-
-  friend byte_iostream& operator<<(byte_iostream& stream, const io_unordered_map::Map &map) {
+template <typename K, typename V, typename H = std::hash<K>>
+struct io_unordered_map : std::unordered_map<K, V, H> {
+  friend byte_iostream& operator<<(byte_iostream& stream, const io_unordered_map& map) {
     try {
       stream << map.size();
 
@@ -123,7 +119,7 @@ struct io_unordered_map {
     return stream;
   };
 
-  friend byte_iostream& operator>>(byte_iostream& stream, io_unordered_map::Map& map) {
+  friend byte_iostream& operator>>(byte_iostream& stream, io_unordered_map& map) {
     size_t map_size{0};
     try {
       stream >> map_size;
@@ -141,8 +137,7 @@ struct io_unordered_map {
 
     return stream;
   };
-
 };
 
-}
+}  // namespace openvino_ep
 }  // namespace onnxruntime

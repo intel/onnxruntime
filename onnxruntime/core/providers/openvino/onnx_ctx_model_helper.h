@@ -34,12 +34,12 @@ class EPCtxHandler {
                                std::string&& model_blob_str) const;
   std::unique_ptr<std::istream> GetModelBlobStream(const std::filesystem::path& so_context_file_path, const GraphViewer& graph_viewer) const;
   InlinedVector<const Node*> GetEPCtxNodes() const;
-  bool StartReadingContextBin(const std::filesystem::path& bin_file_path, openvino_ep::Metadata::Map& metadata);
+  bool StartReadingContextBin(const std::filesystem::path& bin_file_path, openvino_ep::weight_info_map& shared_weight_info);
   bool FinishReadingContextBin();
   std::ostream& PreInsertBlob();
   void PostInsertBlob(const std::string& blob_name);
   bool StartWritingContextBin(const std::filesystem::path& bin_file_path);
-  bool FinishWritingContextBin(const openvino_ep::Metadata::Map& metadata);
+  bool FinishWritingContextBin(const openvino_ep::weight_info_map& shared_weight_info);
 
  private:
   const std::string openvino_sdk_version_;

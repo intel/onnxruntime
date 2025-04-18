@@ -67,9 +67,9 @@ CreateOVModel(std::string&& model,
               std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map);
 
 void CreateOVTensors(const std::string& device_name,
-                     Metadata::Map& metadata_map,
-                     byte_iostream &file);
-void DestroyOVTensors(Metadata::Map& metadata_map);
+                     weight_info_map& metadata_map,
+                     byte_iostream& file);
+void DestroyOVTensors(weight_info_map& metadata_map);
 
 void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
                             std::ostream& stream, std::string deviceName);

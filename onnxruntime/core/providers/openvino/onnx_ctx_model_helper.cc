@@ -16,7 +16,7 @@ EPCtxHandler::EPCtxHandler(std::string ov_sdk_version, const logging::Logger& lo
 }
 
 /* Export the serialized blob string embedded onto an EPContext Node
- * along with other metadata necessary to validate the graph on import
+ * along with other shared_weight_info necessary to validate the graph on import
  */
 
 Status EPCtxHandler::ExportEPCtxModel(const std::string& model_name) {
@@ -166,7 +166,7 @@ struct Header {
 };
 static_assert(std::is_trivially_copyable_v<Header>, "Header is not trivial");
 
-bool EPCtxHandler::StartReadingContextBin(const std::filesystem::path& bin_file_path, openvino_ep::Metadata::Map& metadata) {
+bool EPCtxHandler::StartReadingContextBin(const std::filesystem::path& bin_file_path, openvino_ep::weight_info_map& shared_weight_info) {
   ORT_ENFORCE(!context_binary_.is_open(), "Unexpected open context binary file");
 
   context_binary_.open(bin_file_path, std::ios::in | std::ios::binary);
@@ -179,7 +179,7 @@ bool EPCtxHandler::StartReadingContextBin(const std::filesystem::path& bin_file_
 
   // Get weight map
   context_binary_.seekg(header.weight_map_pos);
-  context_binary_ >> metadata;
+  context_binary_ >> shared_weight_info;
 
   // Get blob information
   context_binary_.seekg(header.blob_map_pos);
@@ -193,8 +193,8 @@ bool EPCtxHandler::StartReadingContextBin(const std::filesystem::path& bin_file_
   //}
 
   // Get weight map
-  context_binary_.seekg(header.weight_map_pos);
-  context_binary_ >> metadata;
+  // context_binary_.seekg(header.weight_map_pos);
+  // context_binary_ >> shared_weight_info;
 
   return true;
 }
@@ -235,12 +235,12 @@ bool EPCtxHandler::StartWritingContextBin(const std::filesystem::path& bin_file_
   return true;
 }
 
-bool EPCtxHandler::FinishWritingContextBin(const openvino_ep::Metadata::Map& metadata) {
+bool EPCtxHandler::FinishWritingContextBin(const openvino_ep::weight_info_map& shared_weight_info) {
   ORT_ENFORCE(context_binary_.is_open(), "Expected open context binary file");
 
   // Write maps
   // context_binary_ << blob_info_map;
-  context_binary_ << metadata;
+  context_binary_ << shared_weight_info;
 
   context_binary_.close();
 

@@ -301,7 +301,7 @@ ov::element::Type GetOpenVINOElementType(ONNX_NAMESPACE::TensorProto_DataType dt
 
 // Function to handle tensor creation from external data
 void CreateOVTensors(const std::string& device_name,
-                     Metadata::Map& metadata_map,
+                     weight_info_map& metadata_map,
                      byte_iostream& file) {
   const auto load_weights = [&file](std::streampos file_offset, void* data, size_t size) {
     file.seekg(file_offset);
@@ -334,7 +334,7 @@ void CreateOVTensors(const std::string& device_name,
   }
 }
 
-void DestroyOVTensors(Metadata::Map& metadata_map) {
+void DestroyOVTensors(weight_info_map& metadata_map) {
   for (auto& [key, value] : metadata_map) {
     if (value.tensor) {
       value.tensor.reset();
