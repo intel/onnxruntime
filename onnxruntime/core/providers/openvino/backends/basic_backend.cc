@@ -15,6 +15,7 @@
 #include "core/providers/openvino/backends/basic_backend.h"
 #include "core/providers/openvino/onnx_ctx_model_helper.h"
 #include "core/providers/openvino/backend_manager.h"
+#include "core/providers/openvino/constants.h"
 
 namespace onnxruntime {
 
@@ -82,8 +83,7 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
     }
 #else  // !IO_BUFFER_ENABLED
     auto auto_unified_compile = ((hw_target.find("AUTO") == std::string::npos) ||
-                                 (session_context_.OpenVINO_Version.at(0) >= 2024 &&
-                                  session_context_.OpenVINO_Version.at(1) > 2));
+                                 (constants::ov_version::number >= 2024.2f));
     if (subgraph_context_.is_ep_ctx_graph) {
       // If the blob is held in an EPContext node, then skip FE+Compile
       // and directly move on to creating a backend with the executable blob
@@ -164,7 +164,7 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
     device_config.emplace(ov::hint::inference_precision("f32"));
   }
   if (session_context_.precision.find("ACCURACY") != std::string::npos) {
-    if (session_context_.OpenVINO_Version.at(0) >= 2024) {
+    if constexpr (constants::ov_version::number >= 2024.0f) {
       device_config.emplace(ov::hint::execution_mode(ov::hint::ExecutionMode::ACCURACY));
     } else {
       if (!subgraph_context_.model_precision.empty())

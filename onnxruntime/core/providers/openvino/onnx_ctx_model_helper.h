@@ -23,9 +23,8 @@ static const char SOURCE[] = "source";
 
 class EPCtxHandler {
  public:
-  EPCtxHandler(std::string ov_sdk_version, const logging::Logger& logger);
+  EPCtxHandler(const logging::Logger& logger, fs::path path);
   EPCtxHandler(const EPCtxHandler&) = delete;  // No copy constructor
-  Status ExportEPCtxModel(const std::string& model_name);
   bool CheckForOVEPCtxNodeInGraph(const GraphViewer& graph_viewer) const;
   bool CheckForOVEPCtxNode(const Node& node) const;
   Status AddOVEPCtxNodeToGraph(const GraphViewer& graph_viewer,
@@ -34,11 +33,11 @@ class EPCtxHandler {
                                std::string&& model_blob_str) const;
   std::unique_ptr<std::istream> GetModelBlobStream(const std::filesystem::path& so_context_file_path, const GraphViewer& graph_viewer) const;
   InlinedVector<const Node*> GetEPCtxNodes() const;
-  bool StartReadingContextBin(const std::filesystem::path& bin_file_path, openvino_ep::weight_info_map& shared_weight_info_);
+  bool StartReadingContextBin(const fs::path& context_binary_name, openvino_ep::weight_info_map& shared_weight_info_);
   bool FinishReadingContextBin();
   std::ostream& PreInsertBlob();
   void PostInsertBlob(const std::string& blob_name);
-  bool StartWritingContextBin(const std::filesystem::path& bin_file_path);
+  bool StartWritingContextBin(const fs::path& context_binary_name);
   bool FinishWritingContextBin(const openvino_ep::weight_info_map& shared_weight_info_);
 
  private:
@@ -54,9 +53,9 @@ class EPCtxHandler {
   friend byte_iostream& operator>>(byte_iostream& stream, compiled_model_info_value& value);
   using compiled_model_info_map = io_unordered_map<std::string, compiled_model_info_value>;
 
-  const std::string openvino_sdk_version_;
-  std::unique_ptr<Model> epctx_model_;
   const logging::Logger& logger_;
+  const fs::path ep_context_model_path;
+  std::unique_ptr<Model> epctx_model_;
   byte_fstream context_binary_;
   std::streampos pre_blob_insert_;
   compiled_model_info_map compiled_models_info_;

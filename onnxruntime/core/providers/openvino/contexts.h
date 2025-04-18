@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <array>
 #include <vector>
 #include <map>
 #include <unordered_map>
@@ -12,6 +13,7 @@
 #include <memory>
 #include "core/common/common.h"
 #include "core/providers/shared_library/provider_api.h"
+#include "core/providers/openvino/constants.h"
 #include "core/providers/openvino/ov_interface.h"
 #include "core/providers/openvino/serialization_helper.h"
 
@@ -93,14 +95,20 @@ struct ProviderInfo {
 
 // Holds context applicable to the entire EP instance.
 struct SessionContext : ProviderInfo {
-  SessionContext(const ProviderInfo& info) : ProviderInfo{info} {}
-  std::vector<bool> deviceAvailableList = {true, true, true, true, true, true, true, true};
+  SessionContext(const ProviderInfo& info) : ProviderInfo{info} {
+    if (so_context_file_path.empty()) {
+      ep_context_model_path = onnx_model_path_name.parent_path();
+    } else {
+      ep_context_model_path = info.so_context_file_path.parent_path();
+    }
+  }
+
+  std::array<bool, constants::max_device_available> deviceAvailableList{true};
   std::filesystem::path onnx_model_path_name;
+  std::filesystem::path ep_context_model_path;
   uint32_t onnx_opset_version{0};
-  mutable bool is_wholly_supported_graph = false;  // Value is set to mutable to modify from capability
-  mutable bool has_external_weights = false;       // Value is set to mutable to modify from capability
-  const std::vector<uint32_t> OpenVINO_Version = {OPENVINO_VERSION_MAJOR, OPENVINO_VERSION_MINOR};
-  const std::string openvino_sdk_version = std::to_string(OPENVINO_VERSION_MAJOR) + "." + std::to_string(OPENVINO_VERSION_MINOR);
+  mutable bool is_wholly_supported_graph{false};  // Value is set to mutable to modify from capability
+  mutable bool has_external_weights{false};       // Value is set to mutable to modify from capability
 };
 
 // Holds context specific to subgraph.

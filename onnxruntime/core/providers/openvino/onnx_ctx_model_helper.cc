@@ -6,37 +6,15 @@
 #include <vector>
 #include <algorithm>
 
+#include "core/providers/openvino/constants.h"
 #include "core/providers/openvino/onnx_ctx_model_helper.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
 
-EPCtxHandler::EPCtxHandler(std::string ov_sdk_version, const logging::Logger& logger) : openvino_sdk_version_(std::move(ov_sdk_version)), logger_(logger) {
+EPCtxHandler::EPCtxHandler(const logging::Logger& logger,
+                           fs::path path) : logger_{logger}, ep_context_model_path{path} {
   epctx_model_ = Model::Create("ovep_context_model", false, logger_);
-}
-
-/* Export the serialized blob string embedded onto an EPContext Node
- * along with other shared_weight_info necessary to validate the graph on import
- */
-
-Status EPCtxHandler::ExportEPCtxModel(const std::string& model_name) {
-  // Serialize modelproto to string
-  auto model_proto = epctx_model_->ToProto();
-  model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-
-  // Finally, dump the model
-  std::ofstream epctx_onnx_model(model_name,
-                                 std::ios::out | std::ios::trunc | std::ios::binary);
-  if (!epctx_onnx_model) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unable to create epctx onnx model file");
-  }
-
-  if (!model_proto->SerializeToOstream(epctx_onnx_model)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to serialize model to file");
-  }
-  LOGS_DEFAULT(VERBOSE) << "[OpenVINO EP] Export blob as EPContext Node";
-
-  return Status::OK();
 }
 
 Status EPCtxHandler::AddOVEPCtxNodeToGraph(const GraphViewer& graph_viewer,
@@ -80,7 +58,7 @@ Status EPCtxHandler::AddOVEPCtxNodeToGraph(const GraphViewer& graph_viewer,
     auto sdk_version_attr = ONNX_NAMESPACE::AttributeProto::Create();
     sdk_version_attr->set_name(EP_SDK_VER);
     sdk_version_attr->set_type(onnx::AttributeProto_AttributeType_STRING);
-    sdk_version_attr->set_s(openvino_sdk_version_);
+    sdk_version_attr->set_s(constants::ov_version::name.data());
     node_attributes->emplace(EP_SDK_VER, std::move(*sdk_version_attr));
 
     // source
@@ -142,7 +120,7 @@ bool EPCtxHandler::CheckForOVEPCtxNode(const Node& node) const {
   if (node.OpType() == EPCONTEXT_OP) {
     auto& attrs = node.GetAttributes();
     bool result = (attrs.count(SOURCE) == 1) && (attrs.at(SOURCE).s() == kOpenVINOExecutionProvider);
-    result &= (attrs.count(EP_SDK_VER) == 1) && (attrs.at(EP_SDK_VER).s() == openvino_sdk_version_);
+    result &= (attrs.count(EP_SDK_VER) == 1) && (attrs.at(EP_SDK_VER).s() == constants::ov_version::name);
     result &= attrs.count(EMBED_MODE) == 1;
     result &= attrs.count(EP_CACHE_CONTEXT) == 1;
     return result;
@@ -216,13 +194,14 @@ void EPCtxHandler::PostInsertBlob(const std::string& blob_name) {
   //  Enter data in blob map
 }
 
-bool EPCtxHandler::StartWritingContextBin(const std::filesystem::path& bin_file_path) {
+bool EPCtxHandler::StartWritingContextBin(const fs::path& context_binary_name) {
   ORT_ENFORCE(!context_binary_.is_open(), "Unexpected open context binary file");
 
   // Mock header
   Header header{3, 4};
 
-  context_binary_.open(bin_file_path, std::ios::out | std::ios::binary);
+  auto context_binary_path_name = ep_context_model_path / context_binary_name;
+  context_binary_.open(context_binary_path_name, std::ios::out | std::ios::binary);
   if (context_binary_.is_open()) {
     context_binary_ << header;
   }
@@ -230,14 +209,33 @@ bool EPCtxHandler::StartWritingContextBin(const std::filesystem::path& bin_file_
   return true;
 }
 
-bool EPCtxHandler::FinishWritingContextBin(const openvino_ep::weight_info_map& shared_weight_info_) {
+bool EPCtxHandler::FinishWritingContextBin(const openvino_ep::weight_info_map& shared_weight_info) {
   ORT_ENFORCE(context_binary_.is_open(), "Expected open context binary file");
 
   // Write maps
   context_binary_ << compiled_models_info_;
-  context_binary_ << shared_weight_info_;
+  context_binary_ << shared_weight_info;
 
   context_binary_.close();
+
+  /////////////////////////////////////////////////////////////////////////////////////////////
+  //
+  // TEMP CODE
+  // Metadata is always read from epctx model location
+  //
+  fs::path metadata_filename = ep_context_model_path / constants::metadata_bin_name;
+  if (std::basic_fstream<std::byte> file{metadata_filename, std::ios::out + std::ios::binary}) {
+    file << shared_weight_info;
+  }
+
+  // Validate serialization round trip
+  if (auto filein = std::basic_fstream<std::byte>(metadata_filename, std::ios::in + std::ios::binary)) {
+    openvino_ep::weight_info_map read_weight_info;
+    filein >> read_weight_info;
+
+    ORT_ENFORCE(read_weight_info == shared_weight_info);
+  }
+  /////////////////////////////////////////////////////////////////////////////////////////////
 
   return true;
 }
