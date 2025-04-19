@@ -22,10 +22,28 @@ namespace openvino_ep {
 
 namespace fs = std::filesystem;
 
-struct weight_map_value : byte_streamable<weight_map_value> {
+struct weight_map_value : streamable<weight_map_value> {
   weight_map_value() = default;
   weight_map_value(auto l, auto d_o, auto s, auto d, auto et) : location{l}, data_offset{d_o}, size{s}, dimensions{d}, element_type{et} {}
   bool operator==(const weight_map_value& other) const;
+
+  template <typename S>
+  friend void write_bytes(S& stream, const weight_map_value& value) {
+    write_bytes(stream, value.location);
+    write_bytes(stream, value.data_offset);
+    write_bytes(stream, value.size);
+    write_bytes(stream, value.dimensions);
+    write_bytes(stream, value.element_type);
+  }
+
+  template <typename S>
+  friend void read_bytes(S& stream, weight_map_value& value) {
+    read_bytes(stream, value.location);
+    read_bytes(stream, value.data_offset);
+    read_bytes(stream, value.size);
+    read_bytes(stream, value.dimensions);
+    read_bytes(stream, value.element_type);
+  }
 
   std::string location;
   unsigned int data_offset{0};
