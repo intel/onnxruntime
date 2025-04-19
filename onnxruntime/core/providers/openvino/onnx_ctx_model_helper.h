@@ -41,7 +41,7 @@ class EPCtxHandler {
   bool FinishWritingContextBin(const openvino_ep::weight_info_map& shared_weight_info_);
 
  private:
-  struct compiled_model_info_value : byte_streamable<compiled_model_info_value> {
+  struct compiled_model_info_value : streamable<compiled_model_info_value> {
     compiled_model_info_value() = default;
     compiled_model_info_value(std::streampos s, std::streampos e) : start{s}, end{e} {}
     bool operator==(const compiled_model_info_value& other) const;
@@ -49,14 +49,13 @@ class EPCtxHandler {
     std::streampos start;
     std::streampos end;
   };
-  friend byte_iostream& operator<<(byte_iostream& stream, const compiled_model_info_value& value);
-  friend byte_iostream& operator>>(byte_iostream& stream, compiled_model_info_value& value);
+
   using compiled_model_info_map = io_unordered_map<std::string, compiled_model_info_value>;
 
   const logging::Logger& logger_;
   const fs::path ep_context_model_path;
   std::unique_ptr<Model> epctx_model_;
-  byte_fstream context_binary_;
+  std::fstream context_bin_stream_;
   std::streampos pre_blob_insert_;
   compiled_model_info_map compiled_models_info_;
 };

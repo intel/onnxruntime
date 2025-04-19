@@ -98,7 +98,7 @@ BackendManager::BackendManager(SessionContext& session_context,
   if (session_context_.so_share_ep_contexts) {
     // File is guaranteed to exist at this point
     ORT_ENFORCE(external_weights_.has_value(), "Expected external weight object to be valid");
-    byte_fstream file(external_weights_.value(), std::ios::in | std::ios::binary);
+    std::ifstream file(external_weights_.value(), std::ios::binary);
     file.exceptions(std::ifstream::failbit | std::ifstream::badbit);
     backend_utils::CreateOVTensors(session_context_.device_type,
                                    shared_context_.shared_weight_info_,

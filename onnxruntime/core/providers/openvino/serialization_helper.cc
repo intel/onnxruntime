@@ -7,22 +7,28 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
+//
+// Write
+//
 template <>
-byte_iostream& operator<<(byte_iostream& stream, const std::string& value) {
-  stream.write((const std::byte*)value.data(), value.size() * sizeof(std::string::value_type));
-  return stream;
+void write_bytes(std::ostream& stream, const std::string& value) {
+  write_bytes(stream, value.size());
+  stream.write(reinterpret_cast<const std::ostream::char_type*>(value.data()), value.size() * sizeof(std::string::value_type));
 }
 
+////
+//// Read
+////
 template <>
-byte_iostream& operator>>(byte_iostream& stream, std::string& value) {
-  size_t size;
-  stream >> size;
+void read_bytes(std::istream& stream, std::string& value) {
+  size_t size{0};
+  read_bytes(stream, size);
 
   if (stream.fail()) {
     ORT_THROW("Error: Failed to read size from stream.");
   }
 
-  if (size == 0 || size > MAX_SAFE_DIMENSIONS) {
+  if (size == 0 || size > constants::max_safe_dimensions) {
     ORT_THROW("Invalid size read.");
   }
 
@@ -32,28 +38,17 @@ byte_iostream& operator>>(byte_iostream& stream, std::string& value) {
     ORT_THROW("Error: Memory allocation failed while resizing container.");
   }
 
-  stream.read((std::byte*)value.data(), size * sizeof(std::string::value_type));
-  return stream;
+  stream.read((std::istream::char_type*)value.data(), size * sizeof(std::string::value_type));
 }
 
-byte_iostream& operator<<(byte_iostream& stream, const weight_map_value& value) {
-  stream << value.location;
-  stream << value.data_offset;
-  stream << value.size;
-  stream << value.dimensions;
-  stream << value.element_type;
-  return stream;
+void read_bytes(std::istream& stream, std::streampos pos, std::istream::char_type* data, std::streamsize count) {
+  stream.seekg(pos);
+  stream.read(data, count);
 }
 
-byte_iostream& operator>>(byte_iostream& stream, weight_map_value& value) {
-  stream >> value.location;
-  stream >> value.data_offset;
-  stream >> value.size;
-  stream >> value.dimensions;
-  stream >> value.element_type;
-  return stream;
-}
-
+//
+// Other
+//
 bool weight_map_value::operator==(const weight_map_value& other) const {
   return (location == other.location) &&
          (data_offset == other.data_offset) &&

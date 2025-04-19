@@ -302,11 +302,8 @@ ov::element::Type GetOpenVINOElementType(ONNX_NAMESPACE::TensorProto_DataType dt
 // Function to handle tensor creation from external data
 void CreateOVTensors(const std::string& device_name,
                      weight_info_map& metadata_map,
-                     byte_iostream& file) {
-  const auto load_weights = [&file](std::streampos file_offset, void* data, size_t size) {
-    file.seekg(file_offset);
-    file.read(reinterpret_cast<std::byte*>(data), size);
-  };
+                     std::istream& stream) {
+  auto stream_start_pos = stream.tellg();
 
   for (auto& [key, value] : metadata_map) {
     if (value.tensor) continue;
@@ -315,20 +312,23 @@ void CreateOVTensors(const std::string& device_name,
     auto onnx_element_type = (ONNX_NAMESPACE::TensorProto_DataType)value.element_type;
 
     ov::element::Type ov_elementType = GetOpenVINOElementType(onnx_element_type);  // Map to OpenVINO data type
+    auto data_pos = stream_start_pos + (std::streampos)value.data_offset;
 
     // Create OpenVINO Tensor
     if (device_name == "NPU") {
       // Use remote tensors
       auto npu_context = OVCore::Get()->core.get_default_context("NPU").as<ov::intel_npu::level_zero::ZeroContext>();
       auto&& remote_tensor = npu_context.create_l0_host_tensor(ov_elementType, value.dimensions, ov::intel_npu::TensorType::INPUT);
+      auto remote_tensor_data = reinterpret_cast<std::istream::char_type*>(remote_tensor.get());
 
       // Copy data to remote tensor
-      load_weights(value.data_offset, remote_tensor.get(), value.size);
+      read_bytes(stream, data_pos, remote_tensor_data, value.size);
       value.tensor = std::make_shared<ov::Tensor>(remote_tensor);
     } else {
       // Use vanilla tensors
       value.tensor = std::make_shared<ov::Tensor>(ov_elementType, value.dimensions);
-      load_weights(value.data_offset, value.tensor->data(), value.size);
+      auto tensor_data = reinterpret_cast<std::istream::char_type*>(value.tensor->data());
+      read_bytes(stream, data_pos, tensor_data, value.size);
     }
     ORT_ENFORCE(value.tensor->get_byte_size() == value.size, "Unexpected tensor size mismatch");
   }

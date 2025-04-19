@@ -134,89 +134,115 @@ InlinedVector<const Node*> EPCtxHandler::GetEPCtxNodes() const {
 }
 
 // Putting these structures here for now
-struct Header {
-  uint32_t bin_version{current_header_version};
+struct context_bin_header : streamable<context_bin_header> {
+  context_bin_header() = default;
+  context_bin_header(uint32_t bv,
+                     std::streampos wp,
+                     std::streampos cmp,
+                     std::streampos wmp,
+                     std::streampos cmmp) : bin_version{bv},
+                                            weight_pos{wp},
+                                            compiled_models_pos{cmp},
+                                            weight_map_pos{wmp},
+                                            compiled_model_map_pos{cmmp} {
+  }
+  uint32_t bin_version{constants::expected_bin_version};
   std::streampos weight_pos{0};
-  std::streampos blobs_pos{0};
+  std::streampos compiled_models_pos{0};
   std::streampos weight_map_pos{0};
-  std::streampos blob_map_pos{0};
-  constexpr static uint32_t current_header_version = 1;
+  std::streampos compiled_model_map_pos{0};
+
+  template <typename S>
+  friend void write_bytes(S& stream, const context_bin_header& value) {
+    write_bytes(stream, value.bin_version);
+    write_bytes(stream, value.weight_pos);
+    write_bytes(stream, value.compiled_models_pos);
+    write_bytes(stream, value.weight_map_pos);
+    write_bytes(stream, value.compiled_model_map_pos);
+  }
+
+  template <typename S>
+  friend void read_bytes(S& stream, context_bin_header& value) {
+    read_bytes(stream, value.bin_version);
+    read_bytes(stream, value.weight_pos);
+    read_bytes(stream, value.compiled_models_pos);
+    read_bytes(stream, value.weight_map_pos);
+    read_bytes(stream, value.compiled_model_map_pos);
+  }
 };
-static_assert(std::is_trivially_copyable_v<Header>, "Header is not trivial");
+static_assert(std::is_trivially_copyable_v<context_bin_header>, "Header is not trivial");
 
 bool EPCtxHandler::StartReadingContextBin(const std::filesystem::path& bin_file_path, openvino_ep::weight_info_map& shared_weight_info_) {
-  ORT_ENFORCE(!context_binary_.is_open(), "Unexpected open context binary file");
+  ORT_ENFORCE(!context_bin_stream_.is_open(), "Unexpected open context binary file");
 
-  context_binary_.open(bin_file_path, std::ios::in | std::ios::binary);
+  context_bin_stream_.open(bin_file_path, std::ios::in | std::ios::binary);
 
   // Get header
-  Header header;
-  context_binary_ >> header;
+  context_bin_header header;
+  read_bytes(context_bin_stream_, header);
 
-  ORT_ENFORCE(header.bin_version == header.current_header_version, "Binary file version mismatch");
+  ORT_ENFORCE(header.bin_version == constants::expected_bin_version, "Binary file version mismatch");
 
-  // Get blob information
-  context_binary_.seekg(header.blob_map_pos);
-  context_binary_ >> compiled_models_info_;
+  // Get compiled model information
+  read_bytes(context_bin_stream_, compiled_models_info_, header.compiled_model_map_pos);
 
   // Get weight map
-  context_binary_.seekg(header.weight_map_pos);
-  context_binary_ >> shared_weight_info_;
+  read_bytes(context_bin_stream_, shared_weight_info_, header.weight_map_pos);
 
   // Get blobs
   // for (const auto &blob_info : blob_info_map) {
-  //  context_binary_.seekg(blob_info.pos);
-  //  context_binary_.read(p_somewhere, blob_info.size);
+  //  context_bin_stream_.seekg(blob_info.pos);
+  //  context_bin_stream_.read(p_somewhere, blob_info.size);
   //}
 
   return true;
 }
 
 bool EPCtxHandler::FinishReadingContextBin() {
-  ORT_ENFORCE(context_binary_.is_open(), "Expected open context binary file");
+  ORT_ENFORCE(context_bin_stream_.is_open(), "Expected open context binary file");
 
-  context_binary_.close();
+  context_bin_stream_.close();
 
   return true;
 }
 
 std::ostream& EPCtxHandler::PreInsertBlob() {
   // Save stream position
-  pre_blob_insert_ = context_binary_.tellg();
-  return *(std::ostream*)&context_binary_;
+  pre_blob_insert_ = context_bin_stream_.tellg();
+  return *(std::ostream*)&context_bin_stream_;
 }
 
 void EPCtxHandler::PostInsertBlob(const std::string& blob_name) {
   // Save stream position
-  std::streampos post_blob_insert = context_binary_.tellg();
+  std::streampos post_blob_insert = context_bin_stream_.tellg();
 
   // Compute difference
   //  Enter data in blob map
 }
 
-bool EPCtxHandler::StartWritingContextBin(const fs::path& context_binary_name) {
-  ORT_ENFORCE(!context_binary_.is_open(), "Unexpected open context binary file");
+bool EPCtxHandler::StartWritingContextBin(const fs::path& context_bin_name) {
+  ORT_ENFORCE(!context_bin_stream_.is_open(), "Unexpected open context binary file");
 
   // Mock header
-  Header header{3, 4};
+  context_bin_header header{1, 2, 3, 4, 5};
 
-  auto context_binary_path_name = ep_context_model_path / context_binary_name;
-  context_binary_.open(context_binary_path_name, std::ios::out | std::ios::binary);
-  if (context_binary_.is_open()) {
-    context_binary_ << header;
+  auto context_bin_path_name = ep_context_model_path / context_bin_name;
+  context_bin_stream_.open(context_bin_path_name, std::ios::out | std::ios::binary);
+  if (context_bin_stream_.is_open()) {
+    write_bytes(context_bin_stream_, header);
   }
 
   return true;
 }
 
 bool EPCtxHandler::FinishWritingContextBin(const openvino_ep::weight_info_map& shared_weight_info) {
-  ORT_ENFORCE(context_binary_.is_open(), "Expected open context binary file");
+  ORT_ENFORCE(context_bin_stream_.is_open(), "Expected open context binary file");
 
   // Write maps
-  context_binary_ << compiled_models_info_;
-  context_binary_ << shared_weight_info;
+  write_bytes(context_bin_stream_, compiled_models_info_);
+  write_bytes(context_bin_stream_, shared_weight_info);
 
-  context_binary_.close();
+  context_bin_stream_.close();
 
   /////////////////////////////////////////////////////////////////////////////////////////////
   //
@@ -224,14 +250,14 @@ bool EPCtxHandler::FinishWritingContextBin(const openvino_ep::weight_info_map& s
   // Metadata is always read from epctx model location
   //
   fs::path metadata_filename = ep_context_model_path / constants::metadata_bin_name;
-  if (std::basic_fstream<std::byte> file{metadata_filename, std::ios::out + std::ios::binary}) {
-    file << shared_weight_info;
+  if (std::ofstream file{metadata_filename, std::ios::binary}) {
+    write_bytes(file, shared_weight_info);
   }
 
   // Validate serialization round trip
-  if (auto filein = std::basic_fstream<std::byte>(metadata_filename, std::ios::in + std::ios::binary)) {
+  if (auto filein = std::ifstream(metadata_filename, std::ios::binary)) {
     openvino_ep::weight_info_map read_weight_info;
-    filein >> read_weight_info;
+    read_bytes(filein, read_weight_info);
 
     ORT_ENFORCE(read_weight_info == shared_weight_info);
   }
@@ -240,16 +266,16 @@ bool EPCtxHandler::FinishWritingContextBin(const openvino_ep::weight_info_map& s
   return true;
 }
 
-byte_iostream& operator<<(byte_iostream& stream, const EPCtxHandler::compiled_model_info_value& value) {
-  stream << value.start;
-  stream << value.end;
-  return stream;
+template <typename S>
+void write_bytes(S& stream, const EPCtxHandler::compiled_model_info_value& value) {
+  write_bytes(stream, value.start);
+  write_bytes(stream, value.end);
 }
 
-byte_iostream& operator>>(byte_iostream& stream, EPCtxHandler::compiled_model_info_value& value) {
-  stream >> value.start;
-  stream >> value.end;
-  return stream;
+template <typename S>
+void read_bytes(S& stream, EPCtxHandler::compiled_model_info_value& value) {
+  read_bytes(stream, value.start);
+  read_bytes(stream, value.end);
 }
 
 bool EPCtxHandler::compiled_model_info_value::operator==(const EPCtxHandler::compiled_model_info_value& other) const {

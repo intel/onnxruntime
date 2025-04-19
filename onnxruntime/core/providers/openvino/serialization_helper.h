@@ -7,79 +7,73 @@
 #include <vector>
 
 #include "core/common/common.h"
+#include "constants.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
 
-using byte_iostream = std::basic_iostream<std::byte>;
-using byte_istream = std::basic_istream<std::byte>;
-using byte_ostream = std::basic_ostream<std::byte>;
-using byte_fstream = std::basic_fstream<std::byte>;
-
-template <typename T>
-struct byte_streamable {
-  friend byte_iostream& operator<<(byte_iostream& stream, const T& value);
-  friend byte_iostream& operator>>(byte_iostream& stream, T& value);
-};
-
 //
 // Write
 //
+//
+
+// Scalar
 template <typename T>
-byte_iostream& operator<<(byte_iostream& stream, const T& value) {
-  // Non-trivial types are unsupported unless they have an explicit specialization
-  static_assert(false, "Unsupported");
-  return stream;
+void write_bytes(std::ostream& stream, const T& value) {
+  stream.write(reinterpret_cast<const std::ostream::char_type*>(&value), sizeof(T));
 }
 
+// Scalar at offset
 template <typename T>
-  requires std::is_trivially_copyable_v<T>
-byte_iostream& operator<<(byte_iostream& stream, const T& value) {
-  stream.write(reinterpret_cast<const std::byte*>(&value), sizeof(T));
-  return stream;
+void write_bytes(std::ostream& stream, const T& value, std::streampos pos) {
+  stream.seekp(pos);
+  write_bytes(stream, value);
 }
 
+// Vector
 template <typename T>
-byte_iostream& operator<<(byte_iostream& stream, const std::vector<T>& value) {
-  stream << value.size();
+void write_bytes(std::ostream& stream, const std::vector<T>& value) {
+  write_bytes(stream, value.size());
   for (const auto& element : value) {
-    stream << element;
+    write_bytes(stream, element);
   }
-  return stream;
 }
 
+// String
 template <>
-byte_iostream& operator<<(byte_iostream& stream, const std::string& value);
+void write_bytes(std::ostream& stream, const std::string& value);
 
 //
 // Read
 //
+
+// Scalar
 template <typename T>
-byte_iostream& operator>>(byte_iostream& stream, T& value) {
-  // Non-trivial types are unsupported unless they have an explicit specialization
-  static_assert(false, "Unsupported");
-  return stream;
+void read_bytes(std::istream& stream, T& value) {
+  stream.read(reinterpret_cast<std::istream::char_type*>(&value), sizeof(T));
 }
 
+// Scalar at offset
 template <typename T>
-  requires std::is_trivially_copyable_v<T>
-byte_iostream& operator>>(byte_iostream& stream, T& value) {
-  stream.read(reinterpret_cast<std::byte*>(&value), sizeof(T));
-  return stream;
+void read_bytes(std::istream& stream, T& value, std::streampos pos) {
+  stream.seekg(pos);
+  read_bytes<T>(stream, value);
 }
 
-constexpr size_t MAX_SAFE_DIMENSIONS = 1024;
+// Block read from position
+void read_bytes(std::istream& stream, std::streampos pos, std::istream::char_type* data, std::streamsize count);
 
+// Vector
 template <typename T>
-byte_iostream& operator>>(byte_iostream& stream, std::vector<T>& value) {
+void read_bytes(std::istream& stream, std::vector<T>& value) {
   size_t size;
-  stream >> size;
+  read_bytes(stream, size);
 
   if (stream.fail()) {
     ORT_THROW("Error: Failed to read size from stream.");
   }
 
-  if (size == 0 || size > MAX_SAFE_DIMENSIONS) {
+  if (size == 0 || size > constants::max_safe_dimensions) {
     ORT_THROW("Invalid size read.");
   }
 
@@ -90,53 +84,61 @@ byte_iostream& operator>>(byte_iostream& stream, std::vector<T>& value) {
   }
 
   for (auto& element : value) {
-    stream >> element;
+    read_bytes(stream, element);
   }
-  return stream;
 }
 
+// String
 template <>
-byte_iostream& operator>>(byte_iostream& stream, std::string& value);
+void read_bytes(std::istream& stream, std::string& value);
+
+template <typename T>
+struct streamable {
+  template <typename S>
+  friend void write_bytes(S& stream, const T& value);
+
+  template <typename S>
+  friend void read_bytes(S& stream, T& value);
+};
 
 // Serializable unordered map
 template <typename K, typename V, typename... Args>
-struct io_unordered_map : std::unordered_map<K, V, Args...> {
-  friend byte_iostream& operator<<(byte_iostream& stream, const io_unordered_map& map) {
+struct io_unordered_map : std::unordered_map<K, V, Args...>, streamable<io_unordered_map<K, V, Args...>> {
+  template <typename S>
+  friend void write_bytes(S& stream, const io_unordered_map& map) {
     try {
-      stream << map.size();
+      write_bytes(stream, map.size());
 
       // Write each key-value pair
       // Put elements in separate lines to facilitate reading
       for (const auto& [key, value] : map) {
-        stream << key;
-        stream << value;
+        write_bytes(stream, key);
+        write_bytes(stream, value);
       }
     } catch (...) {
       ORT_THROW("Error: Failed to write map data.");
     }
 
     ORT_ENFORCE(stream.good(), "Error: Failed to write map data.");
-    return stream;
-  };
+  }
 
-  friend byte_iostream& operator>>(byte_iostream& stream, io_unordered_map& map) {
+  template <typename S>
+  friend void read_bytes(S& stream, io_unordered_map& map) {
     size_t map_size{0};
     try {
-      stream >> map_size;
+      read_bytes(stream, map_size);
 
       while (map_size--) {
         K key;
         V value;
-        stream >> key;
-        stream >> value;
+        read_bytes(stream, key);
+        read_bytes(stream, value);
         map.emplace(key, value);
       }
     } catch (...) {
       ORT_THROW("Error: Failed to read map data.");
     }
-
-    return stream;
-  };
+  }
 };
 
 }  // namespace openvino_ep
