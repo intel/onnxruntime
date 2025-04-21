@@ -419,7 +419,14 @@ void OVInferRequest::QueryStatus() {
             << " ";
 }
 
-void StatefulOVInferRequest::_pre_infer() {
+StatefulOVInferRequest::StatefulOVInferRequest(ov::InferRequest infer_request, std::string d)
+    : OVInferRequest(std::move(infer_request)), device(d) {
+  if ((device.find("NPU") != std::string::npos) || (device.find("GPU") != std::string::npos)) {
+    prefill_use_full_chat_history = true;
+  }
+}
+
+void StatefulOVInferRequest::PreProcessInferRequest() {
   // Since we can't seem to set at ORT GenAI layer right now, we just set it here
   // as a workaround.
   // TODO: Fix this.
@@ -427,9 +434,8 @@ void StatefulOVInferRequest::_pre_infer() {
   std::fill_n(beam_idx.data<int32_t>(), 1, 0);
   ovInfReq.set_tensor("beam_idx", beam_idx);
 
-  // For NPU, we need to cache input_ids and position_ids for
-  // chat-mode support.
-  if (device.find("NPU") != std::string::npos) {
+  // If 'prefill full chat history' mode is enabled, we need to cache input_ids and position_ids.
+  if (prefill_use_full_chat_history) {
     auto input_ids_tensor = ovInfReq.get_tensor("input_ids");
 
     // add input_ids to our cache
@@ -454,6 +460,9 @@ void StatefulOVInferRequest::_pre_infer() {
       // if the input_ids size doesn't equal cached size of the input_ids
       //  then it means that we're running 2nd (or later) prompt.
       if (input_ids_tensor.get_shape()[1] != cached_input_ids.size()) {
+        // Clear the internal KVCache state (note: this is a no-op for NPU)
+        ovInfReq.reset_state();
+
         // set a new input_ids tensor with the content of our cached input_ids
         {
           auto new_shape = input_ids_tensor.get_shape();
@@ -480,19 +489,22 @@ void StatefulOVInferRequest::_pre_infer() {
 }
 
 void StatefulOVInferRequest::StartAsync() {
-  _pre_infer();
+  PreProcessInferRequest();
   OVInferRequest::StartAsync();
 }
 
 void StatefulOVInferRequest::Infer() {
-  _pre_infer();
+  PreProcessInferRequest();
   OVInferRequest::Infer();
 }
 
 void StatefulOVInferRequest::RewindKVCache(size_t index) {
-  if (device == "NPU") {
-    std::cout << "RewindKVCache on NPU: Trimming cached input_ids / position_ids to length "
-              << index << std::endl;
+  LOGS_DEFAULT(INFO) << log_tag << "RewindKVCache: Rewinding OpenVINO-internal KVCache state to index=" << index << std::endl;
+
+  if (prefill_use_full_chat_history) {
+    // Clear the internal KVCache state (note: this is a no-op for NPU)
+    ovInfReq.reset_state();
+
     if (cached_input_ids.size() > index) {
       cached_input_ids.resize(index);
     }
@@ -501,8 +513,6 @@ void StatefulOVInferRequest::RewindKVCache(size_t index) {
       cached_position_ids.resize(index);
     }
   } else {
-    std::cout << "OVInferRequest::RewindKVCache: Trimming internal states to length = "
-              << index << std::endl;
     if (index == 0) {
       // in this case, since we're trimming *all* of the KVCache, just reset the state.
       ovInfReq.reset_state();
