@@ -21,6 +21,8 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
+std::optional<fs::path> GetExternalWeightFilename(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes);
+
 // Parking this code here for now before it's moved to the factory
 #if defined OPENVINO_CONFIG_HETERO || defined OPENVINO_CONFIG_MULTI || defined OPENVINO_CONFIG_AUTO
 static std::vector<std::string> parseDevices(const std::string& device_string,
@@ -54,9 +56,8 @@ static std::vector<std::string> parseDevices(const std::string& device_string,
 
 OpenVINOExecutionProvider::OpenVINOExecutionProvider(const ProviderInfo& info, std::shared_ptr<SharedContext> shared_context)
     : IExecutionProvider{onnxruntime::kOpenVINOExecutionProvider},
-      session_context_(info),
-      shared_context_{shared_context},
-      ep_ctx_handle_{*GetLogger(), session_context_.ep_context_model_path} {
+      session_context_(info, *GetLogger()),
+      shared_context_{shared_context} {
   InitProviderOrtApi();
 }
 
@@ -79,7 +80,7 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   if (!(GetEnvironmentVar("ORT_OPENVINO_ENABLE_CI_LOG").empty())) {
     std::cout << "In the OpenVINO EP" << std::endl;
   }
-  openvino_ep::GetCapability obj(ep_ctx_handle_,
+  openvino_ep::GetCapability obj(session_context_.ep_ctx_handler,
                                  graph_viewer,
                                  session_context_.device_type,
                                  session_context_.enable_qdq_optimizer);
@@ -92,7 +93,6 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
 common::Status OpenVINOExecutionProvider::Compile(
     const std::vector<FusedNodeAndGraph>& fused_nodes,
     std::vector<NodeComputeInfo>& node_compute_funcs) {
-  auto& logger = *GetLogger();
   Status status = Status::OK();
 
   if (!fused_nodes.empty()) {
@@ -103,11 +103,41 @@ common::Status OpenVINOExecutionProvider::Compile(
         graph_body_viewer_0.DomainToVersionMap().at(kOnnxDomain);
   }
 
-  auto& shared_weight_info_ = shared_context_->shared_weight_info_;
-  if (session_context_.so_share_ep_contexts && shared_weight_info_.empty()) {
-    fs::path context_binary_name = session_context_.onnx_model_path_name.stem().string() + "_openvino.bin";
-    ep_ctx_handle_.StartWritingContextBin(context_binary_name);
+  // Weights can be internal (insource model) or external (in context binary or
+  // separate file). This block prepares an  external weights input stream.
+  std::optional<fs::path> external_weights;
+  if (auto filename = GetExternalWeightFilename(fused_nodes)) {
+    // Model is using external weights
+    std::filesystem::path weights_filepath = session_context_.onnx_model_path_name.parent_path() / filename.value();
+
+    // Initialize external weights with fully qualified path
+    if (!std::filesystem::exists(weights_filepath)) {
+      ORT_THROW("Error: Failed to locate weight file at ", weights_filepath.string());
+    }
+
+    external_weights.emplace(weights_filepath);
   }
+
+  auto& shared_weight_info_ = shared_context_->shared_weight_info_;
+  std::unique_ptr<EPCtxBinWriter> ep_ctx_bin_writer;
+  if (session_context_.so_context_enable && !session_context_.so_context_embed_mode) {
+    fs::path context_binary_name = session_context_.onnx_model_path_name.stem().string() + "_openvino.bin";
+    ep_ctx_bin_writer = std::make_unique<EPCtxBinWriter>(session_context_.ep_ctx_handler,
+                                                              context_binary_name,
+                                                              external_weights,
+                                                              shared_weight_info_);
+  }
+
+  for (const FusedNodeAndGraph& fused_node_graph : fused_nodes) {
+    // During backend creation, we check if user wants to use precompiled blob onnx model or the original model
+    // For precompiled blob, directly load the model instead of compiling the model
+    // For original model, check if the user wants to export a model with pre-compiled blob
+    [[maybe_unused]] std::ifstream file;  // Temporary code, delete for production
+    std::optional<std::ifstream> weights_stream{std::ifstream{}};
+    auto& backend_manager = backend_managers_.emplace_back(session_context_,
+                                                           *shared_context_,
+                                                           fused_node_graph,
+                                                           weights_stream);
 
   struct OpenVINOEPFunctionState {
     AllocateFunc allocate_func = nullptr;
@@ -116,23 +146,7 @@ common::Status OpenVINOExecutionProvider::Compile(
     BackendManager& backend_manager;
   };
 
-  for (const FusedNodeAndGraph& fused_node_graph : fused_nodes) {
-    const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
-    const Node& fused_node = fused_node_graph.fused_node;
-
     NodeComputeInfo compute_info;
-
-    // During backend creation, we check if user wants to use precompiled blob onnx model or the original model
-    // For precompiled blob, directly load the model instead of compiling the model
-    // For original model, check if the user wants to export a model with pre-compiled blob
-
-    auto& backend_manager = backend_managers_.emplace_back(session_context_,
-                                                           *shared_context_,
-                                                           fused_node,
-                                                           graph_body_viewer,
-                                                           logger,
-                                                           ep_ctx_handle_);
-
     compute_info.create_state_func =
         [&backend_manager](ComputeContext* context, FunctionState* state) {
           OpenVINOEPFunctionState* p = new OpenVINOEPFunctionState{
@@ -167,10 +181,6 @@ common::Status OpenVINOExecutionProvider::Compile(
     if (!status.IsOK()) {
       break;
     }
-  }
-
-  if (session_context_.so_share_ep_contexts) {
-    ep_ctx_handle_.FinishWritingContextBin(shared_weight_info_);
   }
 
   if (session_context_.so_stop_share_ep_contexts) {
@@ -239,7 +249,55 @@ common::Status OpenVINOExecutionProvider::SetEpDynamicOptions(gsl::span<const ch
 }
 
 const InlinedVector<const Node*> OpenVINOExecutionProvider::GetEpContextNodes() const {
-  return ep_ctx_handle_.GetEPCtxNodes();
+  return session_context_.ep_ctx_handler.GetEPCtxNodes();
+}
+
+std::optional<fs::path> GetExternalWeightFilename(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes) {
+  auto get_external_location = [](const ONNX_NAMESPACE::TensorProto& proto) -> std::optional<std::string> {
+    using mutable_proto_t = ONNX_NAMESPACE::TensorProto*;
+    auto& mutable_proto = *const_cast<mutable_proto_t>(&proto);
+    auto* entry_protos = mutable_proto.mutable_external_data();
+
+    if (proto.has_data_location() && proto.data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
+      for (int i = 0; i < entry_protos->size(); i++) {
+        auto& string_entry_proto{entry_protos->at(i)};
+        const auto& pb_key{*(string_entry_proto.mutable_key())};
+        const auto& pb_value{*(string_entry_proto.mutable_value())};
+        if (pb_key == "location") {
+          return std::make_optional<std::string>(pb_value);
+        }
+      }
+    }
+
+    return std::nullopt;
+  };
+
+  for (const auto& fused_node_graph : fused_nodes) {
+    const GraphViewer& graph = fused_node_graph.filtered_graph;
+    // Handle constant initializers
+    auto& initializers = graph.GetAllInitializedTensors();
+    for (const auto& it : initializers) {
+      if (auto result = get_external_location(*it.second)) {
+        return result;
+      }
+    }
+
+    // Handle outer-scope constant initializers
+    for (auto& node_idx : graph.GetNodesInTopologicalOrder()) {
+      const auto& node = graph.GetNode(node_idx);
+      for (const auto& input : node->InputDefs()) {
+        if (graph.IsConstantInitializer(input->Name(), true)) {
+          const auto& initializer_tensor = *graph.GetConstantInitializer(input->Name(), true);
+
+          if (auto result = get_external_location(initializer_tensor)) {
+            return result;
+          }
+        }
+      }
+    }
+  }
+
+  return std::nullopt;
 }
 
 }  // namespace openvino_ep

@@ -16,44 +16,13 @@
 #include "core/providers/openvino/constants.h"
 #include "core/providers/openvino/ov_interface.h"
 #include "core/providers/openvino/serialization_helper.h"
+// #include "core/providers/openvino/onnx_ctx_model_helper.h"
+#include "onnx_ctx_model_helper.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
 
 namespace fs = std::filesystem;
-
-struct weight_map_value : streamable<weight_map_value> {
-  weight_map_value() = default;
-  weight_map_value(auto l, auto d_o, auto s, auto d, auto et) : location{l}, data_offset{d_o}, size{s}, dimensions{d}, element_type{et} {}
-  bool operator==(const weight_map_value& other) const;
-
-  template <typename S>
-  friend void write_bytes(S& stream, const weight_map_value& value) {
-    write_bytes(stream, value.location);
-    write_bytes(stream, value.data_offset);
-    write_bytes(stream, value.size);
-    write_bytes(stream, value.dimensions);
-    write_bytes(stream, value.element_type);
-  }
-
-  template <typename S>
-  friend void read_bytes(S& stream, weight_map_value& value) {
-    read_bytes(stream, value.location);
-    read_bytes(stream, value.data_offset);
-    read_bytes(stream, value.size);
-    read_bytes(stream, value.dimensions);
-    read_bytes(stream, value.element_type);
-  }
-
-  std::string location;
-  unsigned int data_offset{0};
-  unsigned int size{0};
-  std::vector<size_t> dimensions;
-  std::int32_t element_type{0};
-  std::shared_ptr<ov::Tensor> tensor;
-};
-
-using weight_info_map = io_unordered_map<std::string, weight_map_value>;
 
 class SharedContext : public WeakSingleton<SharedContext> {
   // Keep the core alive as long as the shared SharedContext are alive.
@@ -113,20 +82,22 @@ struct ProviderInfo {
 
 // Holds context applicable to the entire EP instance.
 struct SessionContext : ProviderInfo {
-  SessionContext(const ProviderInfo& info) : ProviderInfo{info} {
-    if (so_context_file_path.empty()) {
-      ep_context_model_path = onnx_model_path_name.parent_path();
-    } else {
-      ep_context_model_path = info.so_context_file_path.parent_path();
-    }
+  SessionContext(const ProviderInfo& info,
+                 const logging::Logger& logger) : ProviderInfo{info},
+                                                  logger{logger},
+                                                  ep_ctx_handler{*this} {
   }
 
+  const logging::Logger& logger;
+  EPCtxHandler ep_ctx_handler;
   std::array<bool, constants::max_device_available> deviceAvailableList{true};
   std::filesystem::path onnx_model_path_name;
   std::filesystem::path ep_context_model_path;
   uint32_t onnx_opset_version{0};
   mutable bool is_wholly_supported_graph{false};  // Value is set to mutable to modify from capability
   mutable bool has_external_weights{false};       // Value is set to mutable to modify from capability
+  std::optional<std::reference_wrapper<EPCtxBinReader>> ep_ctx_bin_reader;
+  std::optional<std::reference_wrapper<EPCtxBinWriter>> ep_ctx_bin_writer;
 };
 
 // Holds context specific to subgraph.

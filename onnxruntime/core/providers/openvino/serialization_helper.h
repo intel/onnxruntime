@@ -19,29 +19,36 @@ namespace openvino_ep {
 
 // Scalar
 template <typename T>
-void write_bytes(std::ostream& stream, const T& value) {
+std::streampos write_bytes(std::ostream& stream, const T& value) {
   stream.write(reinterpret_cast<const std::ostream::char_type*>(&value), sizeof(T));
+
+  return stream.tellp();
 }
 
 // Scalar at offset
 template <typename T>
-void write_bytes(std::ostream& stream, const T& value, std::streampos pos) {
+std::streampos write_bytes(std::ostream& stream, const T& value, std::streampos pos) {
   stream.seekp(pos);
-  write_bytes(stream, value);
+  return write_bytes<T>(stream, value);
 }
+
+// Block read from position
+std::streampos write_bytes(std::ostream& stream, std::streampos pos, std::istream::char_type* data, std::streamsize count);
 
 // Vector
 template <typename T>
-void write_bytes(std::ostream& stream, const std::vector<T>& value) {
+std::streampos write_bytes(std::ostream& stream, const std::vector<T>& value) {
   write_bytes(stream, value.size());
   for (const auto& element : value) {
     write_bytes(stream, element);
   }
+
+  return stream.tellp();
 }
 
 // String
 template <>
-void write_bytes(std::ostream& stream, const std::string& value);
+std::streampos write_bytes(std::ostream& stream, const std::string& value);
 
 //
 // Read
@@ -95,7 +102,7 @@ void read_bytes(std::istream& stream, std::string& value);
 template <typename T>
 struct streamable {
   template <typename S>
-  friend void write_bytes(S& stream, const T& value);
+  friend std::streampos write_bytes(S& stream, const T& value);
 
   template <typename S>
   friend void read_bytes(S& stream, T& value);
@@ -105,7 +112,7 @@ struct streamable {
 template <typename K, typename V, typename... Args>
 struct io_unordered_map : std::unordered_map<K, V, Args...>, streamable<io_unordered_map<K, V, Args...>> {
   template <typename S>
-  friend void write_bytes(S& stream, const io_unordered_map& map) {
+  friend std::streampos write_bytes(S& stream, const io_unordered_map& map) {
     try {
       write_bytes(stream, map.size());
 
@@ -120,6 +127,8 @@ struct io_unordered_map : std::unordered_map<K, V, Args...>, streamable<io_unord
     }
 
     ORT_ENFORCE(stream.good(), "Error: Failed to write map data.");
+
+    return stream.tellp();
   }
 
   template <typename S>

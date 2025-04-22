@@ -11,9 +11,17 @@ namespace openvino_ep {
 // Write
 //
 template <>
-void write_bytes(std::ostream& stream, const std::string& value) {
+std::streampos write_bytes(std::ostream& stream, const std::string& value) {
   write_bytes(stream, value.size());
   stream.write(reinterpret_cast<const std::ostream::char_type*>(value.data()), value.size() * sizeof(std::string::value_type));
+  return stream.tellp();
+}
+
+// Block read from position
+std::streampos write_bytes(std::ostream& stream, std::streampos pos, std::istream::char_type* data, std::streamsize count) {
+  stream.seekp(pos);
+  stream.write(data, count);
+  return stream.tellp();
 }
 
 ////

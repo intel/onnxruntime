@@ -301,11 +301,11 @@ ov::element::Type GetOpenVINOElementType(ONNX_NAMESPACE::TensorProto_DataType dt
 
 // Function to handle tensor creation from external data
 void CreateOVTensors(const std::string& device_name,
-                     weight_info_map& metadata_map,
+                     weight_info_map& weight_info_map,
                      std::istream& stream) {
   auto stream_start_pos = stream.tellg();
 
-  for (auto& [key, value] : metadata_map) {
+  for (auto& [key, value] : weight_info_map) {
     if (value.tensor) continue;
 
     // Get element data type
@@ -334,59 +334,59 @@ void CreateOVTensors(const std::string& device_name,
   }
 }
 
-void DestroyOVTensors(weight_info_map& metadata_map) {
-  for (auto& [key, value] : metadata_map) {
+void DestroyOVTensors(weight_info_map& weight_info_map) {
+  for (auto& [key, value] : weight_info_map) {
     if (value.tensor) {
       value.tensor.reset();
     }
   }
-  metadata_map.clear();
+  weight_info_map.clear();
 }
-
-std::optional<std::string> GetExternalWeightFilename(const GraphViewer& graph) {
-  auto get_external_location = [](const ONNX_NAMESPACE::TensorProto& proto) -> std::optional<std::string> {
-    using mutable_proto_t = ONNX_NAMESPACE::TensorProto*;
-    auto& mutable_proto = *const_cast<mutable_proto_t>(&proto);
-    auto* entry_protos = mutable_proto.mutable_external_data();
-
-    if (proto.has_data_location() && proto.data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
-      for (int i = 0; i < entry_protos->size(); i++) {
-        auto& string_entry_proto{entry_protos->at(i)};
-        const auto& pb_key{*(string_entry_proto.mutable_key())};
-        const auto& pb_value{*(string_entry_proto.mutable_value())};
-        if (pb_key == "location") {
-          return std::make_optional<std::string>(pb_value);
-        }
-      }
-    }
-
-    return std::nullopt;
-  };
-
-  // Handle constant initializers
-  auto& initializers = graph.GetAllInitializedTensors();
-  for (const auto& it : initializers) {
-    if (auto result = get_external_location(*it.second)) {
-      return result;
-    }
-  }
-
-  // Handle outer-scope constant initializers
-  for (auto& node_idx : graph.GetNodesInTopologicalOrder()) {
-    const auto& node = graph.GetNode(node_idx);
-    for (const auto& input : node->InputDefs()) {
-      if (graph.IsConstantInitializer(input->Name(), true)) {
-        const auto& initializer_tensor = *graph.GetConstantInitializer(input->Name(), true);
-
-        if (auto result = get_external_location(initializer_tensor)) {
-          return result;
-        }
-      }
-    }
-  }
-
-  return std::nullopt;
-}
+//
+//std::optional<fs::path> GetExternalWeightFilename(const GraphViewer& graph) {
+//  auto get_external_location = [](const ONNX_NAMESPACE::TensorProto& proto) -> std::optional<std::string> {
+//    using mutable_proto_t = ONNX_NAMESPACE::TensorProto*;
+//    auto& mutable_proto = *const_cast<mutable_proto_t>(&proto);
+//    auto* entry_protos = mutable_proto.mutable_external_data();
+//
+//    if (proto.has_data_location() && proto.data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
+//      for (int i = 0; i < entry_protos->size(); i++) {
+//        auto& string_entry_proto{entry_protos->at(i)};
+//        const auto& pb_key{*(string_entry_proto.mutable_key())};
+//        const auto& pb_value{*(string_entry_proto.mutable_value())};
+//        if (pb_key == "location") {
+//          return std::make_optional<std::string>(pb_value);
+//        }
+//      }
+//    }
+//
+//    return std::nullopt;
+//  };
+//
+//  // Handle constant initializers
+//  auto& initializers = graph.GetAllInitializedTensors();
+//  for (const auto& it : initializers) {
+//    if (auto result = get_external_location(*it.second)) {
+//      return result;
+//    }
+//  }
+//
+//  // Handle outer-scope constant initializers
+//  for (auto& node_idx : graph.GetNodesInTopologicalOrder()) {
+//    const auto& node = graph.GetNode(node_idx);
+//    for (const auto& input : node->InputDefs()) {
+//      if (graph.IsConstantInitializer(input->Name(), true)) {
+//        const auto& initializer_tensor = *graph.GetConstantInitializer(input->Name(), true);
+//
+//        if (auto result = get_external_location(initializer_tensor)) {
+//          return result;
+//        }
+//      }
+//    }
+//  }
+//
+//  return std::nullopt;
+//}
 
 }  // namespace backend_utils
 }  // namespace openvino_ep

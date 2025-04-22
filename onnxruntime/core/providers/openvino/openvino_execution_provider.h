@@ -73,7 +73,6 @@ class OpenVINOExecutionProvider : public IExecutionProvider {
   SessionContext session_context_;
   std::shared_ptr<SharedContext> shared_context_;
   std::list<BackendManager> backend_managers_;  // EP session owns the backend objects
-  EPCtxHandler ep_ctx_handle_;
 };
 
 }  // namespace openvino_ep

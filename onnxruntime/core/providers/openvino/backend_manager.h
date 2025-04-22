@@ -21,10 +21,8 @@ class BackendManager {
  public:
   BackendManager(SessionContext& session_context,
                  SharedContext& shared_context,
-                 const onnxruntime::Node& fused_node,
-                 const onnxruntime::GraphViewer& subgraph,
-                 const logging::Logger& logger,
-                 EPCtxHandler& ctx_handle);
+                 const IExecutionProvider::FusedNodeAndGraph& fused_node_graph,
+                 std::optional<std::ifstream>& weights_stream);
   void Compute(OrtKernelContext* context);
   void ShutdownBackendManager();
   SessionContext& GetSessionContext();
@@ -47,14 +45,12 @@ class BackendManager {
   ReWriteInputShapeInfo(const ONNX_NAMESPACE::ModelProto& model_proto,
                         const std::vector<std::vector<int64_t>>& input_shapes);
 
+  SessionContext& session_context_;
+  SharedContext& shared_context_;
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_;
   std::shared_ptr<IBackend> concrete_backend_;
   std::map<std::string, std::shared_ptr<IBackend>> backend_map_;
   SubGraphContext subgraph_context_;
-  EPCtxHandler& ep_ctx_handle_;
-  SessionContext& session_context_;
-  SharedContext& shared_context_;
-  std::optional<fs::path> external_weights_;
 };
 
 }  // namespace openvino_ep

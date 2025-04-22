@@ -35,13 +35,12 @@ ov::CompiledModel& BackendManager::GetOVCompiledModel() {
 
 BackendManager::BackendManager(SessionContext& session_context,
                                SharedContext& shared_context,
-                               const onnxruntime::Node& fused_node,
-                               const onnxruntime::GraphViewer& subgraph,
-                               const logging::Logger& logger,
-                               EPCtxHandler& ep_ctx_handle) : ep_ctx_handle_(ep_ctx_handle),
-                                                              session_context_(session_context),
-                                                              shared_context_{shared_context} {
-  subgraph_context_.is_ep_ctx_graph = ep_ctx_handle_.CheckForOVEPCtxNodeInGraph(subgraph);
+                               const IExecutionProvider::FusedNodeAndGraph& fused_node_graph,
+                               std::optional<std::ifstream>& weights_stream) : session_context_(session_context),
+                                                                               shared_context_{shared_context} {
+  const auto& subgraph = fused_node_graph.filtered_graph.get();
+  const auto& fused_node = fused_node_graph.fused_node.get();
+  subgraph_context_.is_ep_ctx_graph = session_context.ep_ctx_handler.CheckForOVEPCtxNodeInGraph(subgraph);
 
   subgraph_context_.model_precision = [&](const GraphViewer& graph_viewer) {
     // return empty if graph has no inputs or if types are not one of FP32/FP16
@@ -77,35 +76,32 @@ BackendManager::BackendManager(SessionContext& session_context,
   ptr_stream_t model_stream;
   std::unique_ptr<onnx::ModelProto> model_proto;
   if (subgraph_context_.is_ep_ctx_graph) {
-    model_stream = ep_ctx_handle_.GetModelBlobStream(session_context_.so_context_file_path, subgraph);
+    model_stream = session_context.ep_ctx_handler.GetModelBlobStream(session_context_.so_context_file_path, subgraph);
   } else {
-    model_proto = GetModelProtoFromFusedNode(fused_node, subgraph, logger);
+    model_proto = GetModelProtoFromFusedNode(fused_node, subgraph, session_context_.logger);
   }
   std::string device_type = session_context_.device_type;
 
-  // Check if model is using external weights
-  if (auto filename = backend_utils::GetExternalWeightFilename(subgraph)) {
-    std::filesystem::path weights_filepath = session_context_.onnx_model_path_name.parent_path() / filename.value();
+  //// Weights can be internal (insource model) or external (in context binary or
+  //// separate file). This block prepares an  external weights input stream.
+  // if (auto filename = backend_utils::GetExternalWeightFilename(subgraph)) {
+  //   // Model is using external weights
+  //   std::filesystem::path weights_filepath = session_context_.onnx_model_path_name.parent_path() / filename.value();
 
-    // Initialize external weights with fully qualified path
-    if (!std::filesystem::exists(weights_filepath)) {
-      ORT_THROW("Error: Failed to locate weight file at ", weights_filepath.string());
-    }
+  //  // Initialize external weights with fully qualified path
+  //  if (!std::filesystem::exists(weights_filepath)) {
+  //    ORT_THROW("Error: Failed to locate weight file at ", weights_filepath.string());
+  //  }
 
-    external_weights_.emplace(weights_filepath);
-  }
+  //  external_weights_.emplace(weights_filepath);
+  //}
 
   if (session_context_.so_share_ep_contexts) {
     // File is guaranteed to exist at this point
-    ORT_ENFORCE(external_weights_.has_value(), "Expected external weight object to be valid");
-    std::ifstream file(external_weights_.value(), std::ios::binary);
-    file.exceptions(std::ifstream::failbit | std::ifstream::badbit);
+    ORT_ENFORCE(weights_stream.has_value(), "Expected external weight object to be valid");
     backend_utils::CreateOVTensors(session_context_.device_type,
                                    shared_context_.shared_weight_info_,
-                                   file);
-    // backend_utils::CreateOVTensors(session_context_.device_type,
-    //                                shared_context_.shared_weight_info_,
-    //                                ep_ctx_handle.GetContextBinaryStream());
+                                   weights_stream.value());
   }
 
   if (ModelHasSymbolicInputDims(subgraph)) {
@@ -222,45 +218,22 @@ Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVie
   // If not embed_mode, dump the blob here and only pass on the path to the blob
   std::string model_blob_str;
   auto compiled_model = concrete_backend_->GetOVCompiledModel();
-  if (!session_context_.so_share_ep_contexts &&
-      session_context_.so_context_embed_mode) {  // Internal blob
+  if (!session_context_.ep_ctx_bin_writer.has_value()) {  // Internal blob
     std::ostringstream model_blob_stream;
     compiled_model.export_model(model_blob_stream);
     model_blob_str = std::move(model_blob_stream).str();
-    if (model_blob_str.empty()) {
-      ORT_THROW("Model blob stream is empty after exporting the compiled model.");
-    }
+    ORT_ENFORCE(!model_blob_str.empty(), "Model blob stream is empty after exporting the compiled model.");
   } else {  // External blob
-    // Build name by combining EpCtx model name (if available) and subgraph name. Model
-    // name is not available in when creating a session from memory
-    auto name = session_context_.so_context_file_path.stem().string();
-    if (name.empty() && !graph_body_viewer.ModelPath().empty()) {
-      name = graph_body_viewer.ModelPath().stem().string();
-    }
-    ORT_ENFORCE(!name.empty());
-    name += "_" + subgraph_context_.subgraph_name;
-
-    std::filesystem::path blob_filename = session_context_.so_context_file_path;
-    if (blob_filename.empty()) {
-      blob_filename = session_context_.onnx_model_path_name;
-    }
-    blob_filename = blob_filename.parent_path() / name;
-    blob_filename.replace_extension("blob");
-    std::ofstream blob_file(blob_filename,
-                            std::ios::out | std::ios::trunc | std::ios::binary);
-    if (!blob_file) {
-      ORT_THROW("Unable to open file for epctx model dump.");
-    }
-    compiled_model.export_model(blob_file);
-    compiled_model.export_model(ep_ctx_handle_.PreInsertBlob());
-    ep_ctx_handle_.PostInsertBlob(std::string{"subgraph_name"});
-    model_blob_str = blob_filename.filename().string();
+    auto& writer = session_context_.ep_ctx_bin_writer.value().get();
+    compiled_model.export_model(writer.GetContextBinStream());
+    writer.PostInsertBlob(subgraph_context_.subgraph_name);
+    model_blob_str = writer.GetContextBinPath();
   }
 
-  ORT_RETURN_IF_ERROR(ep_ctx_handle_.AddOVEPCtxNodeToGraph(graph_body_viewer,
-                                                           subgraph_context_.subgraph_name,
-                                                           session_context_.so_context_embed_mode,
-                                                           std::move(model_blob_str)));
+  ORT_RETURN_IF_ERROR(session_context_.ep_ctx_handler.AddOVEPCtxNodeToGraph(graph_body_viewer,
+                                                                            subgraph_context_.subgraph_name,
+                                                                            session_context_.so_context_embed_mode,
+                                                                            std::move(model_blob_str)));
 
   return Status::OK();
 }
