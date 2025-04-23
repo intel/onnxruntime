@@ -15,7 +15,7 @@ namespace constants {
 constexpr inline std::string_view metadata_bin_name{"weight_info_map.bin"};
 constexpr inline uint32_t max_device_available{8};
 constexpr inline size_t max_safe_dimensions{1024};
-constexpr inline bool save_weights_in_context_bin{true};
+constexpr inline bool save_weights_in_context_bin{false};
 
 namespace ov_version {
 constexpr inline uint32_t major{OPENVINO_VERSION_MAJOR};

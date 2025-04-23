@@ -101,23 +101,19 @@ void read_bytes(std::istream& stream, std::string& value);
 
 template <typename T>
 struct streamable {
-  template <typename S>
-  friend std::streampos write_bytes(S& stream, const T& value);
-
-  template <typename S>
-  friend void read_bytes(S& stream, T& value);
+  friend std::streampos write_bytes(std::ostream& stream, const T& value);
+  friend void read_bytes(std::istream& stream, T& value);
 };
 
 // Serializable unordered map
-template <typename K, typename V, typename... Args>
-struct io_unordered_map : std::unordered_map<K, V, Args...>, streamable<io_unordered_map<K, V, Args...>> {
-  template <typename S>
-  friend std::streampos write_bytes(S& stream, const io_unordered_map& map) {
+template <typename... Args>
+struct io_unordered_map : std::unordered_map<Args...>, streamable<io_unordered_map<Args...>> {
+  using map_type = std::unordered_map<Args...>;
+  friend std::streampos write_bytes(std::ostream& stream, const io_unordered_map& map) {
     try {
       write_bytes(stream, map.size());
 
       // Write each key-value pair
-      // Put elements in separate lines to facilitate reading
       for (const auto& [key, value] : map) {
         write_bytes(stream, key);
         write_bytes(stream, value);
@@ -131,15 +127,14 @@ struct io_unordered_map : std::unordered_map<K, V, Args...>, streamable<io_unord
     return stream.tellp();
   }
 
-  template <typename S>
-  friend void read_bytes(S& stream, io_unordered_map& map) {
+  friend void read_bytes(std::istream& stream, io_unordered_map& map) {
     size_t map_size{0};
     try {
       read_bytes(stream, map_size);
 
       while (map_size--) {
-        K key;
-        V value;
+        typename map_type::key_type key;
+        typename map_type::mapped_type value;
         read_bytes(stream, key);
         read_bytes(stream, value);
         map.emplace(key, value);

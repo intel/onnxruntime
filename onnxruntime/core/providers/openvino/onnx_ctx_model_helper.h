@@ -53,23 +53,8 @@ struct weight_map_value : streamable<weight_map_value> {
   weight_map_value(auto l, auto d_o, auto s, auto d, auto et) : location{l}, data_offset{d_o}, size{s}, dimensions{d}, element_type{et} {}
   bool operator==(const weight_map_value& other) const;
 
-  template <typename S>
-  friend std::streampos write_bytes(S& stream, const weight_map_value& value) {
-    write_bytes(stream, value.location);
-    write_bytes(stream, value.data_offset);
-    write_bytes(stream, value.size);
-    write_bytes(stream, value.dimensions);
-    return write_bytes(stream, value.element_type);
-  }
-
-  template <typename S>
-  friend void read_bytes(S& stream, weight_map_value& value) {
-    read_bytes(stream, value.location);
-    read_bytes(stream, value.data_offset);
-    read_bytes(stream, value.size);
-    read_bytes(stream, value.dimensions);
-    read_bytes(stream, value.element_type);
-  }
+  friend std::streampos write_bytes(std::ostream&, const weight_map_value&);
+  friend void read_bytes(std::istream&, weight_map_value&);
 
   std::string location;
   unsigned int data_offset{0};
@@ -86,6 +71,9 @@ struct compiled_model_info_value : streamable<compiled_model_info_value> {
   compiled_model_info_value(std::streampos s, std::streamoff o) : start{s}, offset{o} {}
   bool operator==(const compiled_model_info_value& other) const;
 
+  friend std::streampos write_bytes(std::ostream&, const compiled_model_info_value&);
+  friend void read_bytes(std::istream&, compiled_model_info_value&);
+
   std::streampos start;
   std::streamoff offset;
 };
@@ -94,6 +82,10 @@ using compiled_model_info_map = io_unordered_map<std::string, compiled_model_inf
 
 struct context_bin_header : streamable<context_bin_header> {
   context_bin_header() = default;
+  bool operator==(const context_bin_header& value) const;
+
+  friend std::streampos write_bytes(std::ostream&, const context_bin_header&);
+  friend void read_bytes(std::istream&, context_bin_header&);
 
   uint32_t bin_version{constants::ep_context::expected_bin_version};
   struct {
@@ -102,54 +94,6 @@ struct context_bin_header : streamable<context_bin_header> {
     std::streampos weights_map{0};
     std::streampos compiled_models_map{0};
   } sections;
-
-  template <typename S>
-  friend std::streampos write_bytes(S& stream, const context_bin_header& value) {
-    write_bytes(stream, value.bin_version);
-    write_bytes(stream, (std::streamoff)value.sections.weights);
-    write_bytes(stream, (std::streamoff)value.sections.compiled_models);
-    write_bytes(stream, (std::streamoff)value.sections.weights_map);
-    return write_bytes(stream, (std::streamoff)value.sections.compiled_models_map);
-    // write_bytes(stream, value.sections.weights.state());
-    // write_bytes(stream, value.sections.compiled_models.state());
-    // write_bytes(stream, value.sections.weights_map.state());
-    // return write_bytes(stream, value.sections.compiled_models_map.state());
-    // stream << value.sections.weights;
-    // stream << value.sections.compiled_models;
-    // stream << value.sections.weights_map;
-    // stream << value.sections.compiled_models_map;
-    return stream.tellp();
-  }
-
-  template <typename S>
-  friend void read_bytes(S& stream, context_bin_header& value) {
-    read_bytes(stream, value.bin_version);
-    // read_bytes(stream, value.sections.weights);
-    // read_bytes(stream, value.sections.compiled_models);
-    // read_bytes(stream, value.sections.weights_map);
-    // read_bytes(stream, value.sections.compiled_models_map);
-    // stream >> value.sections.weights;
-    // stream >> value.sections.compiled_models;
-    // stream >> value.sections.weights_map;
-    // stream >> value.sections.compiled_models_map;
-    std::streamoff offset;
-    read_bytes(stream, offset);
-    value.sections.weights = std::streampos(offset);
-    read_bytes(stream, offset);
-    value.sections.compiled_models = std::streampos(offset);
-    read_bytes(stream, offset);
-    value.sections.weights_map = std::streampos(offset);
-    read_bytes(stream, offset);
-    value.sections.compiled_models_map = std::streampos(offset);
-  }
-
-  bool operator==(const context_bin_header& value) const {
-    return (bin_version == value.bin_version) &&
-           (sections.weights == value.sections.weights) &&
-           (sections.compiled_models == value.sections.compiled_models) &&
-           (sections.weights_map == value.sections.weights_map) &&
-           (sections.compiled_models_map == value.sections.compiled_models_map);
-  }
 };
 
 struct EPCtxBinReader {

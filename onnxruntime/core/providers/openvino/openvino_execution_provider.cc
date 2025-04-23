@@ -123,9 +123,10 @@ common::Status OpenVINOExecutionProvider::Compile(
   if (session_context_.so_context_enable && !session_context_.so_context_embed_mode) {
     fs::path context_binary_name = session_context_.onnx_model_path_name.stem().string() + "_openvino.bin";
     ep_ctx_bin_writer = std::make_unique<EPCtxBinWriter>(session_context_.ep_ctx_handler,
-                                                              context_binary_name,
-                                                              external_weights,
-                                                              shared_weight_info_);
+                                                         context_binary_name,
+                                                         external_weights,
+                                                         shared_weight_info_);
+    session_context_.ep_ctx_bin_writer = std::ref(*ep_ctx_bin_writer);
   }
 
   for (const FusedNodeAndGraph& fused_node_graph : fused_nodes) {
@@ -139,12 +140,12 @@ common::Status OpenVINOExecutionProvider::Compile(
                                                            fused_node_graph,
                                                            weights_stream);
 
-  struct OpenVINOEPFunctionState {
-    AllocateFunc allocate_func = nullptr;
-    DestroyFunc destroy_func = nullptr;
-    AllocatorHandle allocator_handle = nullptr;
-    BackendManager& backend_manager;
-  };
+    struct OpenVINOEPFunctionState {
+      AllocateFunc allocate_func = nullptr;
+      DestroyFunc destroy_func = nullptr;
+      AllocatorHandle allocator_handle = nullptr;
+      BackendManager& backend_manager;
+    };
 
     NodeComputeInfo compute_info;
     compute_info.create_state_func =
@@ -252,6 +253,7 @@ const InlinedVector<const Node*> OpenVINOExecutionProvider::GetEpContextNodes() 
   return session_context_.ep_ctx_handler.GetEPCtxNodes();
 }
 
+// Returns the location string from the first external initializer nodes found or nullopt if none found
 std::optional<fs::path> GetExternalWeightFilename(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes) {
   auto get_external_location = [](const ONNX_NAMESPACE::TensorProto& proto) -> std::optional<std::string> {
     using mutable_proto_t = ONNX_NAMESPACE::TensorProto*;

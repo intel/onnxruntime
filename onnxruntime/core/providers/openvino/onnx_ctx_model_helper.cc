@@ -193,11 +193,6 @@ EPCtxBinWriter::EPCtxBinWriter(EPCtxHandler& ep_ctx_handler,
                                                                                           shared_weights_info_{shared_weights_info} {
   ORT_ENFORCE(!context_bin_stream_.is_open(), "Unexpected open context binary file");
 
-  // External weights can either be copied as a hard link next to the context
-  // model or stored inside the context binary. For now that external weights
-  // are always stored in the context binary
-  bool weights_in_ctx_bin = external_weights_path.has_value() && save_weights_in_context_bin;
-
   context_bin_path_name_ = ep_ctx_handler_.ep_context_model_path_ / context_bin_name;
   context_bin_stream_.open(context_bin_path_name_, std::ios::out | std::ios::binary);
   ORT_ENFORCE(context_bin_stream_.is_open(), "Context binary file failed to open");
@@ -206,17 +201,32 @@ EPCtxBinWriter::EPCtxBinWriter(EPCtxHandler& ep_ctx_handler,
   // data will be written after all the context binary sections are written
   auto weights_section_pos = write_bytes(context_bin_stream_, header_);
 
-  if (weights_in_ctx_bin) {
-    // Store weights in context binary
-    header_.sections.weights = weights_section_pos;
-    auto external_weights_full_path = external_weights_path.value();
-    if (auto weights_stream = std::ifstream(external_weights_full_path, std::ios::binary)) {
-      context_bin_stream_ << weights_stream.rdbuf();
-      header_.sections.compiled_models = context_bin_stream_.tellp();
+  // External weights can either be copied as a hard link next to the context
+  // model or stored inside the context binary. For now that external weights
+  // are always stored in the context binary
+  if (external_weights_path.has_value()) {
+    if constexpr (save_weights_in_context_bin) {
+      // Store weights in context binary
+      header_.sections.weights = weights_section_pos;
+      auto external_weights_full_path = external_weights_path.value();
+      if (auto weights_stream = std::ifstream(external_weights_full_path, std::ios::binary)) {
+        context_bin_stream_ << weights_stream.rdbuf();
+        header_.sections.compiled_models = context_bin_stream_.tellp();
+      }
+    } else {
+      // Skip weights section, compiled model
+      header_.sections.compiled_models = weights_section_pos;
+
+      // Create a hard link or copy
+      auto new_weights_file_path = ep_ctx_handler_.ep_context_model_path_ / external_weights_path.value().filename();
+      auto& original_weights_path = external_weights_path.value();
+      try {
+        std::filesystem::create_hard_link(original_weights_path, new_weights_file_path);
+      } catch (const std::filesystem::filesystem_error& e) {
+        LOGS_DEFAULT(WARNING) << "Failed to create hard link for weights: " << e.what() << " Falling back to copy.";
+        std::filesystem::copy_file(original_weights_path, new_weights_file_path);
+      }
     }
-  } else {
-    // Skip weights section, compiled model
-    header_.sections.compiled_models = weights_section_pos;
   }
 }
 
@@ -231,7 +241,9 @@ EPCtxBinWriter::~EPCtxBinWriter() {
   write_bytes(context_bin_stream_, shared_weights_info_);
 
   // Update header
-  write_bytes(context_bin_stream_, header_, 0);
+  context_bin_stream_.seekp(0);
+  write_bytes(context_bin_stream_, header_);
+  // write_bytes(context_bin_stream_, header_, 0);
 
   context_bin_stream_.close();
 
@@ -240,21 +252,6 @@ EPCtxBinWriter::~EPCtxBinWriter() {
   // TEMP CODE
   // Metadata is always read from epctx model location
   //
-
-  // fs::path metadata_filename = ep_ctx_handler_.ep_context_model_path_ / metadata_bin_name;
-  // if (std::ofstream file{metadata_filename, std::ios::binary}) {
-  //   write_bytes(file, shared_weights_info_);
-  // }
-
-  //// Validate serialization round trip
-  // if (auto filein = std::ifstream(metadata_filename, std::ios::binary)) {
-  //   openvino_ep::weight_info_map read_weights_info;
-  //   read_bytes(filein, read_weights_info);
-
-  //  if (read_weights_info != shared_weights_info_) {
-  //    LOGS_DEFAULT(ERROR) << "Shared weight info written/read incorrectly\n";
-  //  }
-  //}
   if (auto filein = std::ifstream(context_bin_path_name_, std::ios::binary)) {
     context_bin_header read_header;
     read_bytes(filein, read_header);
@@ -263,12 +260,20 @@ EPCtxBinWriter::~EPCtxBinWriter() {
     }
 
     compiled_model_info_map read_compiled_models_info;
-    read_bytes(filein, read_compiled_models_info, read_header.sections.compiled_models_map);
-    assert(compiled_models_info_ == read_compiled_models_info);
+    filein.seekg(read_header.sections.compiled_models_map);
+    read_bytes(filein, read_compiled_models_info);
+    // read_bytes(filein, read_compiled_models_info, read_header.sections.compiled_models_map);
+    if (compiled_models_info_ != read_compiled_models_info) {
+      LOGS_DEFAULT(ERROR) << "Shared weight info written/read incorrectly\n";
+    }
 
     weight_info_map read_shared_weights_info;
-    read_bytes(filein, read_shared_weights_info, read_header.sections.weights_map);
-    assert(shared_weights_info_ == read_shared_weights_info);
+    filein.seekg(read_header.sections.weights_map);
+    read_bytes(filein, read_shared_weights_info);
+    // read_bytes(filein, read_shared_weights_info, read_header.sections.weights_map);
+    if (shared_weights_info_ != read_shared_weights_info) {
+      LOGS_DEFAULT(ERROR) << "Shared weight info written/read incorrectly\n";
+    }
   }
   /////////////////////////////////////////////////////////////////////////////////////////////
 }
@@ -285,20 +290,72 @@ void EPCtxBinWriter::PostInsertBlob(const std::string& blob_name) {
   compiled_models_info_[blob_name] = {pre_blob_insert_, offset};
 }
 
-template <typename S>
-std::streampos write_bytes(S& stream, const compiled_model_info_value& value) {
+///////////////////////////////////////////////////////////////////////////////
+// weight_map_value
+// std::streampos write_bytes(KeyT &,struct onnxruntime::openvino_ep::weight_map_value const &)
+std::streampos write_bytes(std::ostream& stream, const weight_map_value& value) {
+  write_bytes(stream, value.location);
+  write_bytes(stream, value.data_offset);
+  write_bytes(stream, value.size);
+  write_bytes(stream, value.dimensions);
+  return write_bytes(stream, value.element_type);
+}
+
+void read_bytes(std::istream& stream, weight_map_value& value) {
+  read_bytes(stream, value.location);
+  read_bytes(stream, value.data_offset);
+  read_bytes(stream, value.size);
+  read_bytes(stream, value.dimensions);
+  read_bytes(stream, value.element_type);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// compiled_model_info_value
+//
+std::streampos write_bytes(std::ostream& stream, const compiled_model_info_value& value) {
   write_bytes(stream, value.start);
   return write_bytes(stream, value.offset);
 }
 
-template <typename S>
-void read_bytes(S& stream, compiled_model_info_value& value) {
+void read_bytes(std::istream& stream, compiled_model_info_value& value) {
   read_bytes(stream, value.start);
   read_bytes(stream, value.offset);
 }
 
 bool compiled_model_info_value::operator==(const compiled_model_info_value& other) const {
   return (start == other.start) && (offset == other.offset);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// context_bin_header
+//
+std::streampos write_bytes(std::ostream& stream, const context_bin_header& value) {
+  write_bytes(stream, value.bin_version);
+  write_bytes(stream, (std::streamoff)value.sections.weights);
+  write_bytes(stream, (std::streamoff)value.sections.compiled_models);
+  write_bytes(stream, (std::streamoff)value.sections.weights_map);
+  return write_bytes(stream, (std::streamoff)value.sections.compiled_models_map);
+}
+
+void read_bytes(std::istream& stream, context_bin_header& value) {
+  read_bytes(stream, value.bin_version);
+  std::streamoff offset;
+  read_bytes(stream, offset);
+  value.sections.weights = std::streampos(offset);
+  read_bytes(stream, offset);
+  value.sections.compiled_models = std::streampos(offset);
+  read_bytes(stream, offset);
+  value.sections.weights_map = std::streampos(offset);
+  read_bytes(stream, offset);
+  value.sections.compiled_models_map = std::streampos(offset);
+}
+
+bool context_bin_header::operator==(const context_bin_header& value) const {
+  return (bin_version == value.bin_version) &&
+         (sections.weights == value.sections.weights) &&
+         (sections.compiled_models == value.sections.compiled_models) &&
+         (sections.weights_map == value.sections.weights_map) &&
+         (sections.compiled_models_map == value.sections.compiled_models_map);
 }
 
 }  // namespace openvino_ep
