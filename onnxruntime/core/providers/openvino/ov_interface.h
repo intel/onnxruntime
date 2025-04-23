@@ -90,6 +90,7 @@ struct OVCore : WeakSingleton<OVCore> {
   OVExeNetwork ImportModel(std::istream& model_stream,
                            std::string hw_target,
                            const ov::AnyMap& device_config,
+                           bool enable_causallm,
                            std::string name);
 #ifdef IO_BUFFER_ENABLED
   OVExeNetwork CompileModel(std::shared_ptr<const OVNetwork>& model,

@@ -193,14 +193,50 @@ OVExeNetwork OVCore::CompileModel(const std::string& onnx_model,
 OVExeNetwork OVCore::ImportModel(std::istream& model_stream,
                                  std::string hw_target,
                                  const ov::AnyMap& device_config,
+                                 bool enable_causallm,
                                  std::string name) {
   try {
-    ov::CompiledModel obj;
-    obj = core.import_model(model_stream, hw_target, device_config);
+    OVExeNetwork exe;
+
+    // Check if it's XML
+    std::streampos originalPos = model_stream.tellg();
+    // Allocate space for "<?xml"
+    std::string header(5, '\0');
+    model_stream.read(&header[0], 5);
+
+    // Clear any read errors
+    model_stream.clear();
+    // Restore the stream position (important for reusing the stream)
+    model_stream.seekg(originalPos);
+
+    if (header != "<?xml") {
+      auto obj = core.import_model(model_stream, hw_target, device_config);
+      exe = OVExeNetwork(obj, hw_target);
+    } else {
+      // If the model is XML, we need to load it with the XML content in read_model()
+      // where weights from bin file is directly consumed
+      std::string xml_file_name = name;
+      if (name.size() >= 5 && name.substr(name.size() - 5) == ".onnx") {
+        xml_file_name = name;
+        xml_file_name.replace(name.size() - 5, 5, ".xml");
+      } else {
+        throw std::runtime_error("Invalid model name. Make sure *.onnx, *.xml, and *.bin carry the same name.");
+      }
+
+      // Load the model explicitly with XML contents
+      std::shared_ptr<ov::Model> model = core.read_model(xml_file_name);
+
+      if (enable_causallm) {
+        exe = OVCore::Get()->StatefulCompileModel(model, hw_target, device_config);
+      } else {
+        auto obj = core.compile_model(model, hw_target, device_config);
+        exe = OVExeNetwork(obj, hw_target);
+      }
+    }
+
 #ifndef NDEBUG
     printDebugInfo(exe.Get());
 #endif
-    OVExeNetwork exe(obj, hw_target);
     return exe;
   } catch (const Exception& e) {
     ORT_THROW(log_tag + " Exception while Loading Network for graph: " + name + e.what());
