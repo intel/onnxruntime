@@ -302,8 +302,8 @@ ov::element::Type GetOpenVINOElementType(ONNX_NAMESPACE::TensorProto_DataType dt
 // Function to handle tensor creation from external data
 void CreateOVTensors(const std::string& device_name,
                      weight_info_map& weight_info_map,
-                     std::istream& stream) {
-  auto stream_start_pos = stream.tellg();
+                     std::istream& external_weight_stream) {
+  auto stream_start_pos = external_weight_stream.tellg();
 
   for (auto& [key, value] : weight_info_map) {
     if (value.tensor) continue;
@@ -322,13 +322,15 @@ void CreateOVTensors(const std::string& device_name,
       auto remote_tensor_data = reinterpret_cast<std::istream::char_type*>(remote_tensor.get());
 
       // Copy data to remote tensor
-      read_bytes(stream, data_pos, remote_tensor_data, value.size);
+      read_bytes(external_weight_stream, data_pos, remote_tensor_data, value.size);
+      ORT_ENFORCE(external_weight_stream.good(), "Error while reading weights");
       value.tensor = std::make_shared<ov::Tensor>(remote_tensor);
     } else {
       // Use vanilla tensors
       value.tensor = std::make_shared<ov::Tensor>(ov_elementType, value.dimensions);
       auto tensor_data = reinterpret_cast<std::istream::char_type*>(value.tensor->data());
-      read_bytes(stream, data_pos, tensor_data, value.size);
+      read_bytes(external_weight_stream, data_pos, tensor_data, value.size);
+      ORT_ENFORCE(external_weight_stream.good(), "Error while reading weights");
     }
     ORT_ENFORCE(value.tensor->get_byte_size() == value.size, "Unexpected tensor size mismatch");
   }

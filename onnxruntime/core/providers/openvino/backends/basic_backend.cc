@@ -123,16 +123,16 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
 
   int num_infer_req = (session_context_.num_of_threads > 0) ? session_context_.num_of_threads : 1;
   std::function<void(OVInferRequestPtr)> initializer = [](OVInferRequestPtr) {};
-  auto shared_weight_info_ = shared_context_.shared_weight_info_;
+  auto shared_weight_info = shared_context_.shared_weight_info;
   if (session_context_.so_share_ep_contexts) {
     // When shared ep contexts is set external weight references are transformed to model inputs. This
     // creates an initializer to populate/bind input weight tensors to each inference request
-    initializer = [&shared_weight_info_](OVInferRequestPtr ir_ptr) {
+    initializer = [&shared_weight_info](OVInferRequestPtr ir_ptr) {
       const auto input_count = ir_ptr->GetNumInputs();
       for (auto i = 0u; i < input_count; i++) {
         const auto tensor_key = weight_info_map::key_type{ir_ptr->GetInputTensorName(i)};
-        if (shared_weight_info_.contains(tensor_key)) {
-          auto& value = shared_weight_info_.at(tensor_key);
+        if (shared_weight_info.contains(tensor_key)) {
+          auto& value = shared_weight_info.at(tensor_key);
           ir_ptr->SetTensor(tensor_key, value.tensor);
         }
       }

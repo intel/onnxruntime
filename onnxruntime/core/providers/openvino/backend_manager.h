@@ -22,7 +22,7 @@ class BackendManager {
   BackendManager(SessionContext& session_context,
                  SharedContext& shared_context,
                  const IExecutionProvider::FusedNodeAndGraph& fused_node_graph,
-                 std::optional<std::ifstream>& weights_stream);
+                 fs::path external_weights_full_path);
   void Compute(OrtKernelContext* context);
   void ShutdownBackendManager();
   SessionContext& GetSessionContext();

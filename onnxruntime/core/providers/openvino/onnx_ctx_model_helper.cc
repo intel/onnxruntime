@@ -92,7 +92,7 @@ Status EPCtxHandler::AddOVEPCtxNodeToGraph(const GraphViewer& graph_viewer,
   return Status::OK();
 }
 
-std::unique_ptr<std::istream> EPCtxHandler::GetModelBlobStream(const std::filesystem::path& so_context_file_path, const GraphViewer& graph_viewer) const {
+std::unique_ptr<std::istream> EPCtxHandler::GetModelBlobStream(const std::filesystem::path& so_context_file_path, const GraphViewer& graph_viewer) {
   auto first_index = *graph_viewer.GetNodesInTopologicalOrder().begin();
   auto node = graph_viewer.GetNode(first_index);
   ORT_ENFORCE(node != nullptr);
@@ -108,11 +108,8 @@ std::unique_ptr<std::istream> EPCtxHandler::GetModelBlobStream(const std::filesy
   if (embed_mode) {
     result.reset((std::istream*)new std::istringstream(ep_cache_context));
   } else {
-    auto blob_filepath = so_context_file_path;
-    if (blob_filepath.empty() && !graph_viewer.ModelPath().empty()) {
-      blob_filepath = graph_viewer.ModelPath();
-    }
-    blob_filepath = blob_filepath.parent_path() / ep_cache_context;
+    ORT_ENFORCE(so_context_file_path.has_parent_path(), "Expected ep.context_file_path to contain a parent path");
+    auto blob_filepath = so_context_file_path.parent_path() / ep_cache_context;
     ORT_ENFORCE(std::filesystem::exists(blob_filepath), "Blob file not found: ", blob_filepath.string());
     result.reset((std::istream*)new std::ifstream(blob_filepath, std::ios_base::binary | std::ios_base::in));
   }
@@ -150,45 +147,64 @@ InlinedVector<const Node*> EPCtxHandler::GetEPCtxNodes() const {
   return InlinedVector<const Node*>(epctx_nodes.begin(), epctx_nodes.end());
 }
 
-EPCtxBinReader::EPCtxBinReader(EPCtxHandler& ep_ctx_handler,
-                               const fs::path& bin_file_path,
-                               openvino_ep::weight_info_map& shared_weights_info) : ep_ctx_handler_{ep_ctx_handler} {
-  ORT_ENFORCE(!context_bin_stream_.is_open(), "Unexpected open context binary file");
+EPCtxBinReader::EPCtxBinReader(std::unique_ptr<std::istream>& context_binary_stream,
+                               openvino_ep::weight_info_map& shared_weights_info,
+                               fs::path context_model_parent_path) : context_bin_stream_{std::move(context_binary_stream)} {
+  ORT_ENFORCE(context_bin_stream_, "Invalid context binary stream");
 
-  context_bin_stream_.open(bin_file_path, std::ios::in | std::ios::binary);
+  auto& stream = *context_bin_stream_;
 
   // Read header
-  read_bytes(context_bin_stream_, header_);
+  read_bytes(stream, header_);
 
   ORT_ENFORCE(header_.bin_version == ep_context::expected_bin_version, "Binary file version mismatch");
 
   // Read compiled model information
-  read_bytes(context_bin_stream_, compiled_models_info_, header_.sections.compiled_models_map);
+  stream.seekg(header_.sections.compiled_models_map);
+  read_bytes(stream, compiled_models_info_);
+  // read_bytes(stream, compiled_models_info_, header_.sections.compiled_models_map);
 
   // Read weight map
-  read_bytes(context_bin_stream_, shared_weights_info, header_.sections.weights_map);
+  stream.seekg(header_.sections.weights_map);
+  read_bytes(stream, shared_weights_info);
+  // read_bytes(stream, shared_weights_info, header_.sections.weights_map);
 
   if (header_.sections.weights == 0) {
     // Create input stream for external weights
     auto relative_filepath = GetExternalWeightsRelativePath(shared_weights_info);
     ORT_ENFORCE(relative_filepath.has_value(), "Expected a valid external weight relative path");
-    auto external_weights_filepath = bin_file_path.parent_path() / relative_filepath.value();
-    external_weights_stream_.emplace(external_weights_filepath, std::ios::binary);
+    auto external_weights_filepath = context_model_parent_path / relative_filepath.value();
+    ORT_ENFORCE(fs::exists(external_weights_filepath));
+    external_weights_stream_.open(external_weights_filepath, std::ios::binary);
+    ORT_ENFORCE(external_weights_stream_, "Error opening external weight file at ", external_weights_filepath.string());
   }
 }
 
-EPCtxBinReader::~EPCtxBinReader() {
-  if (!context_bin_stream_.is_open()) {
-    LOGS_DEFAULT(WARNING) << "Expected open context binary file\n";
+std::unique_ptr<std::istringstream> EPCtxBinReader::GetCompiledModelStream(const std::string& subgraph_name) const {
+  if (compiled_models_info_.contains(subgraph_name)) {
+    const auto& info = compiled_models_info_.at(subgraph_name);
+    std::istream& stream = *context_bin_stream_;
+    stream.seekg(info.start);
+    std::string temp;
+    temp.resize(info.size);
+    stream.read(temp.data(), temp.size());
+    return std::make_unique<std::istringstream>(std::move(temp));
   }
-  context_bin_stream_.close();
+  return {};
+}
+
+EPCtxBinReader::~EPCtxBinReader() {
+  // if (!context_bin_stream_.is_open()) {
+  //   LOGS_DEFAULT(WARNING) << "Expected open context binary file\n";
+  // }
+  // context_bin_stream_.close();
 }
 
 // context_bin_name: full path to the context binary name
 // external_weights: path to external weights if available
 EPCtxBinWriter::EPCtxBinWriter(EPCtxHandler& ep_ctx_handler,
                                const fs::path& context_bin_name,
-                               std::optional<fs::path> external_weights_path,
+                               const fs::path& external_weights_full_path,
                                const openvino_ep::weight_info_map& shared_weights_info) : ep_ctx_handler_{ep_ctx_handler},
                                                                                           shared_weights_info_{shared_weights_info} {
   ORT_ENFORCE(!context_bin_stream_.is_open(), "Unexpected open context binary file");
@@ -204,11 +220,10 @@ EPCtxBinWriter::EPCtxBinWriter(EPCtxHandler& ep_ctx_handler,
   // External weights can either be copied as a hard link next to the context
   // model or stored inside the context binary. For now that external weights
   // are always stored in the context binary
-  if (external_weights_path.has_value()) {
+  if (!external_weights_full_path.empty()) {
     if constexpr (save_weights_in_context_bin) {
       // Store weights in context binary
       header_.sections.weights = weights_section_pos;
-      auto external_weights_full_path = external_weights_path.value();
       if (auto weights_stream = std::ifstream(external_weights_full_path, std::ios::binary)) {
         context_bin_stream_ << weights_stream.rdbuf();
         header_.sections.compiled_models = context_bin_stream_.tellp();
@@ -218,8 +233,8 @@ EPCtxBinWriter::EPCtxBinWriter(EPCtxHandler& ep_ctx_handler,
       header_.sections.compiled_models = weights_section_pos;
 
       // Create a hard link or copy
-      auto new_weights_file_path = ep_ctx_handler_.ep_context_model_path_ / external_weights_path.value().filename();
-      auto& original_weights_path = external_weights_path.value();
+      auto new_weights_file_path = ep_ctx_handler_.ep_context_model_path_ / external_weights_full_path.filename();
+      auto& original_weights_path = external_weights_full_path;
       try {
         std::filesystem::create_hard_link(original_weights_path, new_weights_file_path);
       } catch (const std::filesystem::filesystem_error& e) {
@@ -286,8 +301,8 @@ std::ostream& EPCtxBinWriter::GetContextBinStream() {
 
 void EPCtxBinWriter::PostInsertBlob(const std::string& blob_name) {
   std::streampos post_blob_insert = context_bin_stream_.tellp();
-  std::streamoff offset = post_blob_insert - pre_blob_insert_;
-  compiled_models_info_[blob_name] = {pre_blob_insert_, offset};
+  std::streamoff size = post_blob_insert - pre_blob_insert_;
+  compiled_models_info_[blob_name] = {pre_blob_insert_, size};
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -314,16 +329,16 @@ void read_bytes(std::istream& stream, weight_map_value& value) {
 //
 std::streampos write_bytes(std::ostream& stream, const compiled_model_info_value& value) {
   write_bytes(stream, value.start);
-  return write_bytes(stream, value.offset);
+  return write_bytes(stream, value.size);
 }
 
 void read_bytes(std::istream& stream, compiled_model_info_value& value) {
   read_bytes(stream, value.start);
-  read_bytes(stream, value.offset);
+  read_bytes(stream, value.size);
 }
 
 bool compiled_model_info_value::operator==(const compiled_model_info_value& other) const {
-  return (start == other.start) && (offset == other.offset);
+  return (start == other.start) && (size == other.size);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -339,15 +354,15 @@ std::streampos write_bytes(std::ostream& stream, const context_bin_header& value
 
 void read_bytes(std::istream& stream, context_bin_header& value) {
   read_bytes(stream, value.bin_version);
-  std::streamoff offset;
-  read_bytes(stream, offset);
-  value.sections.weights = std::streampos(offset);
-  read_bytes(stream, offset);
-  value.sections.compiled_models = std::streampos(offset);
-  read_bytes(stream, offset);
-  value.sections.weights_map = std::streampos(offset);
-  read_bytes(stream, offset);
-  value.sections.compiled_models_map = std::streampos(offset);
+  std::streamoff size;
+  read_bytes(stream, size);
+  value.sections.weights = std::streampos(size);
+  read_bytes(stream, size);
+  value.sections.compiled_models = std::streampos(size);
+  read_bytes(stream, size);
+  value.sections.weights_map = std::streampos(size);
+  read_bytes(stream, size);
+  value.sections.compiled_models_map = std::streampos(size);
 }
 
 bool context_bin_header::operator==(const context_bin_header& value) const {

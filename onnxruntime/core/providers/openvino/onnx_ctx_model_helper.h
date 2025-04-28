@@ -6,6 +6,7 @@
 #include <sstream>
 #include <string>
 #include <memory>
+#include <functional>
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/ov_interface.h"
@@ -33,7 +34,7 @@ class EPCtxHandler {
                                const std::string& graph_name,
                                const bool embed_mode,
                                std::string&& model_blob_str) const;
-  std::unique_ptr<std::istream> GetModelBlobStream(const std::filesystem::path& so_context_file_path, const GraphViewer& graph_viewer) const;
+  std::unique_ptr<std::istream> static GetModelBlobStream(const std::filesystem::path& so_context_file_path, const GraphViewer& graph_viewer);
   InlinedVector<const Node*> GetEPCtxNodes() const;
 
  private:
@@ -68,14 +69,14 @@ using weight_info_map = io_unordered_map<std::string, weight_map_value>;
 
 struct compiled_model_info_value : streamable<compiled_model_info_value> {
   compiled_model_info_value() = default;
-  compiled_model_info_value(std::streampos s, std::streamoff o) : start{s}, offset{o} {}
+  compiled_model_info_value(std::streampos s, std::streamoff o) : start{s}, size{o} {}
   bool operator==(const compiled_model_info_value& other) const;
 
   friend std::streampos write_bytes(std::ostream&, const compiled_model_info_value&);
   friend void read_bytes(std::istream&, compiled_model_info_value&);
 
   std::streampos start;
-  std::streamoff offset;
+  std::streamoff size;
 };
 
 using compiled_model_info_map = io_unordered_map<std::string, compiled_model_info_value>;
@@ -97,24 +98,24 @@ struct context_bin_header : streamable<context_bin_header> {
 };
 
 struct EPCtxBinReader {
-  EPCtxBinReader(EPCtxHandler& ep_ctx_handler,
-                 const fs::path& context_binary_name,
-                 weight_info_map& shared_weight_info);
+  EPCtxBinReader(std::unique_ptr<std::istream>& context_binary_stream,
+                 weight_info_map& shared_weight_info,
+                 fs::path context_model_parent_path);
   ~EPCtxBinReader();
+  std::unique_ptr<std::istringstream> GetCompiledModelStream(const std::string& subgraph_name) const;
   friend EPCtxHandler;
 
  private:
-  EPCtxHandler& ep_ctx_handler_;
-  std::ifstream context_bin_stream_;
+  std::unique_ptr<std::istream> context_bin_stream_;
   compiled_model_info_map compiled_models_info_;
   context_bin_header header_;
-  std::optional<std::ifstream> external_weights_stream_;
+  std::ifstream external_weights_stream_;
 };
 
 struct EPCtxBinWriter {
   EPCtxBinWriter(EPCtxHandler& ep_ctx_handler,
                  const fs::path& context_bin_name,
-                 std::optional<fs::path> external_weights,
+                 const fs::path& external_weights_full_path,
                  const weight_info_map& shared_weights_info);
   ~EPCtxBinWriter();
 

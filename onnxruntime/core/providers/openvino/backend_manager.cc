@@ -36,11 +36,11 @@ ov::CompiledModel& BackendManager::GetOVCompiledModel() {
 BackendManager::BackendManager(SessionContext& session_context,
                                SharedContext& shared_context,
                                const IExecutionProvider::FusedNodeAndGraph& fused_node_graph,
-                               std::optional<std::ifstream>& weights_stream) : session_context_(session_context),
-                                                                               shared_context_{shared_context} {
+                               fs::path external_weights_full_path) : session_context_(session_context),
+                                                                      shared_context_{shared_context} {
   const auto& subgraph = fused_node_graph.filtered_graph.get();
   const auto& fused_node = fused_node_graph.fused_node.get();
-  subgraph_context_.is_ep_ctx_graph = session_context.ep_ctx_handler.CheckForOVEPCtxNodeInGraph(subgraph);
+  subgraph_context_.is_ep_ctx_graph = session_context_.ep_ctx_handler.CheckForOVEPCtxNodeInGraph(subgraph);
 
   subgraph_context_.model_precision = [&](const GraphViewer& graph_viewer) {
     // return empty if graph has no inputs or if types are not one of FP32/FP16
@@ -75,33 +75,47 @@ BackendManager::BackendManager(SessionContext& session_context,
 
   ptr_stream_t model_stream;
   std::unique_ptr<onnx::ModelProto> model_proto;
+
+  // Lifetime of the EPCtxBinReader will depend on context sharing value:
+  //   - Per session compilation if there is context sharing
+  //   - Per backend manager constructor (this scope) if not context sharing
+  std::shared_ptr<EPCtxBinReader> ep_ctx_bin_reader{session_context.ep_ctx_bin_reader};
+
   if (subgraph_context_.is_ep_ctx_graph) {
-    model_stream = session_context.ep_ctx_handler.GetModelBlobStream(session_context_.so_context_file_path, subgraph);
+    // Create a context binary reader if one does not exist
+    if (!ep_ctx_bin_reader) {
+      auto context_binary_stream = EPCtxHandler::GetModelBlobStream(session_context_.onnx_model_path_name, subgraph);
+      ep_ctx_bin_reader = std::make_shared<EPCtxBinReader>(context_binary_stream,
+                                                           shared_context_.shared_weight_info,
+                                                           session_context_.onnx_model_path_name.parent_path());
+      if (session_context_.so_share_ep_contexts) {
+        // Extend context bin reader lifetime to the session
+        session_context.ep_ctx_bin_reader = ep_ctx_bin_reader;
+      }
+    }
+    model_stream = ep_ctx_bin_reader->GetCompiledModelStream(subgraph_context_.subgraph_name);
   } else {
     model_proto = GetModelProtoFromFusedNode(fused_node, subgraph, session_context_.logger);
   }
   std::string device_type = session_context_.device_type;
 
-  //// Weights can be internal (insource model) or external (in context binary or
-  //// separate file). This block prepares an  external weights input stream.
-  // if (auto filename = backend_utils::GetExternalWeightFilename(subgraph)) {
-  //   // Model is using external weights
-  //   std::filesystem::path weights_filepath = session_context_.onnx_model_path_name.parent_path() / filename.value();
-
-  //  // Initialize external weights with fully qualified path
-  //  if (!std::filesystem::exists(weights_filepath)) {
-  //    ORT_THROW("Error: Failed to locate weight file at ", weights_filepath.string());
-  //  }
-
-  //  external_weights_.emplace(weights_filepath);
-  //}
+  // Create stream for external weights
+  std::ifstream weights_stream;
+  if (external_weights_full_path.empty() && !shared_context_.shared_weight_info.empty()) {
+    auto parent_path = session_context_.onnx_model_path_name.parent_path();
+    external_weights_full_path = parent_path / shared_context_.shared_weight_info.begin()->second.location;
+    ORT_ENFORCE(fs::exists(external_weights_full_path), "Unable to find weights at ", external_weights_full_path.string());
+  }
+  if (!external_weights_full_path.empty()) {
+    weights_stream.open(external_weights_full_path, std::ios::binary);
+  }
 
   if (session_context_.so_share_ep_contexts) {
     // File is guaranteed to exist at this point
-    ORT_ENFORCE(weights_stream.has_value(), "Expected external weight object to be valid");
+    ORT_ENFORCE(weights_stream, "Expected external weight object to be valid");
     backend_utils::CreateOVTensors(session_context_.device_type,
-                                   shared_context_.shared_weight_info_,
-                                   weights_stream.value());
+                                   shared_context_.shared_weight_info,
+                                   weights_stream);
   }
 
   if (ModelHasSymbolicInputDims(subgraph)) {
@@ -193,7 +207,8 @@ BackendManager::BackendManager(SessionContext& session_context,
       }
     }
   }
-  if (session_context_.so_context_enable && !subgraph_context_.is_ep_ctx_graph) {
+
+  if (session_context_.so_context_enable) {
     auto status = onnxruntime::openvino_ep::BackendManager::ExportCompiledBlobAsEPCtxNode(subgraph);
     if ((!status.IsOK())) {
       ORT_THROW(status);
@@ -218,13 +233,13 @@ Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVie
   // If not embed_mode, dump the blob here and only pass on the path to the blob
   std::string model_blob_str;
   auto compiled_model = concrete_backend_->GetOVCompiledModel();
-  if (!session_context_.ep_ctx_bin_writer.has_value()) {  // Internal blob
+  if (!session_context_.ep_ctx_bin_writer) {  // Internal blob
     std::ostringstream model_blob_stream;
     compiled_model.export_model(model_blob_stream);
     model_blob_str = std::move(model_blob_stream).str();
     ORT_ENFORCE(!model_blob_str.empty(), "Model blob stream is empty after exporting the compiled model.");
   } else {  // External blob
-    auto& writer = session_context_.ep_ctx_bin_writer.value().get();
+    auto& writer = *session_context_.ep_ctx_bin_writer;
     compiled_model.export_model(writer.GetContextBinStream());
     writer.PostInsertBlob(subgraph_context_.subgraph_name);
     model_blob_str = writer.GetContextBinPath();
@@ -371,7 +386,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
                                                     logger,
                                                     session_context_.so_share_ep_contexts,
                                                     model,
-                                                    shared_context_.shared_weight_info_,
+                                                    shared_context_.shared_weight_info,
                                                     enable_ovep_qdq_optimizer);
     auto model_proto = model->ToProto();
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);

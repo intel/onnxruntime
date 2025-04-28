@@ -15,7 +15,7 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
                                        const logging::Logger& logger,
                                        bool transform_weight_as_input,
                                        /*out*/ std::unique_ptr<onnxruntime::Model>& model,
-                                       /*out*/ weight_info_map& shared_weight_info_,
+                                       /*out*/ weight_info_map& shared_weight_info,
                                        bool enable_ovep_qdq_optimizer);
 }  // namespace openvino_ep
 }  // namespace onnxruntime

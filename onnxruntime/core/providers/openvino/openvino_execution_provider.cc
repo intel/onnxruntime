@@ -103,42 +103,46 @@ common::Status OpenVINOExecutionProvider::Compile(
         graph_body_viewer_0.DomainToVersionMap().at(kOnnxDomain);
   }
 
-  // Weights can be internal (insource model) or external (in context binary or
-  // separate file). This block prepares an  external weights input stream.
-  std::optional<fs::path> external_weights;
+  // Weights can be internal (in source model) or external (in context binary
+  // or separate file). If external this block prepares the external weights
+  // input stream.
+  fs::path external_weights_full_path;
   if (auto filename = GetExternalWeightFilename(fused_nodes)) {
     // Model is using external weights
-    std::filesystem::path weights_filepath = session_context_.onnx_model_path_name.parent_path() / filename.value();
+    auto temp_weights_full_path = session_context_.onnx_model_path_name.parent_path() / filename.value();
 
     // Initialize external weights with fully qualified path
-    if (!std::filesystem::exists(weights_filepath)) {
-      ORT_THROW("Error: Failed to locate weight file at ", weights_filepath.string());
-    }
+    ORT_ENFORCE(fs::exists(temp_weights_full_path),
+                "Error: Failed to locate weight file at ",
+                temp_weights_full_path.string());
 
-    external_weights.emplace(weights_filepath);
+    external_weights_full_path = temp_weights_full_path;
   }
 
-  auto& shared_weight_info_ = shared_context_->shared_weight_info_;
+  auto& shared_weight_info = shared_context_->shared_weight_info;
+  std::unique_ptr<EPCtxBinReader> ep_ctx_bin_reader;
   std::unique_ptr<EPCtxBinWriter> ep_ctx_bin_writer;
-  if (session_context_.so_context_enable && !session_context_.so_context_embed_mode) {
-    fs::path context_binary_name = session_context_.onnx_model_path_name.stem().string() + "_openvino.bin";
-    ep_ctx_bin_writer = std::make_unique<EPCtxBinWriter>(session_context_.ep_ctx_handler,
-                                                         context_binary_name,
-                                                         external_weights,
-                                                         shared_weight_info_);
-    session_context_.ep_ctx_bin_writer = std::ref(*ep_ctx_bin_writer);
+
+  if (session_context_.so_share_ep_contexts && shared_context_->context_binary_file_path.empty()) {
+    // Store output context_binary_file_path to use it in subsequent sessions
+    shared_context_->context_binary_file_path = session_context_.onnx_model_path_name.stem().string() + "_openvino.bin";
+  }
+
+  if (session_context_.so_context_enable) {
+    session_context_.ep_ctx_bin_writer = std::make_unique<EPCtxBinWriter>(session_context_.ep_ctx_handler,
+                                                                          shared_context_->context_binary_file_path,
+                                                                          external_weights_full_path,
+                                                                          shared_weight_info);
   }
 
   for (const FusedNodeAndGraph& fused_node_graph : fused_nodes) {
     // During backend creation, we check if user wants to use precompiled blob onnx model or the original model
     // For precompiled blob, directly load the model instead of compiling the model
     // For original model, check if the user wants to export a model with pre-compiled blob
-    [[maybe_unused]] std::ifstream file;  // Temporary code, delete for production
-    std::optional<std::ifstream> weights_stream{std::ifstream{}};
     auto& backend_manager = backend_managers_.emplace_back(session_context_,
                                                            *shared_context_,
                                                            fused_node_graph,
-                                                           weights_stream);
+                                                           external_weights_full_path);
 
     struct OpenVINOEPFunctionState {
       AllocateFunc allocate_func = nullptr;
@@ -183,6 +187,10 @@ common::Status OpenVINOExecutionProvider::Compile(
       break;
     }
   }
+
+  // Release session objects meant to have a lifetime only during Compile()
+  session_context_.ep_ctx_bin_writer.reset();
+  session_context_.ep_ctx_bin_reader.reset();
 
   if (session_context_.so_stop_share_ep_contexts) {
     shared_context_->clear();

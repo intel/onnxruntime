@@ -30,10 +30,12 @@ class SharedContext : public WeakSingleton<SharedContext> {
 
  public:
   SharedContext() : OVCore_(OVCore::Get()) {}
-  weight_info_map shared_weight_info_;
+  weight_info_map shared_weight_info;
+  fs::path context_binary_file_path;
 
   void clear() {  // Deletes the data stored in the SharedContext
-    shared_weight_info_.clear();
+    shared_weight_info.clear();
+    context_binary_file_path.clear();
   };
 };
 
@@ -92,12 +94,11 @@ struct SessionContext : ProviderInfo {
   EPCtxHandler ep_ctx_handler;
   std::array<bool, constants::max_device_available> deviceAvailableList{true};
   std::filesystem::path onnx_model_path_name;
-  std::filesystem::path ep_context_model_path;
   uint32_t onnx_opset_version{0};
   mutable bool is_wholly_supported_graph{false};  // Value is set to mutable to modify from capability
   mutable bool has_external_weights{false};       // Value is set to mutable to modify from capability
-  std::optional<std::reference_wrapper<EPCtxBinReader>> ep_ctx_bin_reader;
-  std::optional<std::reference_wrapper<EPCtxBinWriter>> ep_ctx_bin_writer;
+  std::shared_ptr<EPCtxBinReader> ep_ctx_bin_reader;
+  std::unique_ptr<EPCtxBinWriter> ep_ctx_bin_writer;  // Lifetime owned by execution provider during compile()
 };
 
 // Holds context specific to subgraph.
