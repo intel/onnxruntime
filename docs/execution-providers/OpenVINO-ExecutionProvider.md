@@ -174,7 +174,7 @@ OpenVINO™ Execution Provider for ONNX Runtime allows multiple stream execution
 
 ### Auto-Device Execution for OpenVINO EP
 
-Use `AUTO:<device 1><device 2>..` as the device name to delegate selection of an actual accelerator to OpenVINO™. Auto-device internally recognizes and selects devices from CPU, integrated GPU, discrete Intel GPUs (when available) and NPU (when available) depending on the device capabilities and the characteristic of CNN models, for example, precisions. Then Auto-device assigns inference requests to the selected device.
+Use `AUTO:<device 1>,<device 2>..` as the device name to delegate selection of an actual accelerator to OpenVINO™. Auto-device internally recognizes and selects devices from CPU, integrated GPU, discrete Intel GPUs (when available) and NPU (when available) depending on the device capabilities and the characteristic of CNN models, for example, precisions. Then Auto-device assigns inference requests to the selected device.
 
 From the application point of view, this is just another device that handles all accelerators in full system.
 
@@ -242,33 +242,10 @@ where "DEVICE_KEY" can be CPU, NPU or GPU , "PROPERTY" must be a valid entity de
 
 Exception during initialization: [json.exception.type_error.302] type must be string, but is a number.
 
-While one can set the int/bool values like this "NPU_TILES": "2" which is valid (refer to the example given below).
+While one can set the int/bool values like this "NPU_TILES": "2" which is valid.
 If someone passes incorrect keys, it will be skipped with a warning while incorrect values assigned to a valid key will result in an exception arising from OV framework.
  
 The valid properties are of 2 types viz. MUTABLE (R/W) & IMMUTABLE (R ONLY) these are also governed while setting the same. If an IMMUTABLE property is being set, we skip setting the same with a similar warning.
-
-Example:
-
-The usage of this functionality using onnxruntime_perf_test application is as below – 
-
-```
-onnxruntime_perf_test.exe -e openvino -m times -r 1 -i "device_type|NPU load_config|npu_config.json" model.onnx 
-```
-where the npu_config.json file is defined as below –
-
-```bash
-{
-  "NPU": {
-    "PERFORMANCE_HINT": "THROUGHPUT",
-    "WORKLOAD_TYPE": "Efficient",
-    "NPU_TILES": "2",
-    "LOG_LEVEL": "LOG_DEBUG",
-    "NPU_COMPILATION_MODE_PARAMS": "enable-weights-swizzling=false enable-activation-swizzling=false enable-grouped-matmul=false"
-  }
-}
-
-```
-To explicitly enable logs one must use "LOG_LEVEL": "LOG_DEBUG"  in the JSON device configuration property. The log verifies that the correct device parameters and properties are being set / populated during runtime with OVEP.
 
 ### OpenVINO Execution Provider Supports EP-Weight Sharing across sessions
 The OpenVINO Execution Provider (OVEP) in ONNX Runtime supports EP-Weight Sharing, enabling models to efficiently share weights across multiple inference sessions. This feature enhances the execution of Large Language Models (LLMs) with prefill and KV cache, reducing memory consumption and improving performance when running multiple inferences.
@@ -278,11 +255,11 @@ With EP-Weight Sharing, prefill and KV cache models can now reuse the same set o
 These changes enable weight sharing between two models using the session context option: ep.share_ep_contexts.
 Refer to [Session Options](https://github.com/microsoft/onnxruntime/blob/5068ab9b190c549b546241aa7ffbe5007868f595/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h#L319) for more details on configuring this runtime option.
 
- ### OVEP supports CreateSessionFromArray API 
- The OpenVINO Execution Provider (OVEP) in ONNX Runtime supports creating sessions from memory using the CreateSessionFromArray API. This allows loading models directly from memory buffers instead of file paths. The CreateSessionFromArray loads the model in memory then creates a session from the in-memory byte array.
+### OVEP supports CreateSessionFromArray API 
+The OpenVINO Execution Provider (OVEP) in ONNX Runtime supports creating sessions from memory using the CreateSessionFromArray API. This allows loading models directly from memory buffers instead of file paths. The CreateSessionFromArray loads the model in memory then creates a session from the in-memory byte array.
  
- Note:
- Use the -l argument when running the inference with perf_test using CreateSessionFromArray API.
+Note:
+Use the -l argument when running the inference with perf_test using CreateSessionFromArray API.
 
 ## Configuration Options
 
@@ -360,8 +337,8 @@ The following table lists all the available configuration options for API 2.0 an
 
 
 Valid Hetero or Multi or Auto Device combinations:
-HETERO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...
-The <DEVICE_TYPE> can be any of these devices from this list ['CPU','GPU', 'NPU']
+`HETERO:<device 1>,<device 2>...`
+The `device` can be any of these devices from this list ['CPU','GPU', 'NPU']
 
 A minimum of two DEVICE_TYPE'S should be specified for a valid HETERO, MULTI, or AUTO Device Build.
 
