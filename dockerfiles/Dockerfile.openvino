@@ -3,15 +3,15 @@
 # SPDX-License-Identifier: MIT
 #--------------------------------------------------------------------------
 
-ARG OPENVINO_VERSION=2024.2.0
+ARG OPENVINO_VERSION=2025.0.0
 
 
 # Build stage
-FROM openvino/ubuntu22_runtime:${OPENVINO_VERSION} AS builder
+FROM openvino/ubuntu20_runtime:${OPENVINO_VERSION} AS builder
 
 ENV WORKDIR_PATH=/home/openvino
 WORKDIR $WORKDIR_PATH
-ENV DEBIAN_FRONTEND=noninteractive
+ENV DEBIAN_FRONTEND noninteractive
 
 ARG DEVICE=CPU
 ARG ONNXRUNTIME_REPO=https://github.com/microsoft/onnxruntime.git
@@ -20,37 +20,208 @@ ARG ONNXRUNTIME_BRANCH=main
 ENV OpenVINO_DIR=${INTEL_OPENVINO_DIR}/runtime/cmake
 
 USER root
-RUN apt update; apt install -y git protobuf-compiler libprotobuf-dev
+RUN apt-get update && apt-get install -y software-properties-common
+#RUN add-apt-repository ppa:ubuntu-toolchain-r/test
+
+#RUN apt-get update && apt-get install -y gcc-12 g++-12
+#RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 100 \
+ #   --slave /usr/bin/g++ g++ /usr/bin/g++-12
+#RUN apt-get update && apt-get install -y software-properties-common
+#RUN add-apt-repository ppa:ubuntu-toolchain-r/test
+#RUN apt-get update
+#RUN apt-get install -y build-essential gcc-10 g++-10
+#RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 100 \
+#    --slave /usr/bin/g++ g++ /usr/bin/g++-10 \
+#    --slave /usr/bin/gcov gcov /usr/bin/gcov-10
+#RUN update-alternatives --set gcc /usr/bin/gcc-10
+RUN apt-get update && apt-get install -y wget build-essential libgmp-dev libmpfr-dev libmpc-dev libisl-dev
+
+# Download GCC 12 source
+RUN mkdir -p /opt/gcc-12-build && cd /opt/gcc-12-build && \
+    wget https://ftp.gnu.org/gnu/gcc/gcc-12.3.0/gcc-12.3.0.tar.gz && \
+    tar xf gcc-12.3.0.tar.gz
+
+# Build and install GCC 12
+RUN cd /opt/gcc-12-build/gcc-12.3.0 && \
+    mkdir build && cd build && \
+    ../configure --enable-languages=c,c++ --disable-multilib --prefix=/usr/local/gcc-12 && \
+    make -j$(nproc) && \
+    make install
+# Install binutils dependencies
+RUN apt-get update && apt-get install -y texinfo bison flex zlib1g-dev
+
+# Download and compile newer binutils
+RUN mkdir -p /opt/binutils-build && cd /opt/binutils-build && \
+    wget https://ftp.gnu.org/gnu/binutils/binutils-2.38.tar.gz && \
+    tar xf binutils-2.38.tar.gz && \
+    cd binutils-2.38 && \
+    mkdir build && cd build && \
+    ../configure --prefix=/usr/local/binutils-2.38 && \
+    make -j$(nproc) && \
+    make install
+
+# Add to PATH
+ENV PATH="/usr/local/binutils-2.38/bin:${PATH}"
+# Set up alternatives
+RUN update-alternatives --install /usr/bin/gcc gcc /usr/local/gcc-12/bin/gcc 120 \
+    --slave /usr/bin/g++ g++ /usr/local/gcc-12/bin/g++ \
+    --slave /usr/bin/gcov gcov /usr/local/gcc-12/bin/gcov
+
+# Set GCC 12 as the default
+RUN update-alternatives --set gcc /usr/local/gcc-12/bin/gcc
+
+# Update PATH
+ENV PATH="/usr/local/gcc-12/bin:${PATH}"
+ENV LD_LIBRARY_PATH="/usr/local/gcc-12/lib64:${LD_LIBRARY_PATH}"
+RUN gcc --version
+RUN add-apt-repository ppa:deadsnakes/ppa
+
+RUN rm -f /usr/local/bin/pip3
+RUN rm -f /usr/local/bin/python3
+
+# Make sure pip3 directly points to pip3.11
+RUN ln -sf /usr/bin/pip3.11 /usr/bin/pip3
+
+# Check for and remove any Python 3.9 remnants
+RUN apt-get remove -y python3.9 python3.9-dev || true
+RUN rm -rf /usr/lib/python3.9* || true 
+RUN rm -f /usr/lib/python39.zip || true
+
+# Check for virtual environments
+RUN rm -rf /opt/venv || true
+RUN apt-get update && apt-get install -y \
+    python3.11 \
+    python3.11-dev \
+    python3.11-distutils \
+    python3.11-venv \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+RUN apt-get remove -y python3.9 python3.9-dev || true
+RUN rm -rf /usr/lib/python3.9 || true
+RUN echo "Python location: $(which python3)" && \
+    echo "Python version: $(python3 --version)" && \
+    ls -la /usr/bin/python* && \
+    ls -la /usr/include/python*
+RUN ln -sf /usr/bin/python3.11 /usr/local/bin/python3 && \
+    ln -sf /usr/bin/pip3.11 /usr/local/bin/pip3
+
+ENV PYTHONHOME=/usr
+ENV PYTHONPATH=/usr/lib/python3.11/site-packages
+ENV PIP=/usr/bin/pip3.11
+ENV PYTHON=/usr/bin/python3.11
+ENV Python_EXECUTABLE=/usr/bin/python3.11
+ENV PYTHON_EXECUTABLE=/usr/bin/python3.11
+ENV PYTHON_INCLUDE_DIR=/usr/include/python3.11
+ENV PYTHON_LIBRARY=/usr/lib/python3.11/config-3.11-x86_64-linux-gnu/libpython3.11.so
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
+
+# Set Python environment variables explicitly
+ENV PYTHON_BIN_PATH=/usr/bin/python3.11
+ENV PYTHON_LIBRARY=/usr/lib/python3.11/config-3.11-x86_64-linux-gnu/libpython3.11.so
+ENV PYTHONPATH=/usr/lib/python3.11/site-packages
+
+# Verify Python version is correct
+RUN python3 --version
+RUN which python3
+RUN echo $PATH && which python3
+
+#RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
+#RUN apt-get update && apt-get install -y software-properties-common
+#RUN add-apt-repository ppa:ubuntu-toolchain-r/test
+#RUN apt-get update && apt-get install -y binutils-2.38
+RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11
+RUN python3 --version
+RUN pip3 --version
+RUN apt update; apt install -y git protobuf-compiler libprotobuf-dev build-essential wget libssl-dev python3.11-dev
+# Install Python packages before other dependencies
+RUN python3.11 -m pip install --upgrade pip && \
+    python3.11 -m pip install wheel && \
+    python3.11 -m pip install numpy && \
+    python3.11 -m pip install onnx==1.16.1
+RUN python3.11 -m pip install pybind11
+
+RUN /usr/bin/python3.11 -m pip install --upgrade pip && \
+    /usr/bin/python3.11 -m pip install wheel numpy onnx==1.16.1 pybind11
+
+RUN wget https://github.com/Kitware/CMake/releases/download/v3.28.0/cmake-3.28.0.tar.gz && \
+    tar -zxvf cmake-3.28.0.tar.gz && \
+    cd cmake-3.28.0 && \
+    ./bootstrap && \
+    make -j$(nproc) && \
+    make install && \
+    cd .. && \
+    rm -rf cmake-3.28.0 cmake-3.28.0.tar.gz
+
 RUN git clone --recursive -b ${ONNXRUNTIME_BRANCH} ${ONNXRUNTIME_REPO}
+
 RUN /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh
 RUN ln -s cmake-* cmake-dir
-RUN python3 -m pip install wheel
+RUN python3.11 -m pip install wheel
+RUN python3 -c "import numpy; print('NumPy include path:', numpy.get_include())"
 ENV PATH=${WORKDIR_PATH}/cmake-dir/bin:$PATH
-RUN pip3 install onnx
-RUN cd onnxruntime && ./build.sh --allow_running_as_root --config Release --update --build --parallel --use_openvino ${DEVICE} --build_shared_lib --build_wheel
+#RUN pip install onnx==1.16.1
+#RUN pip install numpy==2.0.1
+RUN cd onnxruntime && ./build.sh --allow_running_as_root --config Release --update --build --parallel --use_openvino ${DEVICE} --build_shared_lib --build_wheel --cmake_extra_defines Python_EXECUTABLE=/usr/bin/python3.11 PYTHON_EXECUTABLE=/usr/bin/python3.11 PYTHON_INCLUDE_DIR=/usr/include/python3.11 PYTHON_LIBRARY=/usr/lib/python3.11/config-3.11-x86_64-linux-gnu/libpython3.11.so  CMAKE_CXX_FLAGS="-march=x86-64 -mno-avx512f" CMAKE_C_FLAGS="-march=x86-64 -mno-avx512f"
 
 #Steps to download sources
 RUN cat /etc/apt/sources.list | sed 's/^# deb-src/deb-src/g' > ./temp; mv temp /etc/apt/sources.list
 RUN apt update; apt install dpkg-dev
 RUN mkdir /sources
 WORKDIR /sources
-RUN apt-get source cron iso-codes lsb-release powermgmt-base python-apt-common python3-apt python3-dbus python3-gi libapt-pkg6.0 libhogweed6 libnettle8
+RUN apt-get source cron iso-codes lsb-release powermgmt-base python-apt-common python3-apt python3-dbus python3-gi libapt-pkg6.0 libhogweed5 libnettle7
 WORKDIR /
 RUN tar cvf GPL_sources.tar.gz /sources
 
 # Deploy stage
-FROM openvino/ubuntu22_runtime:${OPENVINO_VERSION}
+FROM openvino/ubuntu20_runtime:${OPENVINO_VERSION}
 
-ENV DEBIAN_FRONTEND=noninteractive
+ENV DEBIAN_FRONTEND noninteractive
 USER root
+
+RUN rm -f /usr/local/bin/pip3 /usr/local/bin/python3 /usr/bin/pip3
+RUN apt-get update && apt-get install -y --fix-broken
+RUN apt-get remove -y python3.9 python3.9-dev || true
+RUN rm -rf /usr/lib/python3.9* /usr/lib/python39.zip /opt/venv || true
+
+# Install Python 3.11 and dependencies
+RUN apt-get update && apt-get install -y software-properties-common
+RUN add-apt-repository ppa:deadsnakes/ppa
+RUN apt-get update && apt-get install -y \
+    python3.11 \
+    python3.11-dev \
+    python3.11-distutils \
+    python3.11-minimal \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set Python 3.11 as default
+RUN ln -sf /usr/bin/python3.11 /usr/bin/python3
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1
+
+# Verify Python installation
+RUN python3 --version
+RUN which python3
+
+# Install pip fresh from source
+RUN wget https://bootstrap.pypa.io/get-pip.py -O /tmp/get-pip.py
+RUN python3.11 /tmp/get-pip.py --force-reinstall
+RUN rm /tmp/get-pip.py
+
+# Verify pip works
+RUN python3.11 -m pip --version
+COPY --from=builder /usr/local/gcc-12/lib64 /usr/local/gcc-12/lib64
+ENV LD_LIBRARY_PATH="/usr/local/gcc-12/lib64:${LD_LIBRARY_PATH}"
+RUN ldconfig
 COPY --from=builder /home/openvino/onnxruntime/build/Linux/Release/dist/*.whl ./
 COPY --from=builder /GPL_sources.tar.gz ./
-RUN python3 -m pip install ./*.whl && rm ./*.whl
+RUN python3.11 -m pip install ./*.whl && rm ./*.whl
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev
 RUN adduser --uid $BUILD_UID $BUILD_USER
 RUN usermod -a -G video,users ${BUILD_USER}
-ENV WORKDIR_PATH=/home/${BUILD_USER}
+ENV WORKDIR_PATH /home/${BUILD_USER}
 WORKDIR ${WORKDIR_PATH}
 
 USER ${BUILD_USER}
