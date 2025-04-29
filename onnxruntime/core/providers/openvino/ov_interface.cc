@@ -199,17 +199,9 @@ OVExeNetwork OVCore::ImportModel(std::istream& model_stream,
     OVExeNetwork exe;
 
     // Check if it's XML
-    std::streampos originalPos = model_stream.tellg();
-    // Allocate space for "<?xml"
-    std::string header(5, '\0');
-    model_stream.read(&header[0], 5);
+    bool isXML = backend_utils::IsModelStreamXML(model_stream);
 
-    // Clear any read errors
-    model_stream.clear();
-    // Restore the stream position (important for reusing the stream)
-    model_stream.seekg(originalPos);
-
-    if (header != "<?xml") {
+    if (!isXML) {
       auto obj = core.import_model(model_stream, hw_target, device_config);
       exe = OVExeNetwork(obj, hw_target);
     } else {
