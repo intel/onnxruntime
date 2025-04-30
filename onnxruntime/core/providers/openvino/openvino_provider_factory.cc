@@ -99,13 +99,6 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
     selected_device = "NPU";
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Choosing Device: " << selected_device;
     return selected_device;
-#elif defined OPENVINO_CONFIG_HETERO || defined OPENVINO_CONFIG_MULTI || defined OPENVINO_CONFIG_AUTO
-    selected_device = DEVICE_NAME;
-
-    // Add sub-devices to check-list
-    int delimit = selected_device.find(":");
-    const auto& devices = selected_device.substr(delimit + 1);
-    devices_to_check = split(devices, ',');
 #endif
   }
 

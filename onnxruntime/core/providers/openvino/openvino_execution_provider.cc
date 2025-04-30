@@ -22,35 +22,6 @@ namespace onnxruntime {
 namespace openvino_ep {
 
 // Parking this code here for now before it's moved to the factory
-#if defined OPENVINO_CONFIG_HETERO || defined OPENVINO_CONFIG_MULTI || defined OPENVINO_CONFIG_AUTO
-static std::vector<std::string> parseDevices(const std::string& device_string,
-                                             const std::vector<std::string>& available_devices) {
-  std::string comma_separated_devices = device_string;
-  if (comma_separated_devices.find(":") != std::string::npos) {
-    comma_separated_devices = comma_separated_devices.substr(comma_separated_devices.find(":") + 1);
-  }
-  auto devices = split(comma_separated_devices, ',');
-  if (devices.size() < 2) {
-    print_build_options();
-    ORT_THROW("Invalid device string: " + device_string);
-  }
-  std::set<std::string> dev_options = {"CPU", "GPU", "NPU"};
-
-  for (auto& device : available_devices) {
-    if (dev_options.find(device) == dev_options.end()) {
-      auto dev_options_update = dev_options.emplace(device);
-    }
-  }
-
-  for (const std::string& dev : devices) {
-    if (!std::count(dev_options.begin(), dev_options.end(), dev)) {
-      print_build_options();
-      ORT_THROW("Invalid device string: " + device_string);
-    }
-  }
-  return devices;
-}
-#endif
 
 OpenVINOExecutionProvider::OpenVINOExecutionProvider(const ProviderInfo& info, std::shared_ptr<SharedContext> shared_context)
     : IExecutionProvider{onnxruntime::kOpenVINOExecutionProvider},
