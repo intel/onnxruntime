@@ -380,9 +380,9 @@ void OVInferRequest::StartAsync() {
   try {
     ovInfReq.start_async();
   } catch (const Exception& e) {
-    ORT_THROW(log_tag + " Couldn't start Inference: " + e.what());
+    throw std::runtime_error(log_tag + " Couldn't start Inference: " + e.what());
   } catch (...) {
-    ORT_THROW(log_tag + " In Error Couldn't start Inference");
+    throw std::runtime_error(log_tag + " In Error Couldn't start Inference");
   }
 }
 
@@ -390,9 +390,9 @@ void OVInferRequest::Infer() {
   try {
     ovInfReq.infer();
   } catch (const Exception& e) {
-    ORT_THROW(log_tag + " Couldn't start Inference: " + e.what());
+    throw std::runtime_error(log_tag + " Couldn't start Inference: " + e.what());
   } catch (...) {
-    ORT_THROW(log_tag + " In Error Couldn't start Inference");
+    throw std::runtime_error(log_tag + " In Error Couldn't start Inference");
   }
 }
 
@@ -400,9 +400,9 @@ void OVInferRequest::WaitRequest() {
   try {
     ovInfReq.wait();
   } catch (const Exception& e) {
-    ORT_THROW(log_tag + " Wait Model Failed: " + e.what());
+    throw std::runtime_error(log_tag + " Wait Model Failed: " + e.what());
   } catch (...) {
-    ORT_THROW(log_tag + " Wait Mode Failed");
+    throw std::runtime_error(log_tag + " Wait Mode Failed");
   }
 }
 

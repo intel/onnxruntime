@@ -761,12 +761,14 @@ void BasicBackend::Infer(OrtKernelContext* ctx) {
     try {
       StartAsyncInference(context, infer_request);
     } catch (const std::runtime_error& e) {
+      inferRequestsQueue_->putIdleRequest(std::move(infer_request));
       ORT_THROW(log_tag + " Exception at StartAsyncInference: " + e.what());
     }
 #endif
     try {
       CompleteAsyncInference(context, infer_request);
     } catch (const std::runtime_error& e) {
+      inferRequestsQueue_->putIdleRequest(std::move(infer_request));
       ORT_THROW(log_tag + " Exception at CompleteAsyncInference: " + e.what());
     }
 
