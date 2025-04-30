@@ -1189,6 +1189,7 @@ class MatMulNBitsQuantizer:
         quant_format=QuantFormat.QOperator,
         op_types_to_quantize: tuple[str, ...] | None = None,
         quant_axes: tuple[tuple[str, int], ...] | None = None,
+        channel_wised_quantize: bool = False,
         algo_config: WeightOnlyQuantConfig | None = None,
     ):
         if nodes_to_exclude is None:
@@ -1211,6 +1212,7 @@ class MatMulNBitsQuantizer:
                 op_types_to_quantize=op_types_to_quantize,
                 quant_axes=quant_axes,
                 bits=4,  # default to 4 bits
+                channel_wised_quantize=channel_wised_quantize,
             )
 
         self.algo_config = algo_config
