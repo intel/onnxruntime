@@ -53,45 +53,13 @@ def _openvino_verify_device_type(device_read: str) -> str:
         res = True
     elif device_read in choices1:
         res = True
-    elif device_read.startswith(("HETERO:", "MULTI:", "AUTO:")):
-        res = True
-        parts = device_read.split(":")
-        if len(parts) < 2 or not parts[1]:
-            print("Hetero/Multi/Auto mode requires devices to be specified after the colon.")
-            status_hetero = False
-        else:
-            comma_separated_devices = parts[1].split(",")
-            if len(comma_separated_devices) < 2:
-                print("At least two devices required in Hetero/Multi/Auto Mode")
-                status_hetero = False
-            dev_options = ["CPU", "GPU", "NPU"]
-            for dev in comma_separated_devices:
-                if dev not in dev_options:
-                    status_hetero = False
-                    print(f"Invalid device '{dev}' found in Hetero/Multi/Auto specification.")
-                    break
-
-    def invalid_hetero_build() -> None:
-        print("\nIf trying to build Hetero/Multi/Auto, specify the supported devices along with it.\n")
-        print("Specify the keyword HETERO or MULTI or AUTO followed by a colon and comma-separated devices ")
-        print("in the order of priority you want to build (e.g., HETERO:GPU,CPU).\n")
-        print("The different hardware devices that can be added are ['CPU','GPU','NPU'] \n")
-        print("An example of how to specify the hetero build type: --use_openvino HETERO:GPU,CPU \n")
-        print("An example of how to specify the MULTI build type: --use_openvino MULTI:GPU,CPU \n")
-        print("An example of how to specify the AUTO build type: --use_openvino AUTO:GPU,CPU \n")
-        sys.exit("Wrong Build Type selected")
 
     if res is False:
         print("\nYou have selected wrong configuration for the build.")
         print("Pick the build type for specific Hardware Device from following options: ", choices)
         print("(or) from the following options with graph partitioning disabled: ", choices1)
         print("\n")
-        if not (device_read.startswith(("HETERO", "MULTI", "AUTO"))):
-            invalid_hetero_build()  # Will exit
-        sys.exit("Wrong Build Type selected")  # Should not be reached if invalid_hetero_build exits
-
-    if status_hetero is False:
-        invalid_hetero_build()  # Will exit
+       
 
     return device_read
 
@@ -646,7 +614,7 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
         nargs="?",
         const="CPU",  # Default device if only flag is present
         type=_openvino_verify_device_type,
-        help="Enable OpenVINO EP for specific hardware (e.g., CPU, GPU, NPU, HETERO:GPU,CPU).",
+        help="Enable OpenVINO EP for specific hardware (e.g., CPU, GPU, NPU).",
     )
 
     # --- TensorRT ---

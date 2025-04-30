@@ -299,9 +299,7 @@ void FillInputBlob(OVTensorPtr inputBlob, size_t batch_slice_idx,
   auto input_data = inputBlob->data();
   auto tensor = context.GetInput(subgraph_context.input_names.at(input_name));
   auto mem_info = tensor.GetTensorMemoryInfo();
-  if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
-    ORT_THROW(log_tag + "IO Buffering is not enabled, Please enable Input on CPU");
-  }
+  
   // Copy input data into OpenVINO's input buffer
   const char* tensor_data = tensor.GetTensorData<char>();
   const char* batch_memory_offset = tensor_data + input_data_size * batch_slice_idx;
@@ -379,13 +377,8 @@ ov::element::Type GetOpenVINOElementType(ONNX_NAMESPACE::TensorProto_DataType dt
       {ONNX_NAMESPACE::TensorProto_DataType_DOUBLE, ov::element::f64},
       {ONNX_NAMESPACE::TensorProto_DataType_UINT32, ov::element::u32},
       {ONNX_NAMESPACE::TensorProto_DataType_UINT64, ov::element::u64},
-      //{ONNX_NAMESPACE::TensorProto_DataType_COMPLEX64, ov::element::undefined},
-      //{ONNX_NAMESPACE::TensorProto_DataType_COMPLEX128, ov::element::undefined},
       {ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16, ov::element::bf16},
-      //{ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN, ov::element::undefined},
-      //{ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FNUZ, ov::element::undefined},
       {ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2, ov::element::f8e5m2},
-      //{ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2FNUZ, ov::element::undefined},
       {ONNX_NAMESPACE::TensorProto_DataType_UINT4, ov::element::u4},
       {ONNX_NAMESPACE::TensorProto_DataType_INT4, ov::element::i4},
   };

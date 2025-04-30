@@ -1519,21 +1519,6 @@ if (onnxruntime_USE_OPENVINO)
     add_definitions(-DOPENVINO_DISABLE_GRAPH_PARTITION=1)
   endif()
 
-  if (onnxruntime_USE_OPENVINO_HETERO)
-    add_definitions(-DOPENVINO_CONFIG_HETERO=1)
-    add_definitions(-DDEVICE_NAME="${onnxruntime_USE_OPENVINO_DEVICE}")
-  endif()
-
-  if (onnxruntime_USE_OPENVINO_MULTI)
-    add_definitions(-DOPENVINO_CONFIG_MULTI=1)
-    add_definitions(-DDEVICE_NAME="${onnxruntime_USE_OPENVINO_DEVICE}")
-  endif()
-
-  if(onnxruntime_USE_OPENVINO_AUTO)
-    add_definitions(-DOPENVINO_CONFIG_AUTO=1)
-    add_definitions(-DDEVICE_NAME="${onnxruntime_USE_OPENVINO_DEVICE}")
-  endif()
-
   if($ENV{FIL_ENABLED})
     add_definitions(-DOPENVINO_FIL_ENABLED=1)
   endif()

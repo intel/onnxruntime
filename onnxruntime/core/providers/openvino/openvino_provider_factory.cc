@@ -296,14 +296,6 @@ static void ParseProviderInfo(const ProviderOptions& provider_options,
   }
 
   pi.context = ParseUint64(provider_options, "context");
-#if defined(IO_BUFFER_ENABLED)
-  // a valid context must be provided to enable IO Buffer optimizations
-  if (pi.context == nullptr) {
-#undef IO_BUFFER_ENABLED
-#define IO_BUFFER_ENABLED = 0
-    LOGS_DEFAULT(WARNING) << "Context is not set. Disabling IO Buffer optimization";
-  }
-#endif
 
   if (provider_options.contains("num_of_threads")) {
     if (!std::all_of(provider_options.at("num_of_threads").begin(),
