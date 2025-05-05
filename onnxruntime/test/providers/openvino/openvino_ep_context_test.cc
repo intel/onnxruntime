@@ -42,7 +42,9 @@ TEST_F(OVEPEPContextTests, OVEPEPContextFolderPath) {
 
   Ort::SessionOptions sessionOptions;
   std::unordered_map<std::string, std::string> ov_options;
-  ov_options["device_type"] = "NPU";
+
+  //The below line could fail the test in non NPU platforms.Commenting it out so that the device used for building OVEP will be used.
+  //ov_options["device_type"] = "NPU";
 
 
   const std::unordered_map<std::string, int> domain_to_version = {{"", 13}, {kMSDomain, 1}};
