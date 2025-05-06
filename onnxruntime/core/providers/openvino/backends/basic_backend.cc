@@ -96,6 +96,7 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
     } else if (!session_context_.has_external_weights &&
                !subgraph_context_.has_dynamic_input_shape &&
                !session_context_.so_context_enable &&
+               session_context_.reshape.empty() &&
                auto_unified_compile) {
       // Unified OV compile_model is efficient when ov model caching is enabled
       // Unified OV compile_model API is supported with AUTO from version 2024.3 and above
