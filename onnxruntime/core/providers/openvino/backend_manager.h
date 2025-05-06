@@ -38,7 +38,16 @@ class BackendManager {
       const logging::Logger& logger) const;
 
   bool ModelHasSymbolicInputDims(const onnxruntime::GraphViewer& subgraph) const;
+  std::unordered_set<std::string> IdentifyDynamicInputs(const onnxruntime::GraphViewer& subgraph,
+                                                        const std::vector<const NodeArg*>& graph_inputs) const;
+  bool HandleConcreteModel(const std::vector<const NodeArg*>& graph_inputs, bool is_npu_device) const;
+  bool HandleDynamicModelWithoutReshape(bool is_npu_device, bool has_symbolic_dims) const;
+  bool HandleIncompleteReshapeInputCoverage(bool is_npu_device, bool has_symbolic_dims) const;
+  bool HandleCompleteReshapeInputCoverage(const std::vector<const NodeArg*>& graph_inputs,
+                                          bool is_npu_device, bool has_symbolic_dims) const;
   bool ModelHasBatchedInputs(const ONNX_NAMESPACE::ModelProto& model_proto) const;
+  void ValidateInputShapes(const shape_t& shape,
+                           const std::vector<const NodeArg*>& graph_inputs) const;
 
   std::shared_ptr<ONNX_NAMESPACE::ModelProto>
   ReWriteBatchDimWithOne(const ONNX_NAMESPACE::ModelProto& model_proto);

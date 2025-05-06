@@ -233,6 +233,10 @@ static void ParseProviderInfo(const ProviderOptions& provider_options,
 
   pi.precision = OpenVINOParserUtils::ParsePrecision(provider_options, pi.device_type, "precision");
 
+  if (provider_options.contains("reshape_input")) {
+    pi.shape = OpenVINOParserUtils::ParseInputShape(provider_options.at("reshape_input"));
+  }
+
   if (provider_options.contains("load_config")) {
     auto parse_config = [&](const std::string& config_str) -> std::map<std::string, ov::AnyMap> {
       // If the config string is empty, return an empty map and skip processing
@@ -346,10 +350,6 @@ static void ParseProviderInfo(const ProviderOptions& provider_options,
     pi.disable_dynamic_shapes = ParseBooleanOption(provider_options, "disable_dynamic_shapes");
   } catch (std::string msg) {
     ORT_THROW(msg);
-  }
-  // Always true for NPU plugin or when passed .
-  if (pi.device_type.find("NPU") != std::string::npos) {
-    pi.disable_dynamic_shapes = true;
   }
 }
 

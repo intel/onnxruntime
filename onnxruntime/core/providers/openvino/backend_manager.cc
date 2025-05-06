@@ -65,6 +65,9 @@ BackendManager::BackendManager(SessionContext& session_context,
   // Save the indexes of graph inputs among fused_node's inputDefs
   // (which also contains initializers).
   for (uint32_t index = 0; const auto& node : subgraph.GetInputs()) {
+    if (subgraph.GetGraph().GetConsumerNodes(node->Name()).size() == 0) {
+      continue;  // Skip if the input is a dangling node
+    }
     subgraph_context_.input_names.insert({node->Name(), index++});
   }
 
@@ -287,24 +290,146 @@ bool BackendManager::ModelHasBatchedInputs(const ONNX_NAMESPACE::ModelProto& mod
 }
 
 bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::GraphViewer& subgraph) const {
-  bool has_sym_dims = false;
-  auto graph_inputs = subgraph.GetInputs();
-  for (auto input : graph_inputs) {
-    if (input->Shape() == nullptr) {
-      has_sym_dims = true;
-      break;
-    }
-    for (auto& dim : input->Shape()->dim()) {
-      if (dim.value_case() != dim.kDimValue) {
-        has_sym_dims = true;
-        break;
-      }
-    }
-    if (has_sym_dims) {
+  const auto& graph_inputs = subgraph.GetInputs();
+  const bool is_npu_device = session_context_.device_type.find("NPU") != std::string::npos;
+
+  // Identify inputs with symbolic dimensions
+  auto inputs_with_dynamic_dims = IdentifyDynamicInputs(subgraph, graph_inputs);
+  bool has_symbolic_dims = !inputs_with_dynamic_dims.empty();
+  LOGS_DEFAULT(VERBOSE) << "[OpenVINO-EP] Model has "
+                        << (has_symbolic_dims ? "symbolic" : "concrete")
+                        << " input dimensions";
+
+  // Case 1: No dynamic dimensions - model is concrete
+  if (!has_symbolic_dims) {
+    return HandleConcreteModel(graph_inputs, is_npu_device);
+  }
+
+  // Case 2: Dynamic dimensions exist but no reshape input provided
+  if (session_context_.shape.empty()) {
+    return HandleDynamicModelWithoutReshape(is_npu_device, has_symbolic_dims);
+  }
+
+  // Case 3: Check if reshape_input covers all dynamic inputs
+  bool all_dynamic_inputs_covered = true;
+  for (const auto& input_name : inputs_with_dynamic_dims) {
+    if (session_context_.shape.find(input_name) == session_context_.shape.end()) {
+      all_dynamic_inputs_covered = false;
+      LOGS_DEFAULT(WARNING) << "[OpenVINO-EP] reshape_input is provided but doesn't cover dynamic input: "
+                            << input_name;
       break;
     }
   }
-  return has_sym_dims;
+
+  if (!all_dynamic_inputs_covered) {
+    return HandleIncompleteReshapeInputCoverage(is_npu_device, has_symbolic_dims);
+  }
+
+  // Case 4: All dynamic inputs are covered - validate shape compatibility
+  return HandleCompleteReshapeInputCoverage(graph_inputs, is_npu_device, has_symbolic_dims);
+}
+
+// Identify all inputs with dynamic/symbolic dimensions
+std::unordered_set<std::string> BackendManager::IdentifyDynamicInputs(const onnxruntime::GraphViewer& subgraph,
+                                                                      const std::vector<const NodeArg*>& graph_inputs)
+    const {
+  std::unordered_set<std::string> inputs_with_dynamic_dims;
+
+  for (const auto* input : graph_inputs) {
+    // Skip dangling inputs (no consumers)
+    if (subgraph.GetGraph().GetConsumerNodes(input->Name()).empty()) {
+      continue;
+    }
+
+    // Null shape pointer implies dynamic dimensions
+    if (input->Shape() == nullptr) {
+      inputs_with_dynamic_dims.insert(input->Name());
+      continue;
+    }
+
+    // Check each dimension for symbolic values
+    for (const auto& dim : input->Shape()->dim()) {
+      if (dim.value_case() != dim.kDimValue) {
+        inputs_with_dynamic_dims.insert(input->Name());
+        break;
+      }
+    }
+  }
+
+  return inputs_with_dynamic_dims;
+}
+
+// Handle case where model has concrete dimensions
+bool BackendManager::HandleConcreteModel(const std::vector<const NodeArg*>& graph_inputs,
+                                         bool is_npu_device) const {
+  // Check if reshape_input is provided and validate shapes
+  if (!session_context_.shape.empty()) {
+    try {
+      ValidateInputShapes(session_context_.shape, graph_inputs);
+      session_context_.disable_dynamic_shapes = false;
+    } catch (const std::exception& e) {
+      LOGS_DEFAULT(ERROR) << "[OpenVINO-EP] Shape validation failed: " << e.what();
+      session_context_.shape.clear();
+
+      if (is_npu_device) {
+        session_context_.disable_dynamic_shapes = true;
+        LOGS_DEFAULT(WARNING) << "[OpenVINO-EP] NPU requires complete reshape_input coverage, "
+                              << "falling back to static mode and marking disable dynamic shapes as true";
+      }
+    }
+  }
+
+  return false;  // Model is concrete
+}
+
+// Handle case where model has dynamic dimensions but no reshape_input
+bool BackendManager::HandleDynamicModelWithoutReshape(bool is_npu_device,
+                                                      bool has_symbolic_dims) const {
+  if (is_npu_device) {
+    session_context_.disable_dynamic_shapes = true;
+  }
+  return has_symbolic_dims;
+}
+
+// Handle case where reshape_input doesn't cover all dynamic inputs
+bool BackendManager::HandleIncompleteReshapeInputCoverage(bool is_npu_device,
+                                                          bool has_symbolic_dims) const {
+  // Clear the shape map as it's invalid (partial coverage is not supported)
+  session_context_.shape.clear();
+  LOGS_DEFAULT(WARNING) << "[OpenVINO-EP] reshape_input does not cover all dynamic dimensions, "
+                        << "ignoring all provided shapes";
+
+  if (is_npu_device) {
+    session_context_.disable_dynamic_shapes = true;
+    LOGS_DEFAULT(WARNING) << "[OpenVINO-EP] NPU requires complete reshape_input coverage, "
+                          << "falling back to static mode";
+  }
+
+  return has_symbolic_dims;
+}
+
+bool BackendManager::HandleCompleteReshapeInputCoverage(const std::vector<const NodeArg*>& graph_inputs,
+                                                        bool is_npu_device, bool has_symbolic_dims) const {
+  try {
+    ValidateInputShapes(session_context_.shape, graph_inputs);
+
+    // Successfully validated all shapes - treat as concrete model
+    session_context_.disable_dynamic_shapes = false;
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] All dynamic dimensions successfully covered by reshape_input";
+
+    // Model is now effectively static with concrete shapes
+    return false;
+  } catch (const OnnxRuntimeException& ex) {
+    // Validation failed - log error and revert to dynamic handling
+    LOGS_DEFAULT(ERROR) << "[OpenVINO-EP] Shape validation failed: " << ex.what();
+    session_context_.shape.clear();
+
+    if (is_npu_device) {
+      session_context_.disable_dynamic_shapes = true;
+    }
+
+    return has_symbolic_dims;
+  }
 }
 
 // Check to see if the graph is QDQ
@@ -473,6 +598,40 @@ BackendManager::ReWriteBatchDimWithOne(const ONNX_NAMESPACE::ModelProto& model_p
     g_in_shape->mutable_dim(0)->set_dim_value(1);
   }
   return model_copy;
+}
+
+void BackendManager::ValidateInputShapes(const shape_t& shapes,
+                                         const std::vector<const NodeArg*>& graph_inputs) const {
+  for (const auto& [tensor_name, requested_shape] : shapes) {
+    // Find matching input in graph
+    const NodeArg* graph_input = nullptr;
+    for (const auto* input : graph_inputs) {
+      if (input->Name() == tensor_name) {
+        graph_input = input;
+        break;
+      }
+    }
+
+    if (!graph_input) {
+      ORT_THROW("Input '" + tensor_name + "' specified in reshape_input does not exist in the graph");
+    }
+
+    const ONNX_NAMESPACE::TensorShapeProto* graph_shape = graph_input->Shape();
+    if (!graph_shape) {
+      ORT_THROW("Graph input '" + tensor_name + "' has no shape information");
+    }
+
+    // Check dimensions count matches
+    size_t graph_dim_count = graph_shape->dim_size();
+    size_t requested_dim_count = requested_shape.get_max_shape().size();
+
+    if (graph_dim_count != requested_dim_count) {
+      ORT_THROW("Dimensions mismatch for input '" + tensor_name +
+                "': graph expects " + std::to_string(graph_dim_count) +
+                " dimensions but reshape_input specifies " +
+                std::to_string(requested_dim_count) + " dimensions");
+    }
+  }
 }
 
 void BackendManager::Compute(OrtKernelContext* context) {
