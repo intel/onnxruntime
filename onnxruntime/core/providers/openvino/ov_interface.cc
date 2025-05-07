@@ -273,16 +273,6 @@ uint32_t OVInferRequest::GetNumInputs() {
   return static_cast<uint32_t>(ovInfReq.get_compiled_model().inputs().size());
 }
 
-void OVInferRequest::StartAsync() {
-  try {
-    ovInfReq.start_async();
-  } catch (const Exception& e) {
-    ORT_THROW(log_tag + " Couldn't start Inference: " + e.what());
-  } catch (...) {
-    ORT_THROW(log_tag + " In Error Couldn't start Inference");
-  }
-}
-
 void OVInferRequest::Infer() {
   try {
     ovInfReq.infer();
@@ -293,19 +283,5 @@ void OVInferRequest::Infer() {
   }
 }
 
-void OVInferRequest::WaitRequest() {
-  try {
-    ovInfReq.wait();
-  } catch (const Exception& e) {
-    ORT_THROW(log_tag + " Wait Model Failed: " + e.what());
-  } catch (...) {
-    ORT_THROW(log_tag + " Wait Mode Failed");
-  }
-}
-
-void OVInferRequest::QueryStatus() {
-  std::cout << "ovInfReq.query_state()"
-            << " ";
-}
 }  // namespace openvino_ep
 }  // namespace onnxruntime
