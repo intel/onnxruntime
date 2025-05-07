@@ -291,8 +291,48 @@ bool BackendManager::ModelHasBatchedInputs(const ONNX_NAMESPACE::ModelProto& mod
 
 bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::GraphViewer& subgraph) const {
   const auto& graph_inputs = subgraph.GetInputs();
-  const bool is_npu_device = session_context_.device_type.find("NPU") != std::string::npos;
+  auto reshape_map = session_context_.shape;
+  uint16_t valid_reshape_inputs = 0;
+  bool dynamic_model = false;
+  bool is_valid_reshape_input = false;
+  if(!reshape_map.empty() && (graph_inputs.size() == reshape_map.size())) {
+    is_valid_reshape_input = true;
+  } else {
+    session_context_.shape.clear();
+    reshape_map.clear();
+    LOGS_DEFAULT(WARNING) << "[OpenVINO-EP] reshape_input is to be provided for all the inputs in the model";
+  }
+  for (const auto* input : graph_inputs) {
+    // Skip dangling inputs (no consumers)
+    if (subgraph.GetGraph().GetConsumerNodes(input->Name()).empty()) {
+      continue;
+    }
+    if (is_valid_reshape_input && reshape_map.find(input->Name())!= reshape_map.end()) {
+      valid_reshape_inputs+=1;
+      continue;
+    }
+    // Null shape pointer implies dynamic dimensions
+    if (input->Shape() == nullptr) {
+      dynamic_model = true;
+      continue;
+    }
 
+    // Check each dimension for symbolic values
+    for (const auto& dim : input->Shape()->dim()) {
+      if (dim.value_case() != dim.kDimValue) {
+        dynamic_model = true;
+        break;
+      }
+    }
+  }
+  // If model has dynamic shaped inputs but user passed reshape inputs then mark the model as static.
+  if (dynamic_model && valid_reshape_inputs == graph_inputs.size())
+    dynamic_model = false;
+  return dynamic_model;
+
+  /*
+  const auto& graph_inputs = subgraph.GetInputs();
+  const bool is_npu_device = session_context_.device_type.find("NPU") != std::string::npos;
   // Identify inputs with symbolic dimensions
   auto inputs_with_dynamic_dims = IdentifyDynamicInputs(subgraph, graph_inputs);
   bool has_symbolic_dims = !inputs_with_dynamic_dims.empty();
@@ -327,6 +367,7 @@ bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::GraphViewer& s
 
   // Case 4: All dynamic inputs are covered - validate shape compatibility
   return HandleCompleteReshapeInputCoverage(graph_inputs, is_npu_device, has_symbolic_dims);
+*/
 }
 
 // Identify all inputs with dynamic/symbolic dimensions
