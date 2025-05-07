@@ -41,6 +41,7 @@ class BasicBackend : public IBackend {
   ov::CompiledModel& GetOVCompiledModel() override {
     return exe_network_.Get();
   }
+  void RewindKVCache(size_t index) override;
 
  private:
   void PopulateCompiledDirectory(std::string, std::string&, std::string&, bool&);
@@ -78,7 +79,7 @@ class InferRequestsQueue {
   InferRequestsQueue(OVExeNetwork& net, size_t nireq, std::function<void(OVInferRequestPtr)> initializer) {
     OVInferRequestPtr infer_request;
     for (size_t id = 0; id < nireq; id++) {
-      infer_request = std::make_shared<OVInferRequest>(net.CreateInferRequest());
+      infer_request = net.CreateInferRequest();
       initializer(infer_request);
       infer_requests_.push_back(infer_request);
     }
