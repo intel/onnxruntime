@@ -27,6 +27,72 @@ typedef ov::ProfilingInfo OVProfilingInfo;
 typedef ov::Model OVNetwork;
 typedef std::shared_ptr<OVInferRequest> OVInferRequestPtr;
 typedef std::shared_ptr<OVTensor> OVTensorPtr;
+
+#ifdef IO_BUFFER_ENABLED
+typedef ov::intel_gpu::ocl::ClContext* OVRemoteContextPtr;
+typedef ov::RemoteContext OVRemoteContext;
+#endif
+struct ParameterShape {
+  using onnx_shape_t = std::vector<int64_t>;
+
+ private:
+  onnx_shape_t onnx_;
+  ov::PartialShape ov_;
+
+ public:
+  static ov::PartialShape ToOvPartialShape(const onnx_shape_t& onnx_shape) {
+    std::vector<ov::Dimension> ov_shape(onnx_shape.size());
+    std::transform(onnx_shape.begin(), onnx_shape.end(), ov_shape.begin(), [](int64_t dim) {
+      return dim == -1 ? ov::Dimension::dynamic() : ov::Dimension(dim);
+    });
+    return ov::PartialShape(ov_shape);
+  }
+
+  static ov::Shape ToOvShape(const onnx_shape_t& onnx_shape) {
+    return ToOvPartialShape(onnx_shape).get_shape();
+  }
+
+  static onnx_shape_t ToOnnxShape(const ov::PartialShape& ov_shape) {
+      onnx_shape_t onnx_shape(ov_shape.size());
+    std::transform(ov_shape.begin(), ov_shape.end(), onnx_shape.begin(), [](const auto& dim) {
+      return dim.is_dynamic() ? -1 : dim.get_length();
+    });
+      return onnx_shape;
+  }
+
+  static bool IsDynamic(const ov::PartialShape& ov_shape) {
+    return ov_shape.is_dynamic();
+  }
+  static bool IsDynamic(const onnx_shape_t& onnx_shape) {
+    return std::any_of(onnx_shape.begin(), onnx_shape.end(), [](const auto& dim) { return dim == -1; });
+  }
+
+  ov::Shape ov_shape() const { return ov_.get_shape(); }
+
+  const ov::PartialShape& ov() const { return ov_; }
+  const onnx_shape_t& onnx() const { return onnx_; }
+
+  ParameterShape reshape(const onnx_shape_t& new_onnx_shape) const {
+    return ParameterShape(new_onnx_shape);
+  };
+  ParameterShape reshape(const ov::Shape& new_ov_shape) const {
+    return ParameterShape(new_ov_shape);
+  };
+
+  ParameterShape(const onnx_shape_t& onnx_shape) : onnx_(onnx_shape), ov_(ToOvPartialShape(onnx_shape)) {
+  }
+  ParameterShape(const ov::PartialShape& ov_partial_shape) : ov_(ov_partial_shape), onnx_(ToOnnxShape(ov_partial_shape)) {
+  }
+};
+
+struct ParameterInfo {
+  std::string name;
+  uint32_t ov_index;
+  uint32_t onnx_index;
+  ov::element::Type type;
+  ParameterShape shape;
+};
+
 std::optional<bool> queryOVProperty(const std::string& property, const std::string& device_type);
 
 template <typename T>
@@ -100,20 +166,32 @@ class OVExeNetwork {
 };
 
 class OVInferRequest {
- protected:
+  struct ov_tensor_data_t {
+    OVTensorPtr tensor_ptr;
+    const void* ort_ptr;
+  };
+
   ov::InferRequest ovInfReq;
+  std::unordered_map<std::string, ov_tensor_data_t> bindings_cache_;
 
  public:
   uint32_t GetNumInputs();
   OVTensorPtr GetTensor(const std::string& name);
   std::string GetInputTensorName(uint32_t index);
+
+  // Set tensor described param_info and ort_ptr. Call infer req tensor if ort_ptr is last set.
+  void SetTensor(const ParameterInfo& param_info, void* ort_ptr) {
+    auto& cached_binding = bindings_cache_[param_info.name];
+    if (cached_binding.ort_ptr != ort_ptr) {
+      auto tensor_ptr = std::make_shared<ov::Tensor>(param_info.type, param_info.shape.ov_shape(), const_cast<void*>(ort_ptr));
+      SetTensor(param_info.name, tensor_ptr);
+      cached_binding = {tensor_ptr, ort_ptr};
+    }
+  }
+
   void SetTensor(const std::string& name, OVTensorPtr& blob);
-  virtual void StartAsync();
-  virtual void Infer();
-  void WaitRequest();
-  void CancelRequest();
-  void QueryStatus();
-  explicit OVInferRequest(ov::InferRequest infer_request_obj) : ovInfReq(std::move(infer_request_obj)) {}
+  void Infer();
+  explicit OVInferRequest(ov::InferRequest obj) : ovInfReq(std::move(obj)) {}
   OVInferRequest() : ovInfReq(ov::InferRequest()) {}
   ov::InferRequest& GetNewObj() {
     return ovInfReq;
