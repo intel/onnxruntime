@@ -114,19 +114,19 @@ class InferRequestPool {
     friend class InferRequestPool;
   };
 
-  InferRequestPool(OVExeNetwork& net, size_t nireq, std::function<void(OVInferRequestPtr)> initializer) {
+  InferRequestPool(OVExeNetwork& net, size_t initial_size, std::function<void(OVInferRequestPtr)> initializer) : exe_network_(net), initializer_(std::move(initializer)) {
     OVInferRequestPtr infer_request;
-    for (size_t id = 0; id < nireq; id++) {
-      infer_request = std::make_shared<OVInferRequest>(net.CreateInferRequest());
-      initializer(infer_request);
-      infer_requests_.push_back(infer_request);
+    for (size_t id = 0; id < initial_size; id++) {
+      putIdleRequest(createInferRequest());
     }
   }
   ~InferRequestPool() = default;
 
-  GuardedInferReq getIdleRequest() {
+  GuardedInferReq getRequest() {
     std::unique_lock<std::mutex> lock(_mutex);
-    _cv.wait(lock, [this] { return infer_requests_.size() > 0; });
+    if (infer_requests_.empty()) {
+      infer_requests_.emplace_back(createInferRequest());
+    }
     auto request = infer_requests_.back();
     infer_requests_.pop_back();
     return GuardedInferReq(*this, request);
@@ -137,13 +137,19 @@ class InferRequestPool {
     if (infer_request) {
       std::unique_lock<std::mutex> lock(_mutex);
       infer_requests_.push_back(infer_request);
-      _cv.notify_one();
     }
   }
 
+  OVInferRequestPtr createInferRequest() {
+    auto infer_request = std::make_shared<OVInferRequest>(exe_network_.CreateInferRequest());
+    initializer_(infer_request);
+    return infer_request;
+  }
+
   std::mutex _mutex;
-  std::condition_variable _cv;
   std::vector<OVInferRequestPtr> infer_requests_;
+  OVExeNetwork& exe_network_;
+  std::function<void(OVInferRequestPtr)> initializer_;
 };
 
 }  // namespace openvino_ep
