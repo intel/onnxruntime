@@ -495,9 +495,8 @@ void BasicBackend::Infer(OrtKernelContext* ctx) {
   bool gpu = session_context_.device_type.find("GPU") != std::string::npos;
   bool cpu_or_gpu = gpu || (session_context_.device_type.find("CPU") != std::string::npos);
 
-  // Requesting for an idle infer_request from a pool of infer_requests_
   // guarded_request will be released back to the pool when it goes out of scope
-  auto guarded_request = infer_req_pool_->getIdleRequest();
+  auto guarded_request = infer_req_pool_->getRequest();
   auto& infer_request = guarded_request.infer_request_;
 #ifdef IO_BUFFER_ENABLED
   if (gpu &&
