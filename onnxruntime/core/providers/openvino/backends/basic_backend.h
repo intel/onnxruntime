@@ -35,17 +35,7 @@ struct OnnxToOvNetworkBindings {
         auto it = std::find_if(ov_parameters.begin(), ov_parameters.end(),
                                [&onnx_name](const auto& ov_parameter_info) { return ov_parameter_info.get_names().contains(onnx_name); });
 
-        // For Stateful Model Compilation, the ONNX model includes KV cache (past/present) tensors.
-        // However, these tensors are internally converted to a stateful representation, which removes them.
-        // To prevent runtime exceptions, we simply continue processing here.
-        if ((onnx_name.empty() || onnx_name == "beam_idx" ||
-            onnx_name.find("past_key_values") != std::string::npos ||
-            onnx_name.find("present") != std::string::npos) &&
-            session_context.enable_causallm) {
-          continue;
-        }
-
-        ORT_ENFORCE(it != ov_parameters.end(), backend_utils::log_tag,
+        ORT_ENFORCE(it != ov_parameters.end(), log_tag,
                     "Input names mismatch between OpenVINO and ONNX. ", onnx_name,
                     " doesn't exist in the list of OpenVINO input tensor names");
 
