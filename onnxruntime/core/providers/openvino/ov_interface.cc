@@ -7,13 +7,21 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/backend_utils.h"
-
-using Exception = ov::Exception;
+#include <format>
 
 namespace onnxruntime {
 namespace openvino_ep {
 
-static const std::string log_tag = "[OpenVINO-EP] ";
+template <typename Func, typename... Args>
+inline auto OvExeceptionBoundary(Func func, std::format_string<Args...>&& fmt, Args&&... args) {
+  try {
+    return func();
+  } catch (const ov::Exception& e) {
+    ORT_THROW(log_tag + std::vformat(fmt.get(), std::make_format_args(args...)) + ": " + std::string(e.what()));
+  } catch (...) {
+    ORT_THROW(log_tag + std::vformat(fmt.get(), std::make_format_args(args...)));
+  }
+}
 
 #ifndef NDEBUG
 void printDebugInfo(const ov::CompiledModel& obj) {
@@ -58,7 +66,7 @@ std::optional<bool> queryOVProperty(const std::string& property, const std::stri
 }
 
 std::shared_ptr<OVNetwork> OVCore::ReadModel(std::string&& model, const std::string& model_path) {
-  try {
+  return OvExeceptionBoundary([&]() {
     std::istringstream modelStringStream(std::move(model));
     std::istream& modelStream = modelStringStream;
     // Try to load with FrontEndManager
@@ -73,58 +81,50 @@ std::shared_ptr<OVNetwork> OVCore::ReadModel(std::string&& model, const std::str
       inputModel = FE->load(params);
       return FE->convert(inputModel);
     } else {
-      ORT_THROW(log_tag + "[OpenVINO-EP] Unknown exception while Reading network");
+      ORT_THROW(log_tag + "Unknown exception while Reading network");
     }
-  } catch (const Exception& e) {
-    ORT_THROW(log_tag + "[OpenVINO-EP] Exception while Reading network: " + std::string(e.what()));
-  } catch (...) {
-    ORT_THROW(log_tag + "[OpenVINO-EP] Unknown exception while Reading network");
-  }
+  },
+                              "Exception while Reading network");
 }
 
 OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_network,
                                   std::string& hw_target,
                                   ov::AnyMap& device_config,
                                   const std::string& name) {
-  ov::CompiledModel obj;
-  try {
+  return OvExeceptionBoundary([&]() {
+    ov::CompiledModel obj;
     obj = core.compile_model(ie_cnn_network, hw_target, device_config);
 #ifndef NDEBUG
     printDebugInfo(obj);
 #endif
     OVExeNetwork exe(obj);
     return exe;
-  } catch (const Exception& e) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph: " + name + e.what());
-  } catch (...) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph " + name);
-  }
+  },
+                              "Exception while Loading Network for graph");
 }
 
 OVExeNetwork OVCore::CompileModel(const std::string& onnx_model,
                                   std::string& hw_target,
                                   ov::AnyMap& device_config,
                                   const std::string& name) {
-  ov::CompiledModel obj;
-  try {
+  return OvExeceptionBoundary([&]() {
+    ov::CompiledModel obj;
+
     obj = core.compile_model(onnx_model, ov::Tensor(), hw_target, device_config);
 #ifndef NDEBUG
     printDebugInfo(obj);
 #endif
     OVExeNetwork exe(obj);
     return exe;
-  } catch (const Exception& e) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph: " + name + e.what());
-  } catch (...) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph " + name);
-  }
+  },
+                              "Exception while Loading Network for graph");
 }
 
 OVExeNetwork OVCore::ImportModel(std::istream& model_stream,
                                  std::string hw_target,
                                  const ov::AnyMap& device_config,
                                  std::string name) {
-  try {
+  return OvExeceptionBoundary([&]() {
     ov::CompiledModel obj;
     obj = core.import_model(model_stream, hw_target, device_config);
 #ifndef NDEBUG
@@ -132,11 +132,8 @@ OVExeNetwork OVCore::ImportModel(std::istream& model_stream,
 #endif
     OVExeNetwork exe(obj);
     return exe;
-  } catch (const Exception& e) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph: " + name + e.what());
-  } catch (...) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph " + name);
-  }
+  },
+                              "Exception while Loading Network for graph");
 }
 
 void OVCore::SetCache(const std::string& cache_dir_path) {
@@ -146,32 +143,26 @@ void OVCore::SetCache(const std::string& cache_dir_path) {
 #ifdef IO_BUFFER_ENABLED
 OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& model,
                                   OVRemoteContextPtr context, std::string name) {
-  try {
+  OvExeceptionBoundary([&]() {
     auto obj = core.compile_model(model, *context);
 #ifndef NDEBUG
     printDebugInfo(obj);
 #endif
     return OVExeNetwork(obj);
-  } catch (const Exception& e) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph: " + name + e.what());
-  } catch (...) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph " + name);
-  }
+  },
+                       "Exception while Loading Network for graph: {}", name);
 }
 OVExeNetwork OVCore::ImportModel(std::shared_ptr<std::istringstream> model_stream,
                                  OVRemoteContextPtr context, std::string name) {
-  try {
+  return OvExeceptionBoundary([&]() {
     auto obj = core.import_model(*model_stream, *context);
 #ifndef NDEBUG
     printDebugInfo(obj);
 #endif
     OVExeNetwork exe(obj);
     return exe;
-  } catch (const Exception& e) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph: " + name + e.what());
-  } catch (...) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph " + name);
-  }
+  },
+                              "Exception while Loading Network for graph: {}", name);
 }
 #endif
 
@@ -189,20 +180,13 @@ std::vector<std::string> OVCore::GetAvailableDevices(const std::string& device_t
   } catch (const ov::Exception&) {
     // plugin is not created by e.g. invalid env
     // Empty device list will be returned
-  } catch (const std::runtime_error& ex) {
-    // plugin is not created by e.g. invalid env
-    // Empty device list will be returned
-    ORT_THROW("[ERROR] [OpenVINO] An exception occurred while trying to create the ",
-              device_type,
-              " device: ",
-              ex.what());
   } catch (const std::exception& ex) {
-    ORT_THROW("[ERROR] [OpenVINO] An exception occurred while trying to create the ",
+    ORT_THROW(log_tag + "An exception occurred while trying to create the ",
               device_type,
               " device: ",
               ex.what());
   } catch (...) {
-    ORT_THROW("[ERROR] [OpenVINO] Unknown exception occurred while trying to create the ",
+    ORT_THROW(log_tag + "Unknown exception occurred while trying to create the ",
               device_type,
               " device");
   }
@@ -225,48 +209,36 @@ void OVCore::SetStreams(const std::string& device_type, int num_streams) {
 }
 
 OVInferRequest OVExeNetwork::CreateInferRequest() {
-  try {
+  return OvExeceptionBoundary([&]() {
     auto infReq = obj.create_infer_request();
     OVInferRequest inf_obj(std::move(infReq));
     return inf_obj;
-  } catch (const Exception& e) {
-    ORT_THROW(log_tag + "Exception while creating InferRequest object: " + e.what());
-  } catch (...) {
-    ORT_THROW(log_tag + "Exception while creating InferRequest object.");
-  }
+  },
+                              "Exception while creating InferRequest object");
 }
 
 OVTensorPtr OVInferRequest::GetTensor(const std::string& input_name) {
-  try {
+  return OvExeceptionBoundary([&]() {
     auto tobj = ovInfReq.get_tensor(input_name);
     OVTensorPtr blob = std::make_shared<OVTensor>(tobj);
     return blob;
-  } catch (const Exception& e) {
-    ORT_THROW(log_tag + " Cannot access IE Blob for input: " + input_name + e.what());
-  } catch (...) {
-    ORT_THROW(log_tag + " Cannot access IE Blob for input: " + input_name);
-  }
+  },
+                              " Cannot access IE Blob for input: {}", input_name);
 }
 
 std::string OVInferRequest::GetInputTensorName(uint32_t index) {
-  try {
+  return OvExeceptionBoundary([&]() {
     const auto& model = ovInfReq.get_compiled_model();
     return *model.input(index).get_names().begin();
-  } catch (const Exception& e) {
-    ORT_THROW(log_tag + " Cannot access IE Blob for input number: ", index, e.what());
-  } catch (...) {
-    ORT_THROW(log_tag + " Cannot access IE Blob for input number: ", index);
-  }
+  },
+                              " Cannot access IE Blob for input number: {}", index);
 }
 
 void OVInferRequest::SetTensor(const std::string& name, OVTensorPtr& blob) {
-  try {
+  OvExeceptionBoundary([&]() {
     ovInfReq.set_tensor(name, *(blob.get()));
-  } catch (const Exception& e) {
-    ORT_THROW(log_tag + " Cannot set Remote Blob for output: " + name + e.what());
-  } catch (...) {
-    ORT_THROW(log_tag + " Cannot set Remote Blob for output: " + name);
-  }
+  },
+                       " Cannot set Remote Blob for output: {}", name);
 }
 
 uint32_t OVInferRequest::GetNumInputs() {
@@ -274,13 +246,10 @@ uint32_t OVInferRequest::GetNumInputs() {
 }
 
 void OVInferRequest::Infer() {
-  try {
+  OvExeceptionBoundary([&]() {
     ovInfReq.infer();
-  } catch (const Exception& e) {
-    ORT_THROW(log_tag + " Couldn't start Inference: " + e.what());
-  } catch (...) {
-    ORT_THROW(log_tag + " In Error Couldn't start Inference");
-  }
+  },
+                       "In Error Couldn't start Inference");
 }
 
 }  // namespace openvino_ep

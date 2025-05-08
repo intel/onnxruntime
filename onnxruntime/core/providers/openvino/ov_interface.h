@@ -37,6 +37,8 @@ typedef std::shared_ptr<OVTensor> OVTensorPtr;
 typedef ov::intel_gpu::ocl::ClContext* OVRemoteContextPtr;
 typedef ov::RemoteContext OVRemoteContext;
 #endif
+
+
 struct ParameterShape {
   using onnx_shape_t = std::vector<int64_t>;
 
