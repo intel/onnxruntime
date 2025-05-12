@@ -575,6 +575,13 @@ ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_V2, _In_ OrtSessionOpt
                     _In_reads_(num_op_options) const char* const* ep_option_vals,
                     size_t num_ep_options);
 
+ORT_API_STATUS_IMPL(SessionOptionsSetEpSelectionPolicy, _In_ OrtSessionOptions* sess_options,
+                    _In_ OrtExecutionProviderDevicePolicy policy);
+
+ORT_API_STATUS_IMPL(SessionOptionsSetEpSelectionPolicyDelegate, _In_ OrtSessionOptions* sess_options,
+                    _In_ EpSelectionDelegate delegate,
+                    _In_opt_ void* state);
+
 // OrtHardwareDevice accessors.
 ORT_API(OrtHardwareDeviceType, HardwareDevice_Type, _In_ const OrtHardwareDevice* device);
 ORT_API(uint32_t, HardwareDevice_VendorId, _In_ const OrtHardwareDevice* device);
@@ -588,4 +595,6 @@ ORT_API(const char*, EpDevice_EpVendor, _In_ const OrtEpDevice* ep_device);
 ORT_API(const OrtKeyValuePairs*, EpDevice_EpMetadata, _In_ const OrtEpDevice* ep_device);
 ORT_API(const OrtKeyValuePairs*, EpDevice_EpOptions, _In_ const OrtEpDevice* ep_device);
 ORT_API(const OrtHardwareDevice*, EpDevice_Device, _In_ const OrtEpDevice* ep_device);
+
+ORT_API(const OrtEpApi*, GetEpApi);
 }  // namespace OrtApis

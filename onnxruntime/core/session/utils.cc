@@ -18,6 +18,7 @@
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/session/provider_policy_context.h"
 
 using namespace onnxruntime;
 #if !defined(ORT_MINIMAL_BUILD)
@@ -71,6 +72,11 @@ Status TestAutoSelectEPsImpl(const Environment& env, InferenceSession& sess, con
         return ToStatus(status);
       }
     } else {
+      // in the real setup we need an IExecutionProvider wrapper implementation that uses the OrtEp internally,
+      // and we would add that IExecutionProvider to the InferenceSession.
+      ORT_NOT_IMPLEMENTED("IExecutionProvider that wraps OrtEp has not been implemented.");
+
+      /*
       OrtEp* api_ep = nullptr;
       auto status = ep_device->ep_factory->CreateEp(
           ep_device->ep_factory, devices.data(), ep_metadata.data(), devices.size(),
@@ -79,10 +85,7 @@ Status TestAutoSelectEPsImpl(const Environment& env, InferenceSession& sess, con
       if (status != nullptr) {
         return ToStatus(status);
       }
-
-      // in the real setup we need an IExecutionProvider wrapper implementation that uses the OrtEp internally,
-      // and we would add that IExecutionProvider to the InferenceSession.
-      ORT_NOT_IMPLEMENTED("IExecutionProvider that wraps OrtEp has not been implemented.");
+      */
     }
 
     ORT_RETURN_IF_ERROR(sess.RegisterExecutionProvider(std::move(ep)));
@@ -169,14 +172,6 @@ OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
         env->GetEnvironment());
   }
 
-#if !defined(ORT_MINIMAL_BUILD)
-  // TEMPORARY for testing. Manually specify the EP to select.
-  auto auto_select_ep_name = sess->GetSessionOptions().config_options.GetConfigEntry("test.ep_to_select");
-  if (auto_select_ep_name) {
-    ORT_API_RETURN_IF_STATUS_NOT_OK(TestAutoSelectEPsImpl(env->GetEnvironment(), *sess, *auto_select_ep_name));
-  }
-#endif  // !defined(ORT_MINIMAL_BUILD)
-
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   // Add custom domains
   if (options && !options->custom_op_domains_.empty()) {
@@ -207,22 +202,38 @@ OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
   ORT_ENFORCE(session_logger != nullptr,
               "Session logger is invalid, but should have been initialized during session construction.");
 
-  // we need to disable mem pattern if DML is one of the providers since DML doesn't have the concept of
-  // byte addressable memory
-  std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
-  if (options) {
+  const bool has_provider_factories = options != nullptr && !options->provider_factories.empty();
+
+  if (has_provider_factories) {
+    std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
     for (auto& factory : options->provider_factories) {
       auto provider = factory->CreateProvider(*options, *session_logger->ToExternal());
       provider_list.push_back(std::move(provider));
     }
-  }
 
-  // register the providers
-  for (auto& provider : provider_list) {
-    if (provider) {
-      ORT_API_RETURN_IF_STATUS_NOT_OK(sess.RegisterExecutionProvider(std::move(provider)));
+    // register the providers
+    for (auto& provider : provider_list) {
+      if (provider) {
+        ORT_API_RETURN_IF_STATUS_NOT_OK(sess.RegisterExecutionProvider(std::move(provider)));
+      }
     }
   }
+#if !defined(ORT_MINIMAL_BUILD)
+  else {
+    // TEMPORARY for testing. Manually specify the EP to select.
+    auto auto_select_ep_name = sess.GetSessionOptions().config_options.GetConfigEntry("test.ep_to_select");
+    if (auto_select_ep_name) {
+      ORT_API_RETURN_IF_STATUS_NOT_OK(TestAutoSelectEPsImpl(sess.GetEnvironment(), sess, *auto_select_ep_name));
+    }
+
+    // if there are no providers registered, and there's an ep selection policy set, do auto ep selection.
+    // note: the model has already been loaded so model metadata should be available to the policy delegate callback.
+    if (options != nullptr && options->value.ep_selection_policy.enable) {
+      ProviderPolicyContext context;
+      ORT_API_RETURN_IF_STATUS_NOT_OK(context.SelectEpsForSession(sess.GetEnvironment(), *options, sess));
+    }
+  }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   if (prepacked_weights_container != nullptr) {
     ORT_API_RETURN_IF_STATUS_NOT_OK(sess.AddPrePackedWeightsContainer(
@@ -240,15 +251,25 @@ Status LoadPluginOrProviderBridge(const std::string& registration_name,
                                   const ORTCHAR_T* library_path,
                                   std::unique_ptr<EpLibrary>& ep_library,
                                   std::vector<EpFactoryInternal*>& internal_factories) {
+  // If the `library_path` is absolute, use it as-is. Otherwise follow the precedent of ProviderLibrary::Load and make
+  // it absolute by combining it with the OnnxRuntime location.
+  std::filesystem::path resolved_library_path{library_path};
+
+  if (!resolved_library_path.is_absolute()) {
+    resolved_library_path = Env::Default().GetRuntimePath() / std::move(resolved_library_path);
+  }
+
   // if it's a provider bridge library we need to create ProviderLibrary first to ensure the dependencies are loaded
   // like the onnxruntime_provider_shared library.
-  auto provider_library = std::make_unique<ProviderLibrary>(library_path);
+  auto provider_library = std::make_unique<ProviderLibrary>(resolved_library_path.native().c_str(),
+                                                            true,
+                                                            ProviderLibraryPathType::Absolute);
   bool is_provider_bridge = provider_library->Load() == Status::OK();  // library has GetProvider
   LOGS_DEFAULT(INFO) << "Loading EP library: " << library_path
                      << (is_provider_bridge ? " as a provider bridge" : " as a plugin");
 
   // create EpLibraryPlugin to ensure CreateEpFactories and ReleaseEpFactory are available
-  auto ep_library_plugin = std::make_unique<EpLibraryPlugin>(registration_name, library_path);
+  auto ep_library_plugin = std::make_unique<EpLibraryPlugin>(registration_name, std::move(resolved_library_path));
   ORT_RETURN_IF_ERROR(ep_library_plugin->Load());
 
   if (is_provider_bridge) {
