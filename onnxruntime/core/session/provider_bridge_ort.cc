@@ -2065,14 +2065,6 @@ std::shared_ptr<IExecutionProviderFactory> NvProviderFactoryCreator::Create(
   return nullptr;
 }
 
-std::shared_ptr<IExecutionProviderFactory> NvProviderFactoryCreator::Create(int device_id) {
-  return s_library_nv.Get().CreateExecutionProviderFactory(device_id);
-}
-
-std::shared_ptr<IExecutionProviderFactory> NvProviderFactoryCreator::Create(const ProviderOptions& provider_options) {
-  return s_library_nv.Get().CreateExecutionProviderFactory(&provider_options);
-}
-
 std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(const OrtMIGraphXProviderOptions* provider_options) {
   return s_library_migraphx.Get().CreateExecutionProviderFactory(provider_options);
 }
