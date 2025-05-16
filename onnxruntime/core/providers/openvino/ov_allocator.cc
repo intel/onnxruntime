@@ -32,12 +32,16 @@ void* OVRTAllocator::Alloc(size_t size) {
 
 void OVRTAllocator::Free(void* p) {
   try {
+    ov::Tensor* tensor = nullptr;
+    {
     std::unique_lock lock(mutex_);
     auto it = allocated_.find(p);
     if (it != allocated_.end()) {
-      ov::Tensor* tensor = it->second;
+      tensor = it->second;
       allocated_.erase(it);
-      lock.unlock();
+    }
+    } // lock will be automatically released when it goes out of scope
+    if (tensor) {
       delete tensor;
     }
   } catch (const ov::Exception& e) {
