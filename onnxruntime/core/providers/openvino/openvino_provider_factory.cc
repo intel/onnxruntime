@@ -138,7 +138,7 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
         if (std::find(std::begin(available_devices), std::end(available_devices), device) != std::end(available_devices))
           device_found = true;
         if (device_prefix != "CPU" && luid_list.size() > 0) {
-          for (auto dev : available_devices) {
+          for (const auto& dev : available_devices) {
             ov::device::LUID ov_luid = OVCore::Get()->core.get_property(dev, ov::device::luid);
             std::stringstream ov_luid_str;
             ov_luid_str << ov_luid;
@@ -153,7 +153,7 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
   }
   if (luid_list.size() > 0) {
     std::string ov_luid_devices;
-    for (auto luid_str : luid_list) {
+    for (const auto& luid_str : luid_list) {
       if (ov_luid_map.contains(luid_str)) {
         std::string ov_dev = ov_luid_map.at(luid_str);
         std::string ov_dev_strip = split(ov_dev, '.')[0];
@@ -170,14 +170,14 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
     }
     if (!device_mode.empty()) {
       selected_device = device_mode + ":" + ov_luid_devices;
-      for (auto dev_str : devices_to_check) {
-        auto default_dev = split(dev_str, '.')[0];
+      for (const auto& dev_str : devices_to_check) {
+        const auto default_dev = split(dev_str, '.')[0];
 
         if (ov_luid_devices.find(default_dev) == std::string::npos)
           selected_device = selected_device + "," + dev_str;
       }
     } else {
-      selected_device = ov_luid_devices;
+      selected_device = std::move(ov_luid_devices);
     }
   }
   // If invalid device is chosen error is thrown
@@ -218,7 +218,7 @@ static void ParseProviderInfo(const ProviderOptions& provider_options,
   // Minor optimization: we'll hold an OVCore reference to ensure we don't create a new core between ParseDeviceType and
   // (potential) SharedContext creation.
   auto ov_core = OVCore::Get();
-  pi.device_type = ParseDeviceType(ov_core, provider_options);
+  pi.device_type = ParseDeviceType(std::move(ov_core), provider_options);
 
   if (provider_options.contains("device_id")) {
     std::string dev_id = provider_options.at("device_id").data();
@@ -394,9 +394,51 @@ struct OpenVINO_Provider : Provider {
 
       pi.enable_qdq_optimizer = ParseBooleanOption(provider_options, "enable_qdq_optimizer");
 
-      pi.disable_dynamic_shapes = ParseBooleanOption(provider_options, "disable_dynamic_shapes");
-    } catch (std::string msg) {
-      ORT_THROW(msg);
+    pi.disable_dynamic_shapes = ParseBooleanOption(provider_options, "disable_dynamic_shapes");
+  } catch (std::string msg) {
+    ORT_THROW(msg);
+  }
+  // Always true for NPU plugin or when passed .
+  if (pi.device_type.find("NPU") != std::string::npos) {
+    pi.disable_dynamic_shapes = true;
+  }
+}
+
+struct OpenVINOProviderFactory : IExecutionProviderFactory {
+  OpenVINOProviderFactory(ProviderInfo provider_info, std::shared_ptr<SharedContext> shared_context)
+      : provider_info_(std::move(provider_info)), shared_context_(std::move(shared_context)) {}
+
+  ~OpenVINOProviderFactory() override {}
+
+  std::unique_ptr<IExecutionProvider> CreateProvider() override {
+    ParseConfigOptions(provider_info_);
+    return std::make_unique<OpenVINOExecutionProvider>(provider_info_, shared_context_);
+  }
+
+  // Called by InferenceSession when registering EPs. Allows creation of an EP instance that is initialized with
+  // session-level configurations.
+  std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions& session_options,
+                                                     const OrtLogger& session_logger) override {
+    const ConfigOptions& config_options = session_options.GetConfigOptions();
+    const std::unordered_map<std::string, std::string>& config_options_map = config_options.GetConfigOptionsMap();
+
+    // The implementation of the SessionOptionsAppendExecutionProvider C API function automatically adds EP options to
+    // the session option configurations with the key prefix "ep.<lowercase_ep_name>.".
+    // Extract those EP options into a new "provider_options" map.
+    std::string lowercase_ep_name = kOpenVINOExecutionProvider;
+    std::transform(lowercase_ep_name.begin(), lowercase_ep_name.end(), lowercase_ep_name.begin(), [](unsigned char c) {
+      return static_cast<char>(std::tolower(c));
+    });
+
+    std::string key_prefix = "ep.";
+    key_prefix += lowercase_ep_name;
+    key_prefix += ".";
+
+    std::unordered_map<std::string, std::string> provider_options;
+    for (const auto& [key, value] : config_options_map) {
+      if (key.rfind(key_prefix, 0) == 0) {
+        provider_options[key.substr(key_prefix.size())] = value;
+      }
     }
     // Always true for NPU plugin or when passed .
     if (pi.device_type.find("NPU") != std::string::npos) {
