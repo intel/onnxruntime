@@ -143,6 +143,16 @@ void OVCore::SetCache(const std::string& cache_dir_path) {
   core.set_property(ov::cache_dir(cache_dir_path));
 }
 
+OVTensor OVInferRequest::GetOutputTensor(const int& output_idx) {
+  try {
+    return ovInfReq.get_output_tensor(output_idx);
+  } catch (const Exception& e) {
+    ORT_THROW(log_tag + " Cannot access output tensor: " + e.what());
+  } catch (...) {
+    ORT_THROW(log_tag + " Cannot access output tensor");
+  }
+}
+
 #ifdef IO_BUFFER_ENABLED
 OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& model,
                                   OVRemoteContextPtr context, std::string name) {

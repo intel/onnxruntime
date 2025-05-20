@@ -14,6 +14,8 @@
 #include "openvino/runtime/intel_npu/properties.hpp"
 #include "openvino/pass/convert_fp32_to_fp16.hpp"
 #include "openvino/frontend/manager.hpp"
+#include "openvino/core/dimension.hpp"
+#include "openvino/core/partial_shape.hpp"
 
 #ifdef IO_BUFFER_ENABLED
 #include <openvino/runtime/intel_gpu/ocl/ocl.hpp>
@@ -128,6 +130,7 @@ class OVInferRequest {
   ov::InferRequest& GetNewObj() {
     return ovInfReq;
   }
+  OVTensor GetOutputTensor(const int& output_idx);
 };
 }  // namespace openvino_ep
 }  // namespace onnxruntime

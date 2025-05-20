@@ -27,6 +27,16 @@ struct ov_tensor_data_t {
   const void* ort_ptr;
 };
 
+struct DynamicFlags {
+    bool is_static = true;          // default true if no dynamic dims
+    bool has_fully_dynamic = false;
+    bool has_bounded_dynamic = false;
+
+    bool is_mixed() const {
+        return has_fully_dynamic && has_bounded_dynamic;
+    }
+};
+
 class InferRequestsQueue;
 class BasicBackend : public IBackend {
  public:
@@ -51,6 +61,9 @@ class BasicBackend : public IBackend {
   void EnableStreams();
   void SetNumThreads(ov::AnyMap& device_config);
   void StartAsyncInference(Ort::KernelContext& context, std::shared_ptr<OVInferRequest> infer_request);
+  DynamicFlags classify_shape_flags(const ov::CompiledModel& model);
+  void ValidateOrtDimsAgainstPartialShape(const std::vector<int64_t>& ort_dims,
+                                          const ov::PartialShape& partial_shape) const;
 
 #ifdef IO_BUFFER_ENABLED
   void StartRemoteAsyncInference(Ort::KernelContext& context, std::shared_ptr<OVInferRequest> infer_request);
@@ -72,6 +85,7 @@ class BasicBackend : public IBackend {
   using ort_tensor_key_t = const std::string;
   std::map<ort_tensor_key_t, ov_tensor_data_t> ort_ov_tensor_map;
 };
+
 
 class InferRequestsQueue {
  public:
