@@ -295,54 +295,7 @@ See more information on the OpenVINO™ Execution Provider [here](../execution-p
    ```
    **Note:** If you are using a dockerfile to use OpenVINO™ Execution Provider, sourcing OpenVINO™ won't be possible within the dockerfile. You would have to explicitly set the LD_LIBRARY_PATH to point to OpenVINO™ libraries location. Refer our [dockerfile](https://github.com/microsoft/onnxruntime/blob/main/dockerfiles/Dockerfile.openvino).
 
-### Build Instructions
-{: .no_toc }
-
-#### Windows
-
-```
-.\build.bat --config RelWithDebInfo --cmake_generator "Visual Studio 17 2022" --use_openvino <hardware_option> --build_shared_lib --build_wheel --parallel --skip_tests
-```
-
-   * Using hardware option CPU 
-   ```bash 
-   build.bat --config RelWithDebInfo --cmake_generator "Visual Studio 17 2022" --use_openvino CPU --build_wheel --build_shared_lib --parallel --skip_tests
-   ```
-   *Notes:
-    The default Windows CMake Generator is Visual Studio 2019, but you can also use the newer Visual Studio 2022 by passing `--cmake_generator "Visual Studio 17 2022"` to `.\build.bat`*
-
-   * To install the wheel, use the following command :
-   ```bash
-   pip install <path to whl> --force-reinstall
-   ```
-
-   * The built python wheel can be found at the below location : 
-   ```bash
-   onnxruntime\build\Windows\RelWithDebInfo\RelWithDebInfo\dist\ onnxruntime_openvino-1.2*.0-cp310-cp310-win_amd64.whl 
-   ```
-
-#### Linux
-
-```
-./build.sh --config RelWithDebInfo --cmake_generator "Visual Studio 17 2022" --use_openvino <hardware_option> --build_shared_lib --build_wheel --parallel --skip_tests 
-```
-   * Using hardware option GPU
-   ```bash
-   build.sh --config RelWithDebInfo --cmake_generator "Visual Studio 17 2022" --use_openvino GPU --build_wheel --build_shared_lib --parallel --skip_tests
-   ```
-
-#### HETERO/MULTI/AUTO Device build
-A minimum of two device's should be specified for a valid HETERO or MULTI or AUTO device build.
-
-HETERO:DEVICE_TYPE_1,DEVICE_TYPE_2,DEVICE_TYPE_3... 
-
-The DEVICE_TYPE can be any of these devices from this list ['CPU','GPU', 'NPU'].
-
-```
-Example's: HETERO:GPU,CPU or AUTO:GPU,CPU or MULTI:GPU,CPU
-```
-Note: Refer to the [table](../build/eps.md#intel-target-devices) below for other hardware options. 
-
+### Build Options 
    * `--build_wheel` : Creates python wheel file in dist/ folder. Enable it when building from source.
    * `--use_openvino` : Builds the OpenVINO™ Execution Provider in ONNX Runtime.
    * `--build_shared_lib` : Builds shared libraries for ONNX Runtime and the OpenVINO™ Execution Provider.
@@ -350,7 +303,53 @@ Note: Refer to the [table](../build/eps.md#intel-target-devices) below for other
    * `--parallel` : Speeds up the build process. It leverages multiple cores to reduce build time.
    * `<hardware_option>` : Specifies the default hardware target for building OpenVINO™ Execution Provider. This can be overriden dynamically at runtime with another option (refer to [OpenVINO™-ExecutionProvider](../execution-providers/OpenVINO-ExecutionProvider.md#summary-of-options) for more details on dynamic device selection). Below are the options for different Intel target devices.
 
+### Build Instructions
+{: .no_toc }
+
+#### Windows
+
+   ```
+   .\build.bat --config RelWithDebInfo --cmake_generator "Visual Studio 17 2022" --use_openvino <hardware_option> --build_shared_lib --build_wheel --parallel --skip_tests
+   ```
+
+   1. Using hardware option CPU 
+      ```bash 
+      build.bat --config RelWithDebInfo --cmake_generator "Visual Studio 17 2022" --use_openvino CPU --build_wheel --build_shared_lib --parallel --skip_tests
+      ```
+   2. *Notes:
+      The default Windows CMake Generator is Visual Studio 2019, but you can also use the newer Visual Studio 2022 by passing `--cmake_generator "Visual Studio 17 2022"` to `.\build.bat`*
+
+   3.  To install the wheel, use the following command :
+         ```bash
+         pip install <path to whl> --force-reinstall
+         ```
+
+   4.  The built python wheel can be found at the below location : 
+         ```bash
+         onnxruntime\build\Windows\RelWithDebInfo\RelWithDebInfo\dist\ onnxruntime_openvino-1.2*.0-cp310-cp310-win_amd64.whl 
+         ```
+
+#### Linux
+
+   ```
+   ./build.sh --config RelWithDebInfo --cmake_generator "Visual Studio 17 2022" --use_openvino <hardware_option> --build_shared_lib --build_wheel --parallel --skip_tests 
+   ```
+   1. Using hardware option GPU
+      ```bash
+      build.sh --config RelWithDebInfo --cmake_generator "Visual Studio 17 2022" --use_openvino GPU --build_wheel --build_shared_lib --parallel --skip_tests
+      ```
+
+#### HETERO/MULTI/AUTO Device build
+A minimum of two device's should be specified for a valid HETERO or MULTI or AUTO device build. 
+The DEVICE_TYPE can be any of these devices from this list ['CPU','GPU', 'NPU'].
+
+   ```
+   Example's: HETERO:GPU,CPU or AUTO:GPU,CPU or MULTI:GPU,CPU
+   ```
+
+
 NOTES: 
+   * Refer to the [table](../build/eps.md#intel-target-devices) below for other hardware options. 
    * For specifying the correct hardware target in cases where both integrated and discrete GPU’s co-exist refer to [Intel GPU device naming convention](https://docs.openvino.ai/2024/openvino-workflow/running-inference/inference-devices-and-modes/gpu-device.html#device-naming-convention) 
    * Disable subgraph partition Feature
       * Builds the OpenVINO™ Execution Provider in ONNX Runtime with sub graph partitioning disabled.
@@ -359,10 +358,10 @@ NOTES:
 
       * To enable this feature during build time. Use `--use_openvino ` `<hardware_option>_NO_PARTITION`
       
-   ```
-   Usage: --use_openvino CPU_FP32_NO_PARTITION or --use_openvino GPU_FP32_NO_PARTITION or
-         --use_openvino GPU_FP16_NO_PARTITION 
-   ```
+         ```
+         Usage: --use_openvino CPU_FP32_NO_PARTITION or --use_openvino GPU_FP32_NO_PARTITION or
+               --use_openvino GPU_FP16_NO_PARTITION 
+         ```
    * For more information on OpenVINO™ Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document [OpenVINO™-ExecutionProvider](../execution-providers/OpenVINO-ExecutionProvider.md)
 
 
