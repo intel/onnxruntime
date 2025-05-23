@@ -28,6 +28,7 @@ namespace openvino_ep {
 struct OnnxToOvNetworkBindings {
   std::vector<ParameterInfo> network_outputs_;
   std::vector<ParameterInfo> network_inputs_;
+  bool has_dynamic_io_ = false;
 
   OnnxToOvNetworkBindings(OVExeNetwork& exec_network, SubGraphContext& subgraph_context, SessionContext& session_context) {
     auto populate = [&](auto& input_output_map, const SubGraphContext::string_index_map_t& onnx_input_map, const auto& ov_parameters) {
@@ -42,6 +43,9 @@ struct OnnxToOvNetworkBindings {
         auto ov_param_index = std::distance(ov_parameters.begin(), it);
 
         auto shape = ov_parameters[ov_param_index].get_partial_shape();
+        if (shape.is_dynamic()) {
+          has_dynamic_io_ = true;
+        }
         auto type = ov_parameters[ov_param_index].get_element_type();
         ParameterInfo info{onnx_name, ov_param_index, onnx_param_index, type, shape};
         input_output_map.push_back(std::move(info));
@@ -62,7 +66,7 @@ class BasicBackend : public IBackend {
                SharedContext& shared_context,
                ptr_stream_t& model_stream);
 
-  void Infer(OrtKernelContext* context) override;
+  void Infer(OrtKernelContext* context) const override;
   ~BasicBackend() override = default;
   ov::CompiledModel GetOVCompiledModel() override {
     return exe_network_.Get();
@@ -78,13 +82,12 @@ class BasicBackend : public IBackend {
   void SetNumThreads(ov::AnyMap& device_config);
 
 #ifdef IO_BUFFER_ENABLED
-  void RemoteInfer(Ort::KernelContext& context, std::shared_ptr<OVInferRequest> infer_request);
+  void RemoteInfer(Ort::KernelContext& context, std::shared_ptr<OVInferRequest> infer_request) const;
 #endif
 
   SessionContext& session_context_;
   SubGraphContext subgraph_context_;
   SharedContext& shared_context_;
-  mutable std::mutex compute_lock_;
   OVExeNetwork exe_network_;
   std::map<std::string, std::shared_ptr<ov::Node>> const_outputs_map_;
   std::unique_ptr<InferRequestPool> infer_req_pool_;
@@ -93,7 +96,7 @@ class BasicBackend : public IBackend {
 #endif
 
   using ort_tensor_key_t = const std::string;
-  std::unique_ptr<OnnxToOvNetworkBindings> bindings_;
+  std::unique_ptr<const OnnxToOvNetworkBindings> bindings_;
 };
 
 class InferRequestPool {
