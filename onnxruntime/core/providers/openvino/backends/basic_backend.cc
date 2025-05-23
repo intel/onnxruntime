@@ -573,36 +573,39 @@ void BasicBackend::StartRemoteAsyncInference(Ort::KernelContext& context, OVInfe
 void BasicBackend::CompleteAsyncInference(Ort::KernelContext& context, OVInferRequestPtr infer_request) {
   // Wait for Async inference completion
   try {
-    bool cpu_or_gpu = session_context_.device_type.find("CPU") != std::string::npos ||
-                      session_context_.device_type.find("GPU") != std::string::npos;
-
     infer_request->WaitRequest();
+  } catch (const char* msg) {
+    ORT_THROW(msg);
+  }
 
-    if (cpu_or_gpu) {
-      for (const auto& output_info : bindings_->network_outputs_) {
-        OVTensorPtr graph_output_blob;
-        try {
-          graph_output_blob = infer_request->GetTensor(output_info.name);
-        } catch (const char* msg) {
-          ORT_THROW(msg);
-        }
-        size_t batch_size = 1;
-        Ort::UnownedValue output_tensor =
-            GetOutputTensor(context, batch_size, infer_request, output_info.name, subgraph_context_.output_names);
-        auto mem_info = output_tensor.GetTensorMemoryInfo();
-        if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
+  bool cpu_or_gpu = session_context_.device_type.find("CPU") != std::string::npos ||
+                    session_context_.device_type.find("GPU") != std::string::npos;
+  if (cpu_or_gpu) {
+    for (const auto& output_info : bindings_->network_outputs_) {
+      OVTensorPtr graph_output_blob;
+      try {
+        graph_output_blob = infer_request->GetTensor(output_info.name);
+      } catch (const char* msg) {
+        ORT_THROW(msg);
+      }
+      size_t batch_size = 1;
+      Ort::UnownedValue output_tensor =
+          GetOutputTensor(context, batch_size, infer_request, output_info.name, subgraph_context_.output_names);
+      auto mem_info = output_tensor.GetTensorMemoryInfo();
+      if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
           return;
-        } else {
-          size_t batch_slice = 0;
-          FillOutputBlob(std::move(graph_output_blob), output_tensor, batch_slice);
-        }
+      } else {
+        size_t batch_slice = 0;
+        FillOutputBlob(std::move(graph_output_blob), output_tensor, batch_slice);
       }
     }
+  }
 
-    if (!const_outputs_map_.empty()) {
-      for (const auto& item : const_outputs_map_) {
-        const auto& out_name = item.first;
-        auto node = item.second;
+  if (!const_outputs_map_.empty()) {
+    for (const auto& item : const_outputs_map_) {
+      const auto& out_name = item.first;
+      auto node = item.second;
+      try {
         Ort::UnownedValue output_tensor = GetOutputTensor(context,
                                                           out_name,
                                                           subgraph_context_.output_names,
@@ -613,10 +616,10 @@ void BasicBackend::CompleteAsyncInference(Ort::KernelContext& context, OVInferRe
         } else {
           FillOutputsWithConstantData(std::move(node), output_tensor);
         }
+      } catch (std::string const& msg) {
+        ORT_THROW(msg);
       }
     }
-  } catch (const char* msg) {
-    ORT_THROW(msg);
   }
 }
 
