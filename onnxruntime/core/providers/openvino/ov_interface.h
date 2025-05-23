@@ -34,52 +34,36 @@ typedef ov::RemoteContext OVRemoteContext;
 #endif
 
 struct ParameterShape {
-  using onnx_shape_t = std::vector<int64_t>;
+  using ort_shape_t = std::vector<int64_t>;
 
- private:
-  onnx_shape_t onnx_;
-  ov::PartialShape ov_;
-
- public:
-  static ov::PartialShape ToOvPartialShape(const onnx_shape_t& onnx_shape) {
-    std::vector<ov::Dimension> ov_shape(onnx_shape.size());
-    std::transform(onnx_shape.begin(), onnx_shape.end(), ov_shape.begin(), [](int64_t dim) {
+  static ov::PartialShape ToOvPartialShape(const ort_shape_t& ort_shape) {
+    std::vector<ov::Dimension> ov_shape(ort_shape.size());
+    std::transform(ort_shape.begin(), ort_shape.end(), ov_shape.begin(), [](int64_t dim) {
       return dim == -1 ? ov::Dimension::dynamic() : ov::Dimension(dim);
     });
     return ov::PartialShape(ov_shape);
   }
 
-  static onnx_shape_t ToOnnxShape(const ov::PartialShape& ov_shape) {
-    onnx_shape_t onnx_shape(ov_shape.size());
-    std::transform(ov_shape.begin(), ov_shape.end(), onnx_shape.begin(), [](const auto& dim) {
+  static ort_shape_t ToOrtShape(const ov::PartialShape& ov_shape) {
+    ort_shape_t ort_shape(ov_shape.size());
+    std::transform(ov_shape.begin(), ov_shape.end(), ort_shape.begin(), [](const auto& dim) {
       return dim.is_dynamic() ? -1 : dim.get_length();
     });
-    return onnx_shape;
-  }
-
-  static bool IsDynamic(const ov::PartialShape& ov_shape) {
-    return ov_shape.is_dynamic();
-  }
-  static bool IsDynamic(const onnx_shape_t& onnx_shape) {
-    return std::any_of(onnx_shape.begin(), onnx_shape.end(), [](const auto& dim) { return dim == -1; });
+    return ort_shape;
   }
 
   ov::Shape ov_shape() const { return ov_.get_shape(); }
-
   const ov::PartialShape& ov() const { return ov_; }
-  const onnx_shape_t& onnx() const { return onnx_; }
+  const ort_shape_t& ort() const { return ort_; }
 
-  ParameterShape reshape(const onnx_shape_t& new_onnx_shape) const {
-    return ParameterShape(new_onnx_shape);
-  };
-  ParameterShape reshape(const ov::Shape& new_ov_shape) const {
-    return ParameterShape(new_ov_shape);
-  };
+  ParameterShape(const ort_shape_t& ort_shape) : ort_(ort_shape), ov_(ToOvPartialShape(ort_shape)) {
+  }
+  ParameterShape(const ov::PartialShape& ov_partial_shape) : ov_(ov_partial_shape), ort_(ToOrtShape(ov_partial_shape)) {
+  }
 
-  ParameterShape(const onnx_shape_t& onnx_shape) : onnx_(onnx_shape), ov_(ToOvPartialShape(onnx_shape)) {
-  }
-  ParameterShape(const ov::PartialShape& ov_partial_shape) : ov_(ov_partial_shape), onnx_(ToOnnxShape(ov_partial_shape)) {
-  }
+ private:
+  ort_shape_t ort_;
+  ov::PartialShape ov_;
 };
 
 struct ParameterInfo {

@@ -190,7 +190,7 @@ GetOutputTensor(Ort::KernelContext& context,
     ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX");
   }
   int index = it->second;
-  auto output_shape = ParameterShape::ToOnnxShape(node->get_shape());
+  auto output_shape = ParameterShape::ToOrtShape(node->get_shape());
 
   return context.GetOutput(index, output_shape);
 }

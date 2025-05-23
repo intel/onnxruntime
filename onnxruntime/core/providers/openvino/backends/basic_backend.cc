@@ -518,7 +518,7 @@ void BasicBackend::Infer(OrtKernelContext* ctx) const {
       // Copy outputs
       for (const auto& output_info : bindings_->network_outputs_) {
         auto ov_tensor = infer_request->GetTensor(output_info.name);
-        auto output_shape = ParameterShape::ToOnnxShape(ov_tensor->get_shape());
+        auto output_shape = ParameterShape::ToOrtShape(ov_tensor->get_shape());
         auto ort_tensor = context.GetOutput(output_info.onnx_index, output_shape);
 
         memcpy_s(ort_tensor.GetTensorMutableRawData(),
@@ -536,7 +536,7 @@ void BasicBackend::Infer(OrtKernelContext* ctx) const {
 
       // Bind outputs
       for (const auto& output_info : bindings_->network_outputs_) {
-        infer_request->SetTensor(output_info, context.GetOutput(output_info.onnx_index, output_info.shape.onnx()).GetTensorMutableRawData());
+        infer_request->SetTensor(output_info, context.GetOutput(output_info.onnx_index, output_info.shape.ort()).GetTensorMutableRawData());
       }
 
       // Run Inference
