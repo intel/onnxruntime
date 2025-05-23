@@ -361,7 +361,7 @@ void BasicBackend::SetNumThreads(ov::AnyMap& device_config) {
 
 #ifdef IO_BUFFER_ENABLED
 // Wait for Remote Aynchronous inference completion
-void BasicBackend::RemoteInfer(Ort::KernelContext& context, OVInferRequestPtr infer_request) {
+void BasicBackend::RemoteInfer(Ort::KernelContext& context, OVInferRequestPtr infer_request) const {
   try {
     auto graph_input_info = exe_network_.Get().inputs();
     int input_idx = 0;
@@ -467,7 +467,7 @@ void BasicBackend::RemoteInfer(Ort::KernelContext& context, OVInferRequestPtr in
 }
 #endif
 
-void BasicBackend::Infer(OrtKernelContext* ctx) {
+void BasicBackend::Infer(OrtKernelContext* ctx) const {
   Ort::KernelContext context(ctx);
 
   LOGS_DEFAULT(INFO) << log_tag << "Running graph " << subgraph_context_.subgraph_name;
@@ -492,43 +492,64 @@ void BasicBackend::Infer(OrtKernelContext* ctx) {
     return;
   }
 
-  bool gpu = session_context_.device_type.find("GPU") != std::string::npos;
-  bool cpu_or_gpu = gpu || (session_context_.device_type.find("CPU") != std::string::npos);
-
   // guarded_request will be released back to the pool when it goes out of scope
   auto guarded_request = infer_req_pool_->getRequest();
   auto& infer_request = guarded_request.infer_request_;
 #ifdef IO_BUFFER_ENABLED
-  if (gpu &&
+  if (session_context_.device_type.find("GPU") != std::string::npos &&
       (session_context_.context != nullptr) && session_context_.is_wholly_supported_graph) {
     RemoteInfer(context, infer_request);
   } else
 #else
   {  // scope for else if IO_BUFFER_ENABLED
 
-    // Bind inputs
-    for (const auto& input_info : bindings_->network_inputs_) {
-      if (subgraph_context_.has_dynamic_input_shape &&
-          !session_context_.disable_dynamic_shapes &&
-          cpu_or_gpu) {
-        // copy the input to set current shape.
-        auto input_info_copy = input_info;
-        auto tensor = context.GetInput(input_info.onnx_index);
-        input_info_copy.shape = ParameterShape(tensor.GetTensorTypeAndShapeInfo().GetShape());
+    if (bindings_->has_dynamic_io_ ||
+        (subgraph_context_.has_dynamic_input_shape &&
+         !session_context_.disable_dynamic_shapes)) {
+      // Dynamic shape inference
 
-        infer_request->SetTensor(input_info_copy, const_cast<void*>(tensor.GetTensorRawData()));
-      } else {
+      // We don't know the output shapes so we need to get the outputs from the infer request and copy them into the ort
+      // tensors instead of binding them to the infer request directly.
+
+      // Bind inputs
+      for (const auto& input_info : bindings_->network_inputs_) {
+        // Set the input shape based on the input tensor from ort
+        auto tensor = context.GetInput(input_info.onnx_index);
+        auto input_shape = ParameterShape(tensor.GetTensorTypeAndShapeInfo().GetShape());
+
+        infer_request->SetTensorShapeOverride(input_info, input_shape, const_cast<void*>(tensor.GetTensorRawData()));
+      }
+
+      // Run Inference
+      infer_request->Infer();
+
+      // Copy outputs
+      for (const auto& output_info : bindings_->network_outputs_) {
+        auto ov_tensor = infer_request->GetTensor(output_info.name);
+        auto output_shape = ParameterShape::ToOnnxShape(ov_tensor->get_shape());
+        auto ort_tensor = context.GetOutput(output_info.onnx_index, output_shape);
+
+        memcpy_s(ort_tensor.GetTensorMutableRawData(),
+                 ort_tensor.GetTensorSizeInBytes(),
+                 ov_tensor->data(),
+                 ov_tensor->get_byte_size());
+      }
+    } else {
+      // Static shape inference
+
+      // Bind inputs
+      for (const auto& input_info : bindings_->network_inputs_) {
         infer_request->SetTensor(input_info, const_cast<void*>(context.GetInput(input_info.onnx_index).GetTensorRawData()));
       }
-    }
 
-    // Bind outputs
-    for (const auto& output_info : bindings_->network_outputs_) {
-      infer_request->SetTensor(output_info, context.GetOutput(output_info.onnx_index, output_info.shape.onnx()).GetTensorMutableRawData());
-    }
+      // Bind outputs
+      for (const auto& output_info : bindings_->network_outputs_) {
+        infer_request->SetTensor(output_info, context.GetOutput(output_info.onnx_index, output_info.shape.onnx()).GetTensorMutableRawData());
+      }
 
-    // Run Inference
-    infer_request->Infer();
+      // Run Inference
+      infer_request->Infer();
+    }
 
     // Fill constant outputs if needed
     for (const auto& [name, node] : const_outputs_map_) {
@@ -552,7 +573,7 @@ void BasicBackend::Infer(OrtKernelContext* ctx) {
 
 #ifndef NDEBUG
 #ifndef IO_BUFFER_ENABLED
-  // Print performance counts before releasing the infer_request for potential thread safety
+  // Print performance counts before releasing the infer_request for thread safety
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
     std::string& hw_target = session_context_.device_type;
     printPerformanceCounts(infer_request, std::cout, hw_target);
