@@ -38,7 +38,6 @@ typedef ov::intel_gpu::ocl::ClContext* OVRemoteContextPtr;
 typedef ov::RemoteContext OVRemoteContext;
 #endif
 
-
 struct ParameterShape {
   using onnx_shape_t = std::vector<int64_t>;
 
@@ -55,16 +54,12 @@ struct ParameterShape {
     return ov::PartialShape(ov_shape);
   }
 
-  static ov::Shape ToOvShape(const onnx_shape_t& onnx_shape) {
-    return ToOvPartialShape(onnx_shape).get_shape();
-  }
-
   static onnx_shape_t ToOnnxShape(const ov::PartialShape& ov_shape) {
-      onnx_shape_t onnx_shape(ov_shape.size());
+    onnx_shape_t onnx_shape(ov_shape.size());
     std::transform(ov_shape.begin(), ov_shape.end(), onnx_shape.begin(), [](const auto& dim) {
       return dim.is_dynamic() ? -1 : dim.get_length();
     });
-      return onnx_shape;
+    return onnx_shape;
   }
 
   static bool IsDynamic(const ov::PartialShape& ov_shape) {
@@ -189,9 +184,14 @@ class OVInferRequest {
 
   // Set tensor described param_info and ort_ptr. Call infer req tensor if ort_ptr is last set.
   void SetTensor(const ParameterInfo& param_info, void* ort_ptr) {
+    SetTensorShapeOverride(param_info, param_info.shape, ort_ptr);
+  }
+
+  // Set tensor described param_info and ort_ptr. Overrides shape in param_info with shape_override. Call infer req tensor if ort_ptr is last set.
+  void SetTensorShapeOverride(const ParameterInfo& param_info, const ParameterShape& shape_override, void* ort_ptr) {
     auto& cached_binding = bindings_cache_[param_info.name];
     if (cached_binding.ort_ptr != ort_ptr) {
-      auto tensor_ptr = std::make_shared<ov::Tensor>(param_info.type, param_info.shape.ov_shape(), const_cast<void*>(ort_ptr));
+      auto tensor_ptr = std::make_shared<ov::Tensor>(param_info.type, shape_override.ov_shape(), const_cast<void*>(ort_ptr));
       SetTensor(param_info.name, tensor_ptr);
       cached_binding = {tensor_ptr, ort_ptr};
     }
