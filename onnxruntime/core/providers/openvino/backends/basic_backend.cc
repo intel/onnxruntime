@@ -612,57 +612,67 @@ void BasicBackend::CompleteAsyncInference(Ort::KernelContext& context, OVInferRe
   // Wait for Async inference completion
   try {
     infer_request->WaitRequest();
-    auto graph_output_info = exe_network_.Get().outputs();
-    for (auto output_info_iter = graph_output_info.begin();
-         output_info_iter != graph_output_info.end(); ++output_info_iter) {
-      OVTensorPtr graph_output_blob;
-      auto output_names = output_info_iter->get_names();
-      std::string onnx_output_name;
-      std::string output_name;
-      bool output_name_found = false;
-      // using the output name retrieved from ONNX original to match with the output names returned by OV tensors
-      for (auto it = subgraph_context_.output_names.begin(); it != subgraph_context_.output_names.end(); ++it) {
-        onnx_output_name = it->first;
-        if (output_names.find(onnx_output_name) != output_names.end()) {
-          // Assigning the output_name
-          output_name = it->first;
-          output_name_found = true;
-          break;
-        }
-      }
-      if (!output_name_found) {
-        ORT_THROW(
-            log_tag +
-            "Output names mismatch between OpenVINO and ONNX. "
-            "[ONNX Output: ] " +
-            onnx_output_name +
-            " doesn't exist in the "
-            "list of OpenVINO output tensor names");
-      }
-      if ((session_context_.device_type.find("CPU") != std::string::npos ||
-           session_context_.device_type.find("GPU") != std::string::npos)) {
-        try {
-          graph_output_blob = infer_request->GetTensor(output_name);
-        } catch (const char* msg) {
-          ORT_THROW(msg);
-        }
-        size_t batch_size = 1;
-        Ort::UnownedValue output_tensor =
-            GetOutputTensor(context, batch_size, infer_request, std::move(output_name), subgraph_context_.output_names);
-        auto mem_info = output_tensor.GetTensorMemoryInfo();
-        if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
-          return;
-        } else {
-          size_t batch_slice = 0;
-          FillOutputBlob(std::move(graph_output_blob), output_tensor, batch_slice);
-        }
+  } catch(const char* msg) {
+    ORT_THROW(msg);
+  }
+
+  auto graph_output_info = exe_network_.Get().outputs();
+  for (auto output_info_iter = graph_output_info.begin();
+    output_info_iter != graph_output_info.end(); ++output_info_iter) {
+    OVTensorPtr graph_output_blob;
+    auto output_names = output_info_iter->get_names();
+    std::string onnx_output_name;
+    std::string output_name;
+    bool output_name_found = false;
+    // using the output name retrieved from ONNX original to match with the output names returned by OV tensors
+    for (auto it = subgraph_context_.output_names.begin(); it != subgraph_context_.output_names.end(); ++it) {
+      onnx_output_name = it->first;
+      if (output_names.find(onnx_output_name) != output_names.end()) {
+        // Assigning the output_name
+        output_name = it->first;
+        output_name_found = true;
+        break;
       }
     }
 
-    if (!const_outputs_map_.empty()) {
-      for (const auto& item : const_outputs_map_) {
-        const auto& out_name = item.first;
-        auto node = item.second;
+    if (!output_name_found) {
+      ORT_THROW(
+        log_tag +
+        "Output names mismatch between OpenVINO and ONNX. "
+        "[ONNX Output: ] " +
+        onnx_output_name +
+        " doesn't exist in the "
+        "list of OpenVINO output tensor names");
+    }
+    if ((session_context_.device_type.find("CPU") != std::string::npos ||
+         session_context_.device_type.find("GPU") != std::string::npos)) {
+      try {
+        graph_output_blob = infer_request->GetTensor(output_name);
+      } catch (const char* msg) {
+        ORT_THROW(msg);
+      }
+      size_t batch_size = 1;
+      try {
+        Ort::UnownedValue output_tensor =
+          GetOutputTensor(context, batch_size, infer_request, std::move(output_name), subgraph_context_.output_names);
+          auto mem_info = output_tensor.GetTensorMemoryInfo();
+          if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
+            return;
+          } else {
+            size_t batch_slice = 0;
+            FillOutputBlob(std::move(graph_output_blob), output_tensor, batch_slice);
+          }
+      } catch (std::string const& msg) {
+        ORT_THROW(msg);
+      }
+    }
+  }
+
+  if (!const_outputs_map_.empty()) {
+    for (const auto& item : const_outputs_map_) {
+      const auto& out_name = item.first;
+      auto node = item.second;
+      try {
         Ort::UnownedValue output_tensor = GetOutputTensor(context,
                                                           out_name,
                                                           subgraph_context_.output_names,
@@ -673,11 +683,11 @@ void BasicBackend::CompleteAsyncInference(Ort::KernelContext& context, OVInferRe
         } else {
           FillOutputsWithConstantData(std::move(node), output_tensor);
         }
+      } catch (std::string const& msg) {
+        ORT_THROW(msg);
+      }
       }
     }
-  } catch (const char* msg) {
-    ORT_THROW(msg);
-  }
 }
 
 void BasicBackend::Infer(OrtKernelContext* ctx) {
