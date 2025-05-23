@@ -27,8 +27,9 @@
 
 namespace onnxruntime {
 namespace openvino_ep {
+static constexpr std::string log_tag = "[OpenVINO-EP] ";
+
 namespace backend_utils {
-const std::string log_tag = "[OpenVINO-EP] ";
 
 bool IsDebugEnabled();
 
@@ -47,12 +48,6 @@ GetOutputTensor(Ort::KernelContext& context,
                 std::string output_name,
                 const SubGraphContext::string_index_map_t& output_names,
                 std::shared_ptr<ov::Node> node);
-
-Ort::UnownedValue
-GetOutputTensor(Ort::KernelContext& context, size_t batch_size,
-                OVInferRequestPtr infer_request,
-                std::string output_name,
-                const SubGraphContext::string_index_map_t& output_names);
 
 void FillInputBlob(OVTensorPtr inputBlob, size_t batch_slice_idx,
                    std::string input_name, Ort::KernelContext& context,
