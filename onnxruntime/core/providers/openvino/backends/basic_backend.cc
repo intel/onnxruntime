@@ -413,7 +413,7 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
           auto it = ort_ov_tensor_map.find(ort_tensor_key);
           if ((it == ort_ov_tensor_map.end()) || it->second.ort_ptr != tensor.GetTensorRawData()) {
             ov_tensor_data_t ov_tensor_data;
-            ov_tensor_data.tensor_ptr = std::make_shared<ov::Tensor>(input_info.type, input_info.ov_shape,
+            ov_tensor_data.tensor_ptr = std::make_shared<ov::Tensor>(input_info.type, input_info.ov_shape.get_shape(),
                                                                      const_cast<void*>(tensor.GetTensorRawData()));
 
             ov_tensor_data.ort_ptr = tensor.GetTensorRawData();
@@ -439,7 +439,7 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
         if ((it == ort_ov_tensor_map.end()) || (it->second.ort_ptr != tensor.GetTensorRawData())) {
           ov_tensor_data_t ov_tensor_data;
           ov_tensor_data.ort_ptr = tensor.GetTensorRawData();
-          ov_tensor_data.tensor_ptr = std::make_shared<ov::Tensor>(output_info.type, output_info.ov_shape,
+          ov_tensor_data.tensor_ptr = std::make_shared<ov::Tensor>(output_info.type, output_info.ov_shape.get_shape(),
                                                                    const_cast<void*>(tensor.GetTensorRawData()));
           ort_ov_tensor_map[ort_tensor_key] = ov_tensor_data;
 

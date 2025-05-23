@@ -13,6 +13,8 @@
 #include <mutex>
 #include <map>
 #include <functional>
+#include <algorithm>
+#include <utility>
 
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/openvino/contexts.h"
@@ -34,7 +36,7 @@ struct OnnxToOvNetworkBindings {
     uint32_t ov_index;
     uint32_t onnx_index;
     ov::element::Type type;
-    ov::Shape ov_shape;
+    ov::PartialShape ov_shape;
     std::vector<int64_t> onnx_shape;
   };
   std::vector<ParameterInfo> network_outputs_;
@@ -45,16 +47,21 @@ struct OnnxToOvNetworkBindings {
       for (const auto& [onnx_name, onnx_param_index] : onnx_input_map) {
         auto it = std::find_if(ov_parameters.begin(), ov_parameters.end(),
                                [&onnx_name](const auto& ov_parameter_info) { return ov_parameter_info.get_names().contains(onnx_name); });
-        auto ov_param_index = std::distance(ov_parameters.begin(), it);
 
         ORT_ENFORCE(it != ov_parameters.end(), backend_utils::log_tag,
                     "Input names mismatch between OpenVINO and ONNX. ", onnx_name,
                     " doesn't exist in the list of OpenVINO input tensor names");
-        auto shape = ov_parameters[ov_param_index].get_shape();
-        auto type = ov_parameters[ov_param_index].get_element_type();
 
+        auto ov_param_index = std::distance(ov_parameters.begin(), it);
+
+        auto shape = ov_parameters[ov_param_index].get_partial_shape();
+        auto type = ov_parameters[ov_param_index].get_element_type();
         ParameterInfo info{onnx_name, ov_param_index, onnx_param_index, type, shape};
-        std::transform(shape.begin(), shape.end(), std::back_inserter(info.onnx_shape), [](const auto& dim) { return static_cast<int64_t>(dim); });
+
+        if (shape.is_static()) {
+          auto static_shape = shape.get_shape();
+          std::transform(static_shape.begin(), static_shape.end(), std::back_inserter(info.onnx_shape), [](const auto& dim) { return static_cast<int64_t>(dim); });
+        }
         input_output_map.push_back(std::move(info));
       }
     };
