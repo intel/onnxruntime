@@ -46,7 +46,12 @@ std::chrono::duration<double> OnnxRuntimeTestSession::Run() {
 
   session_.Run(Ort::RunOptions{nullptr}, input_names_.data(), input.data(), input_names_.size(),
                output_names_raw_ptr.data(), outputs_.data(), output_names_raw_ptr.size());
-
+  auto out_shape = outputs_[0].GetTensorTypeAndShapeInfo().GetShape();
+  std::cout << " After session run : outputs size = " ;
+  for (auto &itr : out_shape) {
+    std::cout << itr << " , " ;
+  }
+  std::cout << std::endl;
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> duration_seconds = end - start;
   return duration_seconds;

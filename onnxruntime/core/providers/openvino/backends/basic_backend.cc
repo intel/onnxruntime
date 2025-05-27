@@ -364,6 +364,7 @@ DynamicFlags BasicBackend::classify_shape_flags(const ov::CompiledModel& model) 
     for (const auto& dim : shape) {
       if (dim.is_dynamic()) {
         flags.is_static = false;
+        std::cout << " input max length = ";
         std::cout << dim.get_min_length() << " , max = " << dim.get_max_length() << std::endl;
         if (dim.get_min_length() == 0 && dim.get_max_length() == -1)
           flags.has_fully_dynamic = true;
@@ -480,15 +481,16 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
         }
       }
     }
-    infer_request->Infer();
+    // infer_request->Infer();
     // Handle output
-    if (session_context_.device_type.find("NPU") != std::string::npos) {
+    // if (session_context_.device_type.find("NPU") != std::string::npos) {
       // Set the output blob as remote blob
       auto graph_output_info = exe_network_.Get().outputs();
       auto output_idx = 0;
       for (auto output_info_iter = graph_output_info.begin();
             output_info_iter != graph_output_info.end(); ++output_info_iter) {
         auto output_names = output_info_iter->get_names();
+        // auto output_partial_shape = output
         std::string onnx_output_name;
         std::string output_name;
         // using the output name retrieved from ONNX original to match with the output names returned by OV tensors
@@ -500,33 +502,45 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
             break;
           }
         }
-        size_t batch_size = 1;
-        Ort::UnownedValue output_tensor = GetOutputTensor(context,
-                                                    batch_size,
-                                                    infer_request,
-                                                    output_name,
-                                                    subgraph_context_.output_names);
-        ort_tensor_key_t ort_tensor_key{output_name};
-        const auto& it = ort_ov_tensor_map.find(ort_tensor_key);
-        if ((it == ort_ov_tensor_map.end()) ||
-            (it != ort_ov_tensor_map.end() && (it->second.ort_ptr != output_tensor.GetTensorRawData()))) {
-          ov_tensor_data_t ov_tensor_data;
-          const auto& output = graph_output_info.at(output_idx);
-          ov_tensor_data.ort_ptr = output_tensor.GetTensorRawData();
-          auto ov_output_tensor = infer_request->GetOutputTensor(output_idx);
-          ov_tensor_data.tensor_ptr = std::make_shared<ov::Tensor>(output.get_element_type(), ov_output_tensor.get_shape(),
-                                                                    const_cast<void*>(output_tensor.GetTensorRawData()));
-          ort_ov_tensor_map[ort_tensor_key] = ov_tensor_data;
+        auto out_it = ort_ov_tensor_map.find(output_name);
 
-          try {
-            infer_request->SetTensor(std::move(output_name), ov_tensor_data.tensor_ptr);
-          } catch (const char* msg) {
-            ORT_THROW(msg);
+        if (out_it == ort_ov_tensor_map.end()) {
+          size_t batch_size = 1;
+          std::cout << " GetOutputTensor before infer " << std::endl;
+          Ort::UnownedValue output_tensor = GetOutputTensor(context,
+                                                      batch_size,
+                                                      infer_request,
+                                                      output_name,
+                                                      subgraph_context_.output_names);
+          ort_tensor_key_t ort_tensor_key{output_name};
+          const auto& it = ort_ov_tensor_map.find(ort_tensor_key);
+          if ((it == ort_ov_tensor_map.end()) ||
+              (it != ort_ov_tensor_map.end() && (it->second.ort_ptr != output_tensor.GetTensorRawData()))) {
+            ov_tensor_data_t ov_tensor_data;
+            const auto& output = graph_output_info.at(output_idx);
+            // ov::Shape output_shape;
+            // auto out_partial_shape = output.get_partial_shape();
+            // std::cout << " output partial shape = " ;
+            // for (auto out_dim : out_partial_shape){
+            //   output_shape.push_back(out_dim.get_max_length());
+            //   std::cout << out_dim.get_max_length() << ",";
+            // }
+            std::cout << std::endl;
+            ov_tensor_data.ort_ptr = output_tensor.GetTensorRawData();
+            // auto ov_output_tensor = infer_request->GetOutputTensor(output_idx);
+            ov_tensor_data.tensor_ptr = std::make_shared<ov::Tensor>(output.get_element_type(), output.get_partial_shape().get_max_shape());
+            ort_ov_tensor_map[ort_tensor_key] = ov_tensor_data;
+
+            try {
+              infer_request->SetTensor(std::move(output_name), ov_tensor_data.tensor_ptr);
+            } catch (const char* msg) {
+              ORT_THROW(msg);
+            }
           }
         }
         output_idx++;
       }
-    }
+    // }
 
     // Start Async inference
     infer_request->StartAsync();
@@ -701,6 +715,8 @@ void BasicBackend::CompleteAsyncInference(Ort::KernelContext& context, OVInferRe
       for (const auto& item : const_outputs_map_) {
         const auto& out_name = item.first;
         auto node = item.second;
+        std::cout << " GetOutputTensor !const_outputs_map_.empty() " << std::endl;
+
         Ort::UnownedValue output_tensor = GetOutputTensor(context,
                                                           out_name,
                                                           subgraph_context_.output_names,
@@ -731,6 +747,8 @@ void BasicBackend::Infer(OrtKernelContext* ctx) {
       std::string out_name = item.first;
       std::shared_ptr<ov::Node> node = item.second;
       try {
+        std::cout << " GetOutputTensor subgraph_context_.is_constant " << std::endl;
+
         Ort::UnownedValue output_tensor = GetOutputTensor(context,
                                                           std::move(out_name),
                                                           subgraph_context_.output_names,

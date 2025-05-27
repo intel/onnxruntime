@@ -24,6 +24,7 @@ namespace openvino_ep {
 
 struct ov_tensor_data_t {
   OVTensorPtr tensor_ptr;
+  OVTensorPtr reshape_tensor_ptr;
   const void* ort_ptr;
 };
 

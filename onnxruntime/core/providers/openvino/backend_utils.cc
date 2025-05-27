@@ -194,9 +194,12 @@ GetOutputTensor(Ort::KernelContext& context, size_t batch_size,
   }
   size_t num_dims = graph_output_dims.size();
   std::unique_ptr<int64_t[]> output_shape(new int64_t[num_dims]);
+  std::cout << " GetOutputTensor : output_name = "<< output_name << " and output shape = " ;
   for (size_t j = 0; j < num_dims; j++) {
     output_shape[j] = static_cast<int64_t>(graph_output_dims[j]);
+    std::cout << output_shape[j] << " , ";
   }
+  std::cout << std::endl;
   auto it = output_names.find(output_name);
   if (it == output_names.end()) {
     ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX");
