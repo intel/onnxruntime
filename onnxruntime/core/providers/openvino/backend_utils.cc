@@ -277,15 +277,6 @@ void FillInputBlob(OVTensorPtr inputBlob, size_t batch_slice_idx,
   std::memcpy(input_data, batch_memory_offset, input_data_size);
 }
 
-void FillOutputBlob(OVTensorPtr outputBlob, Ort::UnownedValue& output_tensor,
-                    size_t batch_slice_idx) {
-  auto output_data = outputBlob->data();
-  size_t output_data_size = outputBlob->get_byte_size();
-  char* tensor_data = output_tensor.GetTensorMutableData<char>();
-  char* batch_memory_offset = tensor_data + output_data_size * batch_slice_idx;
-  std::memcpy(batch_memory_offset, output_data, output_data_size);
-}
-
 void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
                             std::ostream& stream, std::string deviceName) {
   int64_t totalTime = 0;
