@@ -14,7 +14,7 @@ namespace onnxruntime {
 namespace openvino_ep {
 
 template <typename Func, typename... Args>
-inline auto OvExeceptionBoundary(Func func, std::format_string<Args...>&& fmt, Args&&... args) {
+inline auto OvExceptionBoundary(Func func, std::format_string<Args...>&& fmt, Args&&... args) {
   try {
     return func();
   } catch (const ov::Exception& e) {
@@ -67,7 +67,7 @@ std::optional<bool> queryOVProperty(const std::string& property, const std::stri
 }
 
 std::shared_ptr<OVNetwork> OVCore::ReadModel(std::string&& model, const std::string& model_path) {
-  return OvExeceptionBoundary([&]() {
+  return OvExceptionBoundary([&]() {
     std::istringstream modelStringStream(std::move(model));
     std::istream& modelStream = modelStringStream;
     // Try to load with FrontEndManager
@@ -85,14 +85,14 @@ std::shared_ptr<OVNetwork> OVCore::ReadModel(std::string&& model, const std::str
       ORT_THROW(log_tag + "Unknown exception while Reading network");
     }
   },
-                              "Exception while Reading network");
+                             "Exception while Reading network");
 }
 
 OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_network,
                                   std::string& hw_target,
                                   ov::AnyMap& device_config,
                                   const std::string& name) {
-  return OvExeceptionBoundary([&]() {
+  return OvExceptionBoundary([&]() {
     ov::CompiledModel obj;
     obj = core.compile_model(ie_cnn_network, hw_target, device_config);
 #ifndef NDEBUG
@@ -101,14 +101,14 @@ OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_netwo
     OVExeNetwork exe(obj);
     return exe;
   },
-                              "Exception while Loading Network for graph");
+                             "Exception while Loading Network for graph {}", name);
 }
 
 OVExeNetwork OVCore::CompileModel(const std::string& onnx_model,
                                   std::string& hw_target,
                                   ov::AnyMap& device_config,
                                   const std::string& name) {
-  return OvExeceptionBoundary([&]() {
+  return OvExceptionBoundary([&]() {
     ov::CompiledModel obj;
 
     obj = core.compile_model(onnx_model, ov::Tensor(), hw_target, device_config);
@@ -118,14 +118,14 @@ OVExeNetwork OVCore::CompileModel(const std::string& onnx_model,
     OVExeNetwork exe(obj);
     return exe;
   },
-                              "Exception while Loading Network for graph");
+                             "Exception while Loading Network for graph {}", name);
 }
 
 OVExeNetwork OVCore::ImportModel(std::istream& model_stream,
                                  std::string hw_target,
                                  const ov::AnyMap& device_config,
                                  std::string name) {
-  return OvExeceptionBoundary([&]() {
+  return OvExceptionBoundary([&]() {
     ov::CompiledModel obj;
     obj = core.import_model(model_stream, hw_target, device_config);
 #ifndef NDEBUG
@@ -134,7 +134,7 @@ OVExeNetwork OVCore::ImportModel(std::istream& model_stream,
     OVExeNetwork exe(obj);
     return exe;
   },
-                              "Exception while Loading Network for graph");
+                             "Exception while Loading Network for graph {}", name);
 }
 
 void OVCore::SetCache(const std::string& cache_dir_path) {
@@ -144,18 +144,18 @@ void OVCore::SetCache(const std::string& cache_dir_path) {
 #ifdef IO_BUFFER_ENABLED
 OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& model,
                                   OVRemoteContextPtr context, std::string name) {
-  OvExeceptionBoundary([&]() {
+  return OvExceptionBoundary([&]() {
     auto obj = core.compile_model(model, *context);
 #ifndef NDEBUG
     printDebugInfo(obj);
 #endif
     return OVExeNetwork(obj);
   },
-                       "Exception while Loading Network for graph: {}", name);
+                             "Exception while Loading Network for graph: {}", name);
 }
 OVExeNetwork OVCore::ImportModel(std::shared_ptr<std::istringstream> model_stream,
                                  OVRemoteContextPtr context, std::string name) {
-  return OvExeceptionBoundary([&]() {
+  return OvExceptionBoundary([&]() {
     auto obj = core.import_model(*model_stream, *context);
 #ifndef NDEBUG
     printDebugInfo(obj);
@@ -163,7 +163,7 @@ OVExeNetwork OVCore::ImportModel(std::shared_ptr<std::istringstream> model_strea
     OVExeNetwork exe(obj);
     return exe;
   },
-                              "Exception while Loading Network for graph: {}", name);
+                             "Exception while Loading Network for graph: {}", name);
 }
 #endif
 
@@ -210,36 +210,36 @@ void OVCore::SetStreams(const std::string& device_type, int num_streams) {
 }
 
 OVInferRequest OVExeNetwork::CreateInferRequest() {
-  return OvExeceptionBoundary([&]() {
+  return OvExceptionBoundary([&]() {
     auto infReq = obj.create_infer_request();
     OVInferRequest inf_obj(std::move(infReq));
     return inf_obj;
   },
-                              "Exception while creating InferRequest object");
+                             "Exception while creating InferRequest object");
 }
 
 OVTensorPtr OVInferRequest::GetTensor(const std::string& input_name) {
-  return OvExeceptionBoundary([&]() {
+  return OvExceptionBoundary([&]() {
     auto tobj = ovInfReq.get_tensor(input_name);
     OVTensorPtr blob = std::make_shared<OVTensor>(tobj);
     return blob;
   },
-                              " Cannot access IE Blob for input: {}", input_name);
+                             " Cannot access IE Blob for input: {}", input_name);
 }
 
 std::string OVInferRequest::GetInputTensorName(uint32_t index) {
-  return OvExeceptionBoundary([&]() {
+  return OvExceptionBoundary([&]() {
     const auto& model = ovInfReq.get_compiled_model();
     return *model.input(index).get_names().begin();
   },
-                              " Cannot access IE Blob for input number: {}", index);
+                             " Cannot access IE Blob for input number: {}", index);
 }
 
 void OVInferRequest::SetTensor(const std::string& name, OVTensorPtr& blob) {
-  OvExeceptionBoundary([&]() {
+  OvExceptionBoundary([&]() {
     ovInfReq.set_tensor(name, *(blob.get()));
   },
-                       " Cannot set Remote Blob for output: {}", name);
+                      " Cannot set Remote Blob for output: {}", name);
 }
 
 uint32_t OVInferRequest::GetNumInputs() {
@@ -247,10 +247,10 @@ uint32_t OVInferRequest::GetNumInputs() {
 }
 
 void OVInferRequest::Infer() {
-  OvExeceptionBoundary([&]() {
+  OvExceptionBoundary([&]() {
     ovInfReq.infer();
   },
-                       "In Error Couldn't start Inference");
+                      "In Error Couldn't start Inference");
 }
 
 }  // namespace openvino_ep
