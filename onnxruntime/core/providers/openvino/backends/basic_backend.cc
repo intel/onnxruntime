@@ -9,6 +9,7 @@
 #include <sstream>
 #include <fstream>
 #include <utility>
+#include <iostream>
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/backend_utils.h"
@@ -501,7 +502,7 @@ void BasicBackend::Infer(OrtKernelContext* ctx) const {
       // Dynamic shape inference
 
       // We don't know the output shapes so we need to get the outputs from the infer request and copy them into the ort
-      // tensors instead of binding them to the infer request directly.
+      // tensors instead of binding them to the `infer request directly.
 
       // Bind inputs
       for (const auto& input_info : bindings_->network_inputs_) {
@@ -521,10 +522,12 @@ void BasicBackend::Infer(OrtKernelContext* ctx) const {
         auto output_shape = ParameterShape::ToOrtShape(ov_tensor->get_shape());
         auto ort_tensor = context.GetOutput(output_info.onnx_index, output_shape);
 
-        memcpy_s(ort_tensor.GetTensorMutableRawData(),
-                 ort_tensor.GetTensorSizeInBytes(),
-                 ov_tensor->data(),
-                 ov_tensor->get_byte_size());
+        ORT_ENFORCE(ov_tensor->get_byte_size() == ort_tensor.GetTensorSizeInBytes(),
+                    log_tag + "Output tensor size mismatch for " + output_info.name);
+
+        std::memcpy(ort_tensor.GetTensorMutableRawData(),
+                    ov_tensor->data(),
+                    ov_tensor->get_byte_size());
       }
     } else {
       // Static shape inference

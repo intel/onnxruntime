@@ -47,7 +47,7 @@ struct OnnxToOvNetworkBindings {
           has_dynamic_io_ = true;
         }
         auto type = ov_parameters[ov_param_index].get_element_type();
-        ParameterInfo info{onnx_name, ov_param_index, onnx_param_index, type, shape};
+        ParameterInfo info{onnx_name, ov_param_index, onnx_param_index, type, ParameterShape{shape}};
         input_output_map.push_back(std::move(info));
       }
     };

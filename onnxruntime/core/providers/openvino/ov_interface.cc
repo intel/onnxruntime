@@ -3,11 +3,12 @@
 
 #include "core/providers/openvino/ov_interface.h"
 
+#include <format>
+
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/backend_utils.h"
-#include <format>
 
 namespace onnxruntime {
 namespace openvino_ep {

@@ -9,6 +9,8 @@
 #include <sstream>
 #include <utility>
 #include <optional>
+#include <algorithm>
+#include <unordered_map>
 
 #include "openvino/openvino.hpp"
 #include "openvino/runtime/intel_npu/properties.hpp"
@@ -56,10 +58,8 @@ struct ParameterShape {
   const ov::PartialShape& ov() const { return ov_; }
   const ort_shape_t& ort() const { return ort_; }
 
-  ParameterShape(const ort_shape_t& ort_shape) : ort_(ort_shape), ov_(ToOvPartialShape(ort_shape)) {
-  }
-  ParameterShape(const ov::PartialShape& ov_partial_shape) : ov_(ov_partial_shape), ort_(ToOrtShape(ov_partial_shape)) {
-  }
+  explicit ParameterShape(const ort_shape_t& ort_shape) : ort_(ort_shape), ov_(ToOvPartialShape(ort_shape)) {}
+  explicit ParameterShape(const ov::PartialShape& ov_partial_shape) : ov_(ov_partial_shape), ort_(ToOrtShape(ov_partial_shape)) {}
 
  private:
   ort_shape_t ort_;
