@@ -294,12 +294,16 @@ void OVInferRequest::Infer() {
 }
 
 void OVInferRequest::WaitRequest() {
+  ovInfReq.wait();
+}
+
+void OVInferRequest::CancelRequest() {
   try {
-    ovInfReq.wait();
+    ovInfReq.cancel();
   } catch (const Exception& e) {
-    ORT_THROW(log_tag + " Wait Model Failed: " + e.what());
+    ORT_THROW(log_tag + " Cancel Model Failed: " + e.what());
   } catch (...) {
-    ORT_THROW(log_tag + " Wait Mode Failed");
+    ORT_THROW(log_tag + " Cancel Mode Failed");
   }
 }
 

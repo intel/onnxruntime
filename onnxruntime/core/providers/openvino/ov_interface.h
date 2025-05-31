@@ -122,6 +122,7 @@ class OVInferRequest {
   void StartAsync();
   void Infer();
   void WaitRequest();
+  void CancelRequest();
   void QueryStatus();
   explicit OVInferRequest(ov::InferRequest obj) : ovInfReq(std::move(obj)) {}
   OVInferRequest() : ovInfReq(ov::InferRequest()) {}
