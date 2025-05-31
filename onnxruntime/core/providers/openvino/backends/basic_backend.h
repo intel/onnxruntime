@@ -121,6 +121,7 @@ class InferRequestsQueue {
  public:
   InferRequestsQueue(OVExeNetwork& net, size_t nireq, std::function<void(OVInferRequestPtr)> initializer) {
     OVInferRequestPtr infer_request;
+    live_threads=nireq;
     for (size_t id = 0; id < nireq; id++) {
       infer_request = std::make_shared<OVInferRequest>(net.CreateInferRequest());
       initializer(infer_request);
@@ -152,16 +153,28 @@ class InferRequestsQueue {
 
   OVInferRequestPtr getIdleRequest() {
     std::unique_lock<std::mutex> lock(_mutex);
+    std::cout << "get Idle Request" << live_threads << "\n";
+    if(live_threads==0) {
+      return nullptr;
+    }
+
     _cv.wait(lock, [this] { return infer_requests_.size() > 0; });
     auto request = infer_requests_.at(0);
     infer_requests_.erase(infer_requests_.begin());
     return request;
   }
 
+  void deleteRequest() {
+    std::unique_lock<std::mutex> lock(_mutex);
+    live_threads=live_threads-1;
+    std::cout << "delete Request" << live_threads << "\n";
+  }
+
  private:
   std::mutex _mutex;
   std::condition_variable _cv;
   std::vector<OVInferRequestPtr> infer_requests_;
+  int live_threads;
 };
 
 }  // namespace openvino_ep

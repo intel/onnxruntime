@@ -574,8 +574,10 @@ void BasicBackend::CompleteAsyncInference(Ort::KernelContext& context, OVInferRe
   // Wait for Async inference completion
   try {
     infer_request->WaitRequest();
-  } catch (const char* msg) {
-    ORT_THROW(msg);
+  } catch(const std::runtime_error& e) {
+    infer_request->CancelRequest();
+    inferRequestsQueue_->deleteRequest();
+    ORT_THROW(log_tag + e.what());
   }
 
   bool cpu_or_gpu = session_context_.device_type.find("CPU") != std::string::npos ||
@@ -653,9 +655,15 @@ void BasicBackend::Infer(OrtKernelContext* ctx) {
     }
 
   } else {
-    // Requesting for an idle infer_request from a pool of infer_requests_
     OVInferRequestPtr infer_request;
     infer_request = inferRequestsQueue_->getIdleRequest();
+    if(infer_request == nullptr) {
+      ORT_THROW("OpenVINO Execution Provider :: There are no inference requests");
+      LOGS_DEFAULT(FATAL) << log_tag << "Create Infer Requests do not exist";
+      return;
+    }
+
+    LOGS_DEFAULT(INFO) << log_tag << "Get Idle Request";
 #ifdef IO_BUFFER_ENABLED
     if ((session_context_.device_type.find("GPU") != std::string::npos) &&
         (session_context_.context != nullptr) && session_context_.is_wholly_supported_graph) {
