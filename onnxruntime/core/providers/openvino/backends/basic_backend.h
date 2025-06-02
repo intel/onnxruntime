@@ -94,11 +94,6 @@ class BasicBackend : public IBackend {
   void EnableStreams();
   void SetNumThreads(ov::AnyMap& device_config);
   void StartAsyncInference(Ort::KernelContext& context, std::shared_ptr<OVInferRequest> infer_request);
-
-#ifdef IO_BUFFER_ENABLED
-  void StartRemoteAsyncInference(Ort::KernelContext& context, std::shared_ptr<OVInferRequest> infer_request);
-#endif
-
   void CompleteAsyncInference(Ort::KernelContext& context, std::shared_ptr<OVInferRequest> infer_request);
 
   SessionContext& session_context_;
@@ -108,10 +103,6 @@ class BasicBackend : public IBackend {
   OVExeNetwork exe_network_;
   std::map<std::string, std::shared_ptr<ov::Node>> const_outputs_map_;
   std::unique_ptr<InferRequestsQueue> inferRequestsQueue_;
-#if defined IO_BUFFER_ENABLED
-  OVRemoteContextPtr remote_context_;
-#endif
-
   using ort_tensor_key_t = const std::string;
   std::map<ort_tensor_key_t, ov_tensor_data_t> ort_ov_tensor_map;
   std::unique_ptr<OnnxToOvNetworkBindings> bindings_;
