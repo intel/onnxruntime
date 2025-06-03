@@ -357,38 +357,50 @@ void OVInferRequest::QueryStatus() {
 
 StatefulOVInferRequest::StatefulOVInferRequest(ov::InferRequest infer_request, std::string device)
     : OVInferRequest(std::move(infer_request)), target_device(device) {
-  if ((device.find("NPU") != std::string::npos) || (device.find("GPU") != std::string::npos)) {
+  bool gpu_or_npu = ((device.find("NPU") != std::string::npos) || (device.find("GPU") != std::string::npos));
+  if (gpu_or_npu) {
     prefill_use_full_chat_history = true;
   }
+}
+
+void StatefulOVInferRequest::CacheTensor(const std::string& tensor_name, const ov::element::Type& type,
+                                         const std::vector<size_t>& shape, int32_t fill_value) {
+  ov::Tensor tensor = ov::Tensor(type, shape);
+  std::fill_n(tensor.data<int32_t>(), tensor.get_size(), fill_value);
+  ovInfReq.set_tensor(tensor_name, tensor);
+}
+
+void StatefulOVInferRequest::CacheTensor(const std::string& tensor_name, std::vector<int64_t>& cache) {
+  auto tensor = ovInfReq.get_tensor(tensor_name);
+  auto* pData = tensor.data<int64_t>();
+  for (size_t i = 0; i < tensor.get_size(); i++) {
+    cache.emplace_back(pData[i]);
+  }
+}
+
+void StatefulOVInferRequest::SetTensorFromCache(const std::string& tensor_name,
+                                               const std::vector<int64_t>& cache_data) {
+  auto tensor = ovInfReq.get_tensor(tensor_name);
+  auto new_shape = tensor.get_shape();
+  new_shape[1] = cache_data.size();
+
+  auto new_tensor = ov::Tensor(tensor.get_element_type(), new_shape);
+  auto* pNewData = new_tensor.data<int64_t>();
+  std::memcpy(pNewData, cache_data.data(), cache_data.size() * sizeof(int64_t));
+
+  ovInfReq.set_tensor(tensor_name, new_tensor);
 }
 
 void StatefulOVInferRequest::PreProcessInferRequest() {
   // Workaround: Setting the value here as it cannot be set at the ORT GenAI layer currently.
   // TODO(ankit): Address this issue and implement the fix at the appropriate layer.
-  ov::Tensor beam_idx = ov::Tensor(ov::element::i32, {1});
-  std::fill_n(beam_idx.data<int32_t>(), 1, 0);
-  ovInfReq.set_tensor("beam_idx", beam_idx);
+  CacheTensor("beam_idx", ov::element::i32, {1}, 0);
 
   // If 'prefill full chat history' mode is enabled, we need to cache input_ids and position_ids.
   if (prefill_use_full_chat_history) {
     auto input_ids_tensor = ovInfReq.get_tensor("input_ids");
-
-    // Cache the "input_ids" tensor
-    {
-      auto* pData = input_ids_tensor.data<int64_t>();
-      for (size_t i = 0; i < input_ids_tensor.get_size(); i++) {
-        cached_input_ids.push_back(pData[i]);
-      }
-    }
-
-    // Cache the "position_ids" tensor
-    {
-      auto position_ids = ovInfReq.get_tensor("position_ids");
-      auto* pData = position_ids.data<int64_t>();
-      for (size_t i = 0; i < position_ids.get_size(); i++) {
-        cached_position_ids.push_back(pData[i]);
-      }
-    }
+    CacheTensor("input_ids", cached_input_ids);
+    CacheTensor("position_ids", cached_position_ids);
 
     // If we're about to run the prefill model
     if (input_ids_tensor.get_size() > 1) {
@@ -398,26 +410,9 @@ void StatefulOVInferRequest::PreProcessInferRequest() {
         // Clear the internal KVCache state. For NPU device, this operation is a no-op.
         ovInfReq.reset_state();
 
-        // Create and set a new "input_ids" tensor using the cached "input_ids" values.
-        {
-          auto new_shape = input_ids_tensor.get_shape();
-          new_shape[1] = cached_input_ids.size();
-          auto new_input_ids = ov::Tensor(input_ids_tensor.get_element_type(), new_shape);
-          auto* pNewInputIds = new_input_ids.data<int64_t>();
-          std::memcpy(pNewInputIds, cached_input_ids.data(), cached_input_ids.size() * sizeof(int64_t));
-          ovInfReq.set_tensor("input_ids", new_input_ids);
-        }
-
-        // Create and set a new "position_ids" tensor using the cached "position_ids" values.
-        {
-          auto position_ids_tensor = ovInfReq.get_tensor("position_ids");
-          auto new_shape = position_ids_tensor.get_shape();
-          new_shape[1] = cached_position_ids.size();
-          auto new_position_ids = ov::Tensor(position_ids_tensor.get_element_type(), new_shape);
-          auto* pNewPositionIds = new_position_ids.data<int64_t>();
-          std::memcpy(pNewPositionIds, cached_position_ids.data(), cached_position_ids.size() * sizeof(int64_t));
-          ovInfReq.set_tensor("position_ids", new_position_ids);
-        }
+        // Set tensors using cached values
+        SetTensorFromCache("input_ids", cached_input_ids);
+        SetTensorFromCache("position_ids", cached_position_ids);
       }
     }
   }
