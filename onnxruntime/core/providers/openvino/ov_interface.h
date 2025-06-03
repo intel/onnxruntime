@@ -15,10 +15,6 @@
 #include "openvino/pass/convert_fp32_to_fp16.hpp"
 #include "openvino/frontend/manager.hpp"
 
-#ifdef IO_BUFFER_ENABLED
-#include <openvino/runtime/intel_gpu/ocl/ocl.hpp>
-#endif
-
 #include <string>
 
 namespace onnxruntime {
@@ -32,11 +28,6 @@ typedef ov::ProfilingInfo OVProfilingInfo;
 typedef ov::Model OVNetwork;
 typedef std::shared_ptr<OVInferRequest> OVInferRequestPtr;
 typedef std::shared_ptr<OVTensor> OVTensorPtr;
-
-#ifdef IO_BUFFER_ENABLED
-typedef ov::intel_gpu::ocl::ClContext* OVRemoteContextPtr;
-typedef ov::RemoteContext OVRemoteContext;
-#endif
 
 std::optional<bool> queryOVProperty(const std::string& property, const std::string& device_type);
 
@@ -87,14 +78,6 @@ struct OVCore : WeakSingleton<OVCore> {
                            std::string hw_target,
                            const ov::AnyMap& device_config,
                            std::string name);
-#ifdef IO_BUFFER_ENABLED
-  OVExeNetwork CompileModel(std::shared_ptr<const OVNetwork>& model,
-                            OVRemoteContextPtr context,
-                            std::string name);
-  OVExeNetwork ImportModel(std::shared_ptr<std::istringstream> model_stream,
-                           OVRemoteContextPtr context,
-                           std::string name);
-#endif
   std::vector<std::string> GetAvailableDevices() const;
   std::vector<std::string> GetAvailableDevices(const std::string& device_type) const;
   void SetCache(const std::string& cache_dir_path);
