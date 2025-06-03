@@ -364,7 +364,7 @@ StatefulOVInferRequest::StatefulOVInferRequest(ov::InferRequest infer_request, s
 
 void StatefulOVInferRequest::PreProcessInferRequest() {
   // Workaround: Setting the value here as it cannot be set at the ORT GenAI layer currently.
-  // TODO: Address this issue and implement the fix at the appropriate layer.
+  // TODO(ankit): Address this issue and implement the fix at the appropriate layer.
   ov::Tensor beam_idx = ov::Tensor(ov::element::i32, {1});
   std::fill_n(beam_idx.data<int32_t>(), 1, 0);
   ovInfReq.set_tensor("beam_idx", beam_idx);

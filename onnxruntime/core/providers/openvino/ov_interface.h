@@ -118,7 +118,7 @@ class OVInferRequest {
   ov::InferRequest& GetNewObj() {
     return ovInfReq;
   }
-  virtual void RewindKVCache(size_t index) {};
+  virtual void RewindKVCache(size_t index) {}
 };
 
 class StatefulOVInferRequest : public OVInferRequest {

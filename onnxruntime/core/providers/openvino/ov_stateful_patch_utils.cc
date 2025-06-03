@@ -1,7 +1,7 @@
 // Copyright (C) Intel Corporation
 // Licensed under the MIT License
 
-#include "ov_stateful_patch_utils.h"
+#include "core/providers/openvino/ov_stateful_patch_utils.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -155,7 +155,7 @@ void PatchStatefulDecoder(std::shared_ptr<ov::Model> model) {
   }
 
   // By default, batch is the 0 - th but chatglm uses 1 - st dimension as batch
-  // TODO: Deduce from a model via ordinal reshape(? ) and topology
+  // TODO(ryan): Deduce from a model via ordinal reshape(? ) and topology
   // batch_dim = 1 if config.model_type == "chatglm" and not hasattr(config, "rope_ratio") else 0
   auto batch_dim = 0;
 
