@@ -363,7 +363,7 @@ StatefulOVInferRequest::StatefulOVInferRequest(ov::InferRequest infer_request, s
   }
 }
 
-void StatefulOVInferRequest::CacheTensor(const std::string& tensor_name, const ov::element::Type& type,
+void StatefulOVInferRequest::FillTensor(const std::string& tensor_name, const ov::element::Type& type,
                                          const std::vector<size_t>& shape, int32_t fill_value) {
   ov::Tensor tensor = ov::Tensor(type, shape);
   std::fill_n(tensor.data<int32_t>(), tensor.get_size(), fill_value);
@@ -391,16 +391,43 @@ void StatefulOVInferRequest::SetTensorFromCache(const std::string& tensor_name,
   ovInfReq.set_tensor(tensor_name, new_tensor);
 }
 
+std::optional<ov::Tensor> StatefulOVInferRequest::FindTensor(const std::string& tensor_name) {
+  // Check if tensor exists by examining input names in the compiled model
+  const auto& model = ovInfReq.get_compiled_model();
+  bool tensor_exists = false;
+
+  for (const auto& input : model.inputs()) {
+    const auto& names = input.get_names();
+    if (names.find(tensor_name) != names.end()) {
+      tensor_exists = true;
+      break;
+    }
+  }
+
+  if (tensor_exists) {
+    return ovInfReq.get_tensor(tensor_name);
+  }
+
+  return std::nullopt;
+}
+
 void StatefulOVInferRequest::PreProcessInferRequest() {
   // Workaround: Setting the value here as it cannot be set at the ORT GenAI layer currently.
   // TODO(ankit): Address this issue and implement the fix at the appropriate layer.
-  CacheTensor("beam_idx", ov::element::i32, {1}, 0);
+  FillTensor("beam_idx", ov::element::i32, {1}, 0);
 
-  // If 'prefill full chat history' mode is enabled, we need to cache input_ids and position_ids.
+  // If 'prefill use full chat history' mode is enabled, we need to cache input_ids and position_ids.
   if (prefill_use_full_chat_history) {
     auto input_ids_tensor = ovInfReq.get_tensor("input_ids");
     CacheTensor("input_ids", cached_input_ids);
-    CacheTensor("position_ids", cached_position_ids);
+
+    // "position_ids" (GQA with Rotary Embeddings doesnt have position_ids) - check if exists
+    auto position_ids_opt = FindTensor("position_ids");
+    bool has_position_ids = position_ids_opt.has_value();
+
+    if (has_position_ids) {
+      CacheTensor("position_ids", cached_position_ids);
+    }
 
     // If we're about to run the prefill model
     if (input_ids_tensor.get_size() > 1) {
@@ -412,7 +439,11 @@ void StatefulOVInferRequest::PreProcessInferRequest() {
 
         // Set tensors using cached values
         SetTensorFromCache("input_ids", cached_input_ids);
-        SetTensorFromCache("position_ids", cached_position_ids);
+
+        // Only set position_ids if it exists and we have cached values
+        if (has_position_ids && !cached_position_ids.empty()) {
+          SetTensorFromCache("position_ids", cached_position_ids);
+        }
       }
     }
   }

@@ -42,7 +42,7 @@ struct OnnxToOvNetworkBindings {
   std::vector<ParameterInfo> network_outputs_;
   std::vector<ParameterInfo> network_inputs_;
 
-  OnnxToOvNetworkBindings(OVExeNetwork& exec_network, SubGraphContext& subgraph_context) {
+  OnnxToOvNetworkBindings(OVExeNetwork& exec_network, SubGraphContext& subgraph_context, SessionContext& session_context) {
     auto populate = [&](auto& input_output_map, const SubGraphContext::string_index_map_t& onnx_input_map, const auto& ov_parameters) {
       for (const auto& [onnx_name, onnx_param_index] : onnx_input_map) {
         auto it = std::find_if(ov_parameters.begin(), ov_parameters.end(),
@@ -51,9 +51,10 @@ struct OnnxToOvNetworkBindings {
         // For Stateful Model Compilation, the ONNX model includes KV cache (past/present) tensors.
         // However, these tensors are internally converted to a stateful representation, which removes them.
         // To prevent runtime exceptions, we simply continue processing here.
-        if (onnx_name.empty() || onnx_name == "beam_idx" ||
+        if ((onnx_name.empty() || onnx_name == "beam_idx" ||
             onnx_name.find("past_key_values") != std::string::npos ||
-            onnx_name.find("present") != std::string::npos) {
+            onnx_name.find("present") != std::string::npos) &&
+            session_context.enable_causallm) {
           continue;
         }
 
