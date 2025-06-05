@@ -155,7 +155,6 @@ class InferRequestsQueue {
 
   OVInferRequestPtr getIdleRequest() {
     std::unique_lock<std::mutex> lock(_mutex);
-    std::cout << "get Idle Request" << live_threads << "\n";
     if(live_threads==0) {
       return nullptr;
     }
