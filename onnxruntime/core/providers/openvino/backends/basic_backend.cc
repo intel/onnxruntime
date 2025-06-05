@@ -502,7 +502,7 @@ void BasicBackend::Infer(OrtKernelContext* ctx) const {
       // Dynamic shape inference
 
       // We don't know the output shapes so we need to get the outputs from the infer request and copy them into the ort
-      // tensors instead of binding them to the `infer request directly.
+      // tensors instead of binding them to the infer request directly.
 
       // Bind inputs
       for (const auto& input_info : bindings_->network_inputs_) {
@@ -539,7 +539,7 @@ void BasicBackend::Infer(OrtKernelContext* ctx) const {
 
       // Bind outputs
       for (const auto& output_info : bindings_->network_outputs_) {
-        infer_request->SetTensor(output_info, context.GetOutput(output_info.onnx_index, output_info.shape.ort()).GetTensorMutableRawData());
+        infer_request->SetTensor(output_info, context.GetOutput(output_info.onnx_index, output_info.shape).GetTensorMutableRawData());
       }
 
       // Run Inference

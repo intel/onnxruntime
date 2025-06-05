@@ -108,8 +108,7 @@ class InferRequestPool {
     ~GuardedInferReq() { queue_.putIdleRequest(std::move(infer_request_)); }
 
     // Movable but not copyable
-    GuardedInferReq(const GuardedInferReq&) = delete;
-    GuardedInferReq& operator=(const GuardedInferReq&) = delete;
+    ORT_DISALLOW_COPY_AND_ASSIGNMENT(GuardedInferReq);
     GuardedInferReq(GuardedInferReq&&) = default;
     GuardedInferReq& operator=(GuardedInferReq&&) = default;
 
