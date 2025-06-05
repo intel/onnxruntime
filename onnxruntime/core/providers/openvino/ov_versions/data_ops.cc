@@ -255,6 +255,8 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Unsqueeze", V_2020_4, {"CPU", "GPU"}},
     {"Where", V_2022_1, {"CPU", "GPU"}},
     {"Xor", V_2022_1, {"CPU", "GPU"}},
+    {"GroupQueryAttention", V_2025_1, {"CPU", "GPU"}},
+    {"SimplifiedLayerNormalization", V_2025_1, {"CPU", "GPU"}},
 };
 
 void DataOps::populate_types_supported() {
@@ -388,6 +390,7 @@ void DataOps::populate_op_mode_supported() {
   no_dimension_supported_.push_back({"Sub", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Unsqueeze", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Where", V_2021_2, {"All"}});
+  no_dimension_supported_.push_back({"GroupQueryAttention", V_2025_1, {"All"}});
 
   subgraph_supported_.push_back({"Cast", V_2020_4, {"All"}});
   subgraph_supported_.push_back({"Concat", V_2020_4, {"All"}});
