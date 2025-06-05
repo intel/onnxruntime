@@ -16,6 +16,7 @@
 #include "openvino/runtime/intel_npu/properties.hpp"
 #include "openvino/pass/convert_fp32_to_fp16.hpp"
 #include "openvino/frontend/manager.hpp"
+#include "core/common/narrow.h"
 
 #ifdef IO_BUFFER_ENABLED
 #include <openvino/runtime/intel_gpu/ocl/ocl.hpp>
@@ -59,9 +60,17 @@ struct ParameterShape {
     return ort_shape;
   }
 
-  ov::Shape ov_shape() const { return ov_.get_shape(); }
-  const ov::PartialShape& ov() const { return ov_; }
-  const ort_shape_t& ort() const { return ort_; }
+  static ort_shape_t ToOrtShape(const ov::Shape& ov_shape) {
+    ort_shape_t ort_shape(ov_shape.size());
+    std::transform(ov_shape.begin(), ov_shape.end(), ort_shape.begin(), [](const auto& dim) {
+      return narrow<int64_t>(dim);
+    });
+    return ort_shape;
+  }
+
+  operator ov::Shape() const { return ov_.get_shape(); }
+  operator const ov::PartialShape&() const { return ov_; }
+  operator const ort_shape_t&() const { return ort_; }
 
   explicit ParameterShape(const ort_shape_t& ort_shape) : ort_(ort_shape), ov_(ToOvPartialShape(ort_shape)) {}
   explicit ParameterShape(const ov::PartialShape& ov_partial_shape) : ov_(ov_partial_shape), ort_(ToOrtShape(ov_partial_shape)) {}
@@ -175,7 +184,7 @@ class OVInferRequest {
   void SetTensorShapeOverride(const ParameterInfo& param_info, const ParameterShape& shape_override, void* ort_ptr) {
     auto& cached_binding = bindings_cache_[param_info.name];
     if (cached_binding.ort_ptr != ort_ptr) {
-      auto tensor_ptr = std::make_shared<ov::Tensor>(param_info.type, shape_override.ov_shape(), const_cast<void*>(ort_ptr));
+      auto tensor_ptr = std::make_shared<ov::Tensor>(param_info.type, shape_override, const_cast<void*>(ort_ptr));
       SetTensor(param_info.name, tensor_ptr);
       cached_binding = {tensor_ptr, ort_ptr};
     }

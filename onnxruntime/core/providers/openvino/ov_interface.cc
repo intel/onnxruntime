@@ -14,7 +14,7 @@ namespace onnxruntime {
 namespace openvino_ep {
 
 template <typename Func, typename... Args>
-inline auto OvExceptionBoundary(Func func, std::format_string<Args...>&& fmt, Args&&... args) {
+inline auto OvExceptionBoundary(Func &&func, std::format_string<Args...>&& fmt, Args&&... args) {
   try {
     return func();
   } catch (const ov::Exception& e) {
