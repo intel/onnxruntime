@@ -30,13 +30,31 @@ struct OnnxToOvNetworkBindings {
   std::vector<ParameterInfo> network_inputs_;
   bool has_dynamic_io_ = false;
 
+  inline static const std::array special_io_names_{
+      "beam_idx",
+      "past_key_values",
+      "present",
+  };
+
   OnnxToOvNetworkBindings(OVExeNetwork& exec_network, SubGraphContext& subgraph_context, SessionContext& session_context) {
     auto populate = [&](auto& input_output_map, const SubGraphContext::string_index_map_t& onnx_input_map, const auto& ov_parameters) {
       for (const auto& [onnx_name, onnx_param_index] : onnx_input_map) {
         auto it = std::find_if(ov_parameters.begin(), ov_parameters.end(),
                                [&onnx_name](const auto& ov_parameter_info) { return ov_parameter_info.get_names().contains(onnx_name); });
+        bool matched_names = it != ov_parameters.end();
 
-        ORT_ENFORCE(it != ov_parameters.end(), log_tag,
+        // For Stateful Model Compilation, the ONNX model includes KV cache (past/present) tensors.
+        // However, these tensors are internally converted to a stateful representation, which removes them.
+        // To prevent runtime exceptions, we simply continue processing here.
+        if (!matched_names && session_context.enable_causallm &&
+            std::any_of(special_io_names_.begin(), special_io_names_.end(),
+                        [&onnx_name](const std::string& name) { return onnx_name.find(name) != std::string::npos; })) {
+          // This case also requires dynamic shape inference, so we'll mark the bindings as dynamic.
+          has_dynamic_io_ = true;
+          continue;
+        }
+
+        ORT_ENFORCE(matched_names, log_tag,
                     "Input names mismatch between OpenVINO and ONNX. ", onnx_name,
                     " doesn't exist in the list of OpenVINO input tensor names");
 
