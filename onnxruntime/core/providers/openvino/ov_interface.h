@@ -18,10 +18,6 @@
 #include "openvino/frontend/manager.hpp"
 #include "core/common/narrow.h"
 
-#ifdef IO_BUFFER_ENABLED
-#include <openvino/runtime/intel_gpu/ocl/ocl.hpp>
-#endif
-
 #include <string>
 
 namespace onnxruntime {
@@ -35,11 +31,6 @@ typedef ov::ProfilingInfo OVProfilingInfo;
 typedef ov::Model OVNetwork;
 typedef std::shared_ptr<OVInferRequest> OVInferRequestPtr;
 typedef std::shared_ptr<OVTensor> OVTensorPtr;
-
-#ifdef IO_BUFFER_ENABLED
-typedef ov::intel_gpu::ocl::ClContext* OVRemoteContextPtr;
-typedef ov::RemoteContext OVRemoteContext;
-#endif
 
 struct ParameterShape {
   using ort_shape_t = std::vector<int64_t>;
@@ -122,10 +113,14 @@ struct OVCore : WeakSingleton<OVCore> {
   // OV Interface For Reading Model
   std::shared_ptr<OVNetwork> ReadModel(std::string&& model_stream, const std::string& model_path);
 
+  OVExeNetwork StatefulCompileModel(std::shared_ptr<OVNetwork>& model,
+                                    std::string& hw_target,
+                                    const ov::AnyMap& device_config);
   // OV Interface for Compiling OV Model Type
   OVExeNetwork CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_network,
                             std::string& hw_target,
                             ov::AnyMap& device_config,
+                            bool enable_causallm,
                             const std::string& name);
   // OV Interface for Fast Compile
   OVExeNetwork CompileModel(const std::string& onnx_model,
@@ -137,14 +132,6 @@ struct OVCore : WeakSingleton<OVCore> {
                            std::string hw_target,
                            const ov::AnyMap& device_config,
                            std::string name);
-#ifdef IO_BUFFER_ENABLED
-  OVExeNetwork CompileModel(std::shared_ptr<const OVNetwork>& model,
-                            OVRemoteContextPtr context,
-                            std::string name);
-  OVExeNetwork ImportModel(std::shared_ptr<std::istringstream> model_stream,
-                           OVRemoteContextPtr context,
-                           std::string name);
-#endif
   std::vector<std::string> GetAvailableDevices() const;
   std::vector<std::string> GetAvailableDevices(const std::string& device_type) const;
   void SetCache(const std::string& cache_dir_path);
@@ -152,13 +139,16 @@ struct OVCore : WeakSingleton<OVCore> {
 };
 
 class OVExeNetwork {
-  ov::CompiledModel obj;
+  ov::CompiledModel compiled_model_obj;
+  std::string target_device;
+  bool is_stateful_causallm;
 
  public:
-  explicit OVExeNetwork(ov::CompiledModel md) : obj(md) {}
-  OVExeNetwork() : obj(ov::CompiledModel()) {}
-  ov::CompiledModel& Get() { return obj; }
-  OVInferRequest CreateInferRequest();
+  explicit OVExeNetwork(ov::CompiledModel compiled_model, std::string device, bool stateful_causallm = false)
+      : compiled_model_obj(compiled_model), target_device(device), is_stateful_causallm(stateful_causallm) {}
+  OVExeNetwork() : compiled_model_obj(ov::CompiledModel()) {}
+  ov::CompiledModel& Get() { return compiled_model_obj; }
+  std::shared_ptr<OVInferRequest> CreateInferRequest();
 };
 
 class OVInferRequest {
@@ -167,6 +157,7 @@ class OVInferRequest {
     const void* ort_ptr;
   };
 
+  protected:
   ov::InferRequest ovInfReq;
   std::unordered_map<std::string, ov_tensor_data_t> bindings_cache_;
 
@@ -191,12 +182,37 @@ class OVInferRequest {
   }
 
   void SetTensor(const std::string& name, OVTensorPtr& blob);
-  void Infer();
+  virtual void Infer();
   explicit OVInferRequest(ov::InferRequest obj) : ovInfReq(std::move(obj)) {}
   OVInferRequest() : ovInfReq(ov::InferRequest()) {}
   ov::InferRequest& GetNewObj() {
     return ovInfReq;
   }
+  virtual void RewindKVCache(size_t index) {}
 };
+
+class StatefulOVInferRequest : public OVInferRequest {
+ public:
+  explicit StatefulOVInferRequest(ov::InferRequest infer_request, std::string device);
+
+  void Infer() override;
+  void RewindKVCache(size_t index) override;
+  void FillTensor(const std::string& tensor_name, const ov::element::Type& type,
+                   const std::vector<size_t>& shape, int32_t fill_value);
+  void CacheTensor(const std::string& tensor_name, std::vector<int64_t>& cache);
+  void SetTensorFromCache(const std::string& tensor_name, const std::vector<int64_t>& cache_data);
+  std::optional<ov::Tensor> FindTensor(const std::string& tensor_name);
+
+ private:
+  void PreProcessInferRequest();
+  std::string target_device;
+
+  // If prefill_use_full_chat_history is true, cache the "input_ids" & "position_ids" tensors,
+  // and ensure that full chat history is passed for each prefill call.
+  bool prefill_use_full_chat_history = false;
+  std::vector<int64_t> cached_input_ids;
+  std::vector<int64_t> cached_position_ids;
+};
+
 }  // namespace openvino_ep
 }  // namespace onnxruntime
