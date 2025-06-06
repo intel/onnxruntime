@@ -14,6 +14,9 @@
 #include "openvino/runtime/intel_npu/properties.hpp"
 #include "openvino/pass/convert_fp32_to_fp16.hpp"
 #include "openvino/frontend/manager.hpp"
+#include "openvino/core/dimension.hpp"
+#include "openvino/core/partial_shape.hpp"
+
 #include <string>
 
 namespace onnxruntime {
