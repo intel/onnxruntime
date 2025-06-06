@@ -352,10 +352,10 @@ static void ParseProviderInfo(const ProviderOptions& provider_options,
 
   // Should likely account for meta devices as well, but for now keep the current behavior.
   bool target_devices_support_dynamic_shapes =
-      device_type.find("GPU") != std::string::npos ||
-      device_type.find("CPU") != std::string::npos ||
-      (device_type.find("NPU") != std::string::npos &&
-       session_context_.enable_causallm);
+      pi.device_type.find("GPU") != std::string::npos ||
+      pi.device_type.find("CPU") != std::string::npos ||
+      (pi.device_type.find("NPU") != std::string::npos &&
+       pi.enable_causallm);
 
   pi.disable_dynamic_shapes = !target_devices_support_dynamic_shapes;
 }
