@@ -15,6 +15,7 @@
 #include "core/providers/openvino/backends/basic_backend.h"
 #include "core/providers/openvino/onnx_ctx_model_helper.h"
 #include "core/providers/openvino/backend_manager.h"
+#include "core/providers/openvino/ov_stateful_patch_utils.h"
 
 namespace onnxruntime {
 
@@ -29,6 +30,7 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
                            ptr_stream_t& model_stream)
     : session_context_{session_context}, subgraph_context_{subgraph_context}, shared_context_{shared_context} {
   std::string& hw_target = session_context_.device_type;
+  bool enable_causallm = session_context_.enable_causallm;
 
   if (ValidateSubgraph(const_outputs_map_))
     return;
@@ -43,7 +45,7 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
   // Setting OpenCL queue throttling for GPU
   EnableGPUThrottling(device_config);
 
-  // Enable streams; default=1 unless ovverriden by user config
+  // Enable streams; default=1 unless overridden by user configuration
   EnableStreams();
 
   // Set the inference_num_threads property of the CPU
@@ -62,25 +64,6 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
   try {
     // IO_BUFFER is enabled on GPU HW.
     // Pre-requisite is provider_option "context" must be set
-#if defined(IO_BUFFER_ENABLED)
-    cl_context ctx = static_cast<cl_context>(session_context_.context);
-    remote_context_ = new ov::intel_gpu::ocl::ClContext(OVCore::Get()->core, ctx);
-    if (subgraph_context_.is_ep_ctx_graph) {
-      exe_network_ = OVCore::Get()->ImportModel(*model_stream,
-                                                remote_context_,
-                                                subgraph_context_.subgraph_name);
-      model_stream.reset();  // Delete stream after it is no longer needed
-    } else {
-      std::string model = model_proto->SerializeAsString();
-      if (!subgraph_context.has_dynamic_input_shape) {
-        model_proto.reset()
-      }
-      auto ov_model = CreateOVModel(std::move(model), session_context_, const_outputs_map_);
-      LOGS_DEFAULT(INFO) << log_tag << "IO Buffering Enabled";
-      exe_network_ = OVCore::Get()->CompileModel(
-          ov_model, remote_context_, subgraph_context_.subgraph_name);
-    }
-#else  // !IO_BUFFER_ENABLED
     auto auto_unified_compile = ((hw_target.find("AUTO") == std::string::npos) ||
                                  (session_context_.OpenVINO_Version.at(0) >= 2024 &&
                                   session_context_.OpenVINO_Version.at(1) > 2));
@@ -96,12 +79,15 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
                !subgraph_context_.has_dynamic_input_shape &&
                !session_context_.so_context_enable &&
                session_context_.reshape.empty() &&
+               !enable_causallm &&
                auto_unified_compile) {
       // Unified OV compile_model is efficient when ov model caching is enabled
       // Unified OV compile_model API is supported with AUTO from version 2024.3 and above
-      // Inputs with static dimenstions
+      // Inputs with static dimensions
       // Not enabled for models with external weights and when ep context is set.
       const std::string model = model_proto->SerializeAsString();
+      // we have the serialized string, so we can release model proto to lower the peak memory consumption
+      model_proto.reset();
       exe_network_ = OVCore::Get()->CompileModel(model,
                                                  hw_target,
                                                  device_config,
@@ -114,9 +100,8 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
       }
       auto ov_model = CreateOVModel(std::move(model), session_context_, const_outputs_map_);
       exe_network_ = OVCore::Get()->CompileModel(
-          ov_model, hw_target, device_config, subgraph_context_.subgraph_name);
+          ov_model, hw_target, device_config, enable_causallm, subgraph_context_.subgraph_name);
     }
-#endif
     LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
   } catch (const char* msg) {
     ORT_THROW(msg);
@@ -139,6 +124,7 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
     };
   }
   inferRequestsQueue_ = std::unique_ptr<InferRequestsQueue>(new InferRequestsQueue(exe_network_, num_infer_req, std::move(initializer)));
+  bindings_ = std::make_unique<OnnxToOvNetworkBindings>(exe_network_, subgraph_context_, session_context_);
 }
 
 bool BasicBackend::ValidateSubgraph(std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map) {
@@ -198,6 +184,15 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
 
   if (!session_context_.load_config.empty()) {
     const std::map<std::string, ov::AnyMap>& target_config = session_context_.load_config;
+
+    if ((session_context_.device_type.find("NPU") != std::string::npos) && session_context_.enable_causallm) {
+      if (target_config.find("NPU") != target_config.end()) {
+        auto npu_genai_config = target_config.at("NPU");
+        CausalLMConfig().ApplyConfig(npu_genai_config, device_config);
+      } else {
+        LOGS_DEFAULT(WARNING) << "ORT GenAI CausalLMConfig Configuration not found.";
+      }
+    }
 
     if (session_context_.device_type.find("NPU") != std::string::npos) {
       auto npuw_config = target_config.at("NPU");
@@ -264,7 +259,8 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
     auto set_target_properties = [&](const std::string& device, const ov::AnyMap& config_options,
                                      const std::vector<ov::PropertyName>& supported_properties) {
       for (const auto& [key, value] : config_options) {
-        if (key.find("NPUW") != std::string::npos) {
+        if ((key.find("NPUW") != std::string::npos) ||
+            ((device_config.find(key) != device_config.end()) && session_context_.enable_causallm)) {
           continue;
         }
         if (is_supported_and_mutable(key, supported_properties)) {
@@ -364,7 +360,6 @@ DynamicFlags BasicBackend::classify_shape_flags(const ov::CompiledModel& model) 
     for (const auto& dim : shape) {
       if (dim.is_dynamic()) {
         flags.is_static = false;
-        std::cout << dim.get_min_length() << " , max = " << dim.get_max_length() << std::endl;
         if (dim.get_min_length() == 0 && dim.get_max_length() == -1)
           flags.has_fully_dynamic = true;
         else
@@ -396,135 +391,101 @@ void BasicBackend::ValidateOrtDimsAgainstPartialShape(const std::vector<int64_t>
 }
 
 
+void BasicBackend::RewindKVCache(size_t index) {
+  OVInferRequestPtr infer_request;
+  infer_request = inferRequestsQueue_->getIdleRequest();
+  infer_request->RewindKVCache(index);
+  inferRequestsQueue_->putIdleRequest(std::move(infer_request));
+}
+
 // Starts an asynchronous inference request for data in slice indexed by batch_slice_idx on
 // an Infer Request indexed by infer_req_idx
 void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferRequestPtr infer_request) {
   try {
-    auto ov_input_info = exe_network_.Get().inputs();
 
+    const bool is_cpu = session_context_.device_type.find("CPU") != std::string::npos;
+    const bool is_gpu = session_context_.device_type.find("GPU") != std::string::npos;
+    const bool is_npu = session_context_.device_type.find("NPU") != std::string::npos;
+    const bool is_cpu_or_gpu = is_cpu || is_gpu;
+
+    ov_shapes = classify_shape_flags(exe_network_.Get());
     // Loop over subgraph original input names to find the correspondent OV input name
-    for (const auto& [onnx_input_name, onnx_input_index] : subgraph_context_.input_names) {
-      std::string input_name{};
-      uint32_t input_idx = 0;
-      for (uint32_t index = 0; const auto& ov_input : ov_input_info) {
-        if (ov_input.get_names().contains(onnx_input_name)) {
-          input_name = onnx_input_name;
-          input_idx = index;
-          break;
-        }
-        index++;
-      }
-      ORT_ENFORCE(!input_name.empty(), log_tag,
-                  "Input names mismatch between OpenVINO and ONNX. ", onnx_input_name,
-                  " doesn't exist in the list of OpenVINO input tensor names");
+    for (const auto& input_info : bindings_->network_inputs_) {
+
       size_t batch_slice_idx = 0;
-      DynamicFlags ov_shapes = classify_shape_flags(exe_network_.Get());
-      std::cout << " Is fully dynamic " << ov_shapes.has_fully_dynamic << std::endl;
-      std::cout << " Is bounded dynamic " << ov_shapes.has_bounded_dynamic << std::endl;
-
-      const bool is_cpu = session_context_.device_type.find("CPU") != std::string::npos;
-      const bool is_gpu = session_context_.device_type.find("GPU") != std::string::npos;
-      const bool is_cpu_or_gpu = is_cpu || is_gpu;
-
-      const auto& input_name_idx = subgraph_context_.input_names.at(input_name);
-      auto tensor = context.GetInput(input_name_idx);
+      auto tensor = context.GetInput(input_info.onnx_index);
       auto tensor_info = tensor.GetTensorTypeAndShapeInfo();
       auto tensor_shape = tensor_info.GetShape();
       auto tensor_data = tensor.GetTensorData<char>();
-      const auto& input = ov_input_info.at(input_idx);
       if (ov_shapes.has_bounded_dynamic) {
-            ov::PartialShape partial_shape = input.get_partial_shape();
+            ov::PartialShape partial_shape = input_info.ov_shape;
             ValidateOrtDimsAgainstPartialShape(tensor_shape, partial_shape);
       }
       ov::Shape input_tensor_shape(tensor_shape.begin(), tensor_shape.end());
-
       OVTensorPtr tensor_ptr;
       if (is_cpu_or_gpu) {
         if (ov_shapes.is_static) {
           try {
-            auto graph_input_blob = infer_request->GetTensor(input_name);
-            FillInputBlob(std::move(graph_input_blob), batch_slice_idx, input_name, context, subgraph_context_);
+            auto graph_input_blob = infer_request->GetTensor(input_info.name);
+            FillInputBlob(std::move(graph_input_blob), batch_slice_idx, input_info.name, context, subgraph_context_);
           } catch (const char* msg) {
             ORT_THROW(msg);
           }
         } else {
           if (is_cpu) {
-            tensor_ptr = std::make_shared<ov::Tensor>(input.get_element_type(), input_tensor_shape, (void*)tensor_data);
+            tensor_ptr = std::make_shared<ov::Tensor>(input_info.type, input_tensor_shape, (void*)tensor_data);
           } else { // GPU
-            tensor_ptr = std::make_shared<ov::Tensor>(input.get_element_type(), input_tensor_shape);
-            FillInputBlob(tensor_ptr, batch_slice_idx, input_name, context, subgraph_context_);
+            tensor_ptr = std::make_shared<ov::Tensor>(input_info.type, input_tensor_shape);
+            FillInputBlob(tensor_ptr, batch_slice_idx, input_info.name, context, subgraph_context_);
           }
 
           try {
-            infer_request->SetTensor(input_name, tensor_ptr);
+            infer_request->SetTensor(input_info.name, tensor_ptr);
           } catch (const char* msg) {
             ORT_THROW(msg);
           }
         }
       } else { // Other device path
-        ort_tensor_key_t ort_tensor_key{input_name};
+        ort_tensor_key_t ort_tensor_key{input_info.name};
         auto it = ort_ov_tensor_map.find(ort_tensor_key);
 
         if (it == ort_ov_tensor_map.end() || it->second.ort_ptr != tensor.GetTensorRawData()) {
           ov_tensor_data_t ov_tensor_data;
-          ov_tensor_data.tensor_ptr = std::make_shared<ov::Tensor>(input.get_element_type(), input_tensor_shape,
-                                                                  const_cast<void*>(tensor.GetTensorRawData()));
+          ov_tensor_data.tensor_ptr = std::make_shared<ov::Tensor>(input_info.type, input_tensor_shape,
+                                                                     const_cast<void*>(tensor.GetTensorRawData()));
           ov_tensor_data.ort_ptr = tensor.GetTensorRawData();
           ort_ov_tensor_map[ort_tensor_key] = ov_tensor_data;
 
           try {
-            infer_request->SetTensor(input_name, ov_tensor_data.tensor_ptr);
+            infer_request->SetTensor(input_info.name, ov_tensor_data.tensor_ptr);
           } catch (const char* msg) {
             ORT_THROW(msg);
           }
         }
       }
     }
-    infer_request->Infer();
     // Handle output
-    if (session_context_.device_type.find("NPU") != std::string::npos) {
+    if (is_npu && ov_shapes.is_static &&
+        !session_context_.enable_causallm) {
       // Set the output blob as remote blob
-      auto graph_output_info = exe_network_.Get().outputs();
-      auto output_idx = 0;
-      for (auto output_info_iter = graph_output_info.begin();
-            output_info_iter != graph_output_info.end(); ++output_info_iter) {
-        auto output_names = output_info_iter->get_names();
-        std::string onnx_output_name;
-        std::string output_name;
-        // using the output name retrieved from ONNX original to match with the output names returned by OV tensors
-        for (auto it = subgraph_context_.output_names.begin(); it != subgraph_context_.output_names.end(); ++it) {
-          onnx_output_name = it->first;
-          if (output_names.find(onnx_output_name) != output_names.end()) {
-            // Assigning the output_name
-            output_name = it->first;
-            break;
-          }
-        }
-        size_t batch_size = 1;
-        Ort::UnownedValue output_tensor = GetOutputTensor(context,
-                                                    batch_size,
-                                                    infer_request,
-                                                    output_name,
-                                                    subgraph_context_.output_names);
-        ort_tensor_key_t ort_tensor_key{output_name};
+      for (const auto& output_info : bindings_->network_outputs_) {
+        Ort::UnownedValue tensor = context.GetOutput(output_info.onnx_index, output_info.onnx_shape);
+
+        ort_tensor_key_t ort_tensor_key{output_info.name};
         const auto& it = ort_ov_tensor_map.find(ort_tensor_key);
-        if ((it == ort_ov_tensor_map.end()) ||
-            (it != ort_ov_tensor_map.end() && (it->second.ort_ptr != output_tensor.GetTensorRawData()))) {
+        if ((it == ort_ov_tensor_map.end()) || (it->second.ort_ptr != tensor.GetTensorRawData())) {
           ov_tensor_data_t ov_tensor_data;
-          const auto& output = graph_output_info.at(output_idx);
-          ov_tensor_data.ort_ptr = output_tensor.GetTensorRawData();
-          auto ov_output_tensor = infer_request->GetOutputTensor(output_idx);
-          ov_tensor_data.tensor_ptr = std::make_shared<ov::Tensor>(output.get_element_type(), ov_output_tensor.get_shape(),
-                                                                    const_cast<void*>(output_tensor.GetTensorRawData()));
+          ov_tensor_data.ort_ptr = tensor.GetTensorRawData();
+          ov_tensor_data.tensor_ptr = std::make_shared<ov::Tensor>(output_info.type, output_info.ov_shape.get_shape(),
+                                                                   const_cast<void*>(tensor.GetTensorRawData()));
           ort_ov_tensor_map[ort_tensor_key] = ov_tensor_data;
 
           try {
-            infer_request->SetTensor(std::move(output_name), ov_tensor_data.tensor_ptr);
+            infer_request->SetTensor(output_info.name, ov_tensor_data.tensor_ptr);
           } catch (const char* msg) {
             ORT_THROW(msg);
           }
         }
-        output_idx++;
       }
     }
 
@@ -534,115 +495,6 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
     ORT_THROW(msg);
   }
 }
-
-#ifdef IO_BUFFER_ENABLED
-// Wait for Remote Aynchronous inference completion
-void BasicBackend::StartRemoteAsyncInference(Ort::KernelContext& context, OVInferRequestPtr infer_request) {
-  try {
-    auto graph_input_info = exe_network_.Get().inputs();
-    int input_idx = 0;
-    for (auto input_info_iter = graph_input_info.begin();
-         input_info_iter != graph_input_info.end(); ++input_info_iter) {
-      auto input_names = input_info_iter->get_names();
-      std::string onnx_input_name;
-      std::string input_name;
-      // use names retrieved from original ONNX model to assign the right onnx input name for the graph
-      for (auto it = subgraph_context_.input_names.begin(); it != subgraph_context_.input_names.end(); ++it) {
-        if (it->second == input_idx) {
-          onnx_input_name = it->first;
-          break;
-        }
-      }
-      // using the input name retrieved from ONNX original to match with the input names returned by OV tensors
-      if (input_names.find(onnx_input_name) != input_names.end()) {
-        input_name = onnx_input_name;
-      } else {
-        ORT_THROW(log_tag +
-                  "Input names mismatch between OpenVINO and ONNX. " +
-                  onnx_input_name +
-                  " doesn't exist in the list of OpenVINO input tensor names");
-      }
-      input_idx++;
-      // Kernel Context Input Buffer
-      const auto tensor = context.GetInput(subgraph_context_.input_names.at(input_name));
-      // If the ORTValue wraps a device pointer
-      auto mem_info = tensor.GetTensorMemoryInfo();
-      if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
-        // Get the shared buffer pointer
-        const void* tensor_data = tensor.GetTensorRawData();
-        const cl::Buffer* shared_buffer_const = static_cast<const cl::Buffer*>(tensor_data);
-        // Create an Input Remote Blob
-        auto input = graph_input_info.at(0);
-        auto remote_blob = remote_context_->create_tensor(
-            input.get_element_type(), input.get_shape(), *shared_buffer_const);
-        ov::Tensor tensor_remote = static_cast<ov::Tensor>(remote_blob);
-        OVTensorPtr tensor_ptr = std::make_shared<ov::Tensor>(tensor_remote);
-        infer_request->SetTensor(input_name, tensor_ptr);
-      } else {
-        OVTensorPtr graph_input_blob;
-        graph_input_blob = infer_request->GetTensor(input_name);
-        size_t batch_slice_idx = 0;
-        FillInputBlob(graph_input_blob, batch_slice_idx, input_name, context, subgraph_context_);
-      }
-    }
-
-    // Set the output blob as remote blob
-    auto graph_output_info = exe_network_.Get().outputs();
-    for (auto output_info_iter = graph_output_info.begin();
-         output_info_iter != graph_output_info.end(); ++output_info_iter) {
-      auto output_names = output_info_iter->get_names();
-      std::string onnx_output_name;
-      std::string output_name;
-      bool output_name_found = false;
-      // using the output name retrieved from ONNX original to match with the output names returned by OV tensors
-      for (auto it = subgraph_context_.output_names.begin(); it != subgraph_context_.output_names.end(); ++it) {
-        onnx_output_name = it->first;
-        if (output_names.find(onnx_output_name) != output_names.end()) {
-          // Assigning the output_name
-          output_name = it->first;
-          output_name_found = true;
-          break;
-        }
-      }
-      if (!output_name_found) {
-        ORT_THROW(
-            log_tag +
-            "Output names mismatch between OpenVINO and ONNX. [ONNX Output: ] " +
-            onnx_output_name + " doesn't exist in the list of OpenVINO output tensor names");
-      }
-
-      size_t batch_size = 1;
-      Ort::UnownedValue tensor = GetOutputTensor(context,
-                                                 batch_size,
-                                                 infer_request,
-                                                 output_name,
-                                                 subgraph_context_.output_names);
-      auto mem_info = tensor.GetTensorMemoryInfo();
-      // Check if ORT Value wraps a device pointer
-      if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
-        const void* tensor_data = tensor.GetTensorRawData();
-        const cl::Buffer* shared_buffer_const = static_cast<const cl::Buffer*>(tensor_data);
-        // Create a shared Blob, set the Infer Request Output Blob
-        auto output = graph_output_info.at(0);
-        auto remote_tensor =
-            remote_context_->create_tensor(output.get_element_type(), output.get_shape(), *shared_buffer_const);
-        ov::Tensor tensor_t = static_cast<ov::Tensor>(remote_tensor);
-        OVTensorPtr tensor_ptr = std::make_shared<ov::Tensor>(tensor_t);
-        try {
-          infer_request->SetTensor(output_name, tensor_ptr);
-        } catch (const char* msg) {
-          ORT_THROW(msg);
-        }
-      }
-    }
-
-    // Start Async inference
-    infer_request->StartAsync();
-  } catch (const char* msg) {
-    ORT_THROW(msg);
-  }
-}
-#endif
 
 // Wait for asynchronous inference completion on an Infer Request object indexed by infer_req_idx
 // and copy the results into a slice location within the batched output buffer indexed by batch_slice_idx
@@ -650,57 +502,41 @@ void BasicBackend::CompleteAsyncInference(Ort::KernelContext& context, OVInferRe
   // Wait for Async inference completion
   try {
     infer_request->WaitRequest();
-    auto graph_output_info = exe_network_.Get().outputs();
-    for (auto output_info_iter = graph_output_info.begin();
-         output_info_iter != graph_output_info.end(); ++output_info_iter) {
-      OVTensorPtr graph_output_blob;
-      auto output_names = output_info_iter->get_names();
-      std::string onnx_output_name;
-      std::string output_name;
-      bool output_name_found = false;
-      // using the output name retrieved from ONNX original to match with the output names returned by OV tensors
-      for (auto it = subgraph_context_.output_names.begin(); it != subgraph_context_.output_names.end(); ++it) {
-        onnx_output_name = it->first;
-        if (output_names.find(onnx_output_name) != output_names.end()) {
-          // Assigning the output_name
-          output_name = it->first;
-          output_name_found = true;
-          break;
-        }
-      }
-      if (!output_name_found) {
-        ORT_THROW(
-            log_tag +
-            "Output names mismatch between OpenVINO and ONNX. "
-            "[ONNX Output: ] " +
-            onnx_output_name +
-            " doesn't exist in the "
-            "list of OpenVINO output tensor names");
-      }
-      if ((session_context_.device_type.find("CPU") != std::string::npos ||
-           session_context_.device_type.find("GPU") != std::string::npos)) {
+  } catch(const std::runtime_error& e) {
+    infer_request->CancelRequest();
+    inferRequestsQueue_->deleteRequest();
+    ORT_THROW(log_tag + e.what());
+  }
+
+  bool cpu_or_gpu = session_context_.device_type.find("CPU") != std::string::npos ||
+                    session_context_.device_type.find("GPU") != std::string::npos;
+  bool npu = session_context_.device_type.find("NPU") != std::string::npos;
+  if (cpu_or_gpu || (npu && (session_context_.enable_causallm || ov_shapes.is_static))) {
+    for (const auto& output_info : bindings_->network_outputs_) {
+        OVTensorPtr graph_output_blob;
         try {
-          graph_output_blob = infer_request->GetTensor(output_name);
+          graph_output_blob = infer_request->GetTensor(output_info.name);
         } catch (const char* msg) {
           ORT_THROW(msg);
         }
         size_t batch_size = 1;
         Ort::UnownedValue output_tensor =
-            GetOutputTensor(context, batch_size, infer_request, std::move(output_name), subgraph_context_.output_names);
+            GetOutputTensor(context, batch_size, infer_request, output_info.name, subgraph_context_.output_names);
         auto mem_info = output_tensor.GetTensorMemoryInfo();
         if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
           return;
-        } else {
-          size_t batch_slice = 0;
-          FillOutputBlob(std::move(graph_output_blob), output_tensor, batch_slice);
-        }
+      } else {
+        size_t batch_slice = 0;
+        FillOutputBlob(std::move(graph_output_blob), output_tensor, batch_slice);
       }
     }
+  }
 
-    if (!const_outputs_map_.empty()) {
-      for (const auto& item : const_outputs_map_) {
-        const auto& out_name = item.first;
-        auto node = item.second;
+  if (!const_outputs_map_.empty()) {
+    for (const auto& item : const_outputs_map_) {
+      const auto& out_name = item.first;
+      auto node = item.second;
+      try {
         Ort::UnownedValue output_tensor = GetOutputTensor(context,
                                                           out_name,
                                                           subgraph_context_.output_names,
@@ -711,10 +547,10 @@ void BasicBackend::CompleteAsyncInference(Ort::KernelContext& context, OVInferRe
         } else {
           FillOutputsWithConstantData(std::move(node), output_tensor);
         }
+      } catch (std::string const& msg) {
+        ORT_THROW(msg);
       }
     }
-  } catch (const char* msg) {
-    ORT_THROW(msg);
   }
 }
 
@@ -748,34 +584,31 @@ void BasicBackend::Infer(OrtKernelContext* ctx) {
     }
 
   } else {
-    // Requesting for an idle infer_request from a pool of infer_requests_
     OVInferRequestPtr infer_request;
     infer_request = inferRequestsQueue_->getIdleRequest();
-#ifdef IO_BUFFER_ENABLED
-    if ((session_context_.device_type.find("GPU") != std::string::npos) &&
-        (session_context_.context != nullptr) && session_context_.is_wholly_supported_graph) {
-      try {
-        StartRemoteAsyncInference(context, infer_request);
-      } catch (std::string const& msg) {
-        ORT_THROW(msg);
-      }
-    } else {
-      try {
-        StartAsyncInference(context, infer_request);
-      } catch (std::string const& msg) {
-        ORT_THROW(msg);
-      }
+    if(infer_request == nullptr) {
+      ORT_THROW("OpenVINO Execution Provider :: There are no inference requests");
+      LOGS_DEFAULT(FATAL) << log_tag << "Create Infer Requests do not exist";
+      return;
     }
-#else
+
+    LOGS_DEFAULT(INFO) << log_tag << "Get Idle Request";
     try {
       StartAsyncInference(context, infer_request);
     } catch (const std::runtime_error& e) {
+      // If the inference fails (exception from ov::InferRequest::infer()),
+      // we need to put the infer_request back into the pool to avoid deadlocks
+      // and to allow the next inference request to proceed.
+      inferRequestsQueue_->putIdleRequest(std::move(infer_request));
       ORT_THROW(log_tag + " Exception at StartAsyncInference: " + e.what());
     }
-#endif
     try {
       CompleteAsyncInference(context, infer_request);
     } catch (const std::runtime_error& e) {
+      // If the inference fails (exception from ov::InferRequest::infer()),
+      // we need to put the infer_request back into the pool to avoid deadlocks
+      // and to allow the next inference request to proceed.
+      inferRequestsQueue_->putIdleRequest(std::move(infer_request));
       ORT_THROW(log_tag + " Exception at CompleteAsyncInference: " + e.what());
     }
 
@@ -794,13 +627,11 @@ void BasicBackend::Infer(OrtKernelContext* ctx) {
     // Once the inference is completed, the infer_request becomes free and is placed back into pool of infer_requests_
     inferRequestsQueue_->putIdleRequest(std::move(infer_request));
 #ifndef NDEBUG
-#ifndef IO_BUFFER_ENABLED  // Printing performance counts is disabled when IO_BUFFER_ENABLED
     if (openvino_ep::backend_utils::IsDebugEnabled()) {
       inferRequestsQueue_->printstatus();  // Printing the elements of infer_requests_ vector pool only in debug mode
       std::string& hw_target = session_context_.device_type;
       printPerformanceCounts(std::move(infer_request_), std::cout, hw_target);
     }
-#endif
 #endif
   }
 }

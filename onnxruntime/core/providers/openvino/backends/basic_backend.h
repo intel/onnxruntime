@@ -13,11 +13,14 @@
 #include <mutex>
 #include <map>
 #include <functional>
+#include <algorithm>
+#include <utility>
 
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/openvino/contexts.h"
 #include "core/providers/openvino/ibackend.h"
 #include "core/providers/openvino/ov_interface.h"
+#include "core/providers/openvino/backend_utils.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -37,6 +40,57 @@ struct DynamicFlags {
     }
 };
 
+struct OnnxToOvNetworkBindings {
+  struct ParameterInfo {
+    std::string name;
+    uint32_t ov_index;
+    uint32_t onnx_index;
+    ov::element::Type type;
+    ov::PartialShape ov_shape;
+    std::vector<int64_t> onnx_shape;
+  };
+  std::vector<ParameterInfo> network_outputs_;
+  std::vector<ParameterInfo> network_inputs_;
+
+  OnnxToOvNetworkBindings(OVExeNetwork& exec_network, SubGraphContext& subgraph_context, SessionContext& session_context) {
+    auto populate = [&](auto& input_output_map, const SubGraphContext::string_index_map_t& onnx_input_map, const auto& ov_parameters) {
+      for (const auto& [onnx_name, onnx_param_index] : onnx_input_map) {
+        auto it = std::find_if(ov_parameters.begin(), ov_parameters.end(),
+                               [&onnx_name](const auto& ov_parameter_info) { return ov_parameter_info.get_names().contains(onnx_name); });
+
+        // For Stateful Model Compilation, the ONNX model includes KV cache (past/present) tensors.
+        // However, these tensors are internally converted to a stateful representation, which removes them.
+        // To prevent runtime exceptions, we simply continue processing here.
+        if ((onnx_name.empty() || onnx_name == "beam_idx" ||
+            onnx_name.find("past_key_values") != std::string::npos ||
+            onnx_name.find("present") != std::string::npos) &&
+            session_context.enable_causallm) {
+          continue;
+        }
+
+        ORT_ENFORCE(it != ov_parameters.end(), backend_utils::log_tag,
+                    "Input names mismatch between OpenVINO and ONNX. ", onnx_name,
+                    " doesn't exist in the list of OpenVINO input tensor names");
+
+        auto ov_param_index = std::distance(ov_parameters.begin(), it);
+
+        auto shape = ov_parameters[ov_param_index].get_partial_shape();
+        auto type = ov_parameters[ov_param_index].get_element_type();
+        ParameterInfo info{onnx_name, ov_param_index, onnx_param_index, type, shape};
+
+        if (shape.is_static()) {
+          auto static_shape = shape.get_shape();
+          std::transform(static_shape.begin(), static_shape.end(), std::back_inserter(info.onnx_shape), [](const auto& dim) { return static_cast<int64_t>(dim); });
+        }
+        input_output_map.push_back(std::move(info));
+      }
+    };
+
+    populate(network_inputs_, subgraph_context.input_names, exec_network.Get().inputs());
+    populate(network_outputs_, subgraph_context.output_names, exec_network.Get().outputs());
+  }
+};
+
 class InferRequestsQueue;
 class BasicBackend : public IBackend {
  public:
@@ -48,12 +102,12 @@ class BasicBackend : public IBackend {
 
   void Infer(OrtKernelContext* context) override;
   ~BasicBackend() override = default;
-  ov::CompiledModel& GetOVCompiledModel() override {
+  ov::CompiledModel GetOVCompiledModel() override {
     return exe_network_.Get();
   }
+  void RewindKVCache(size_t index) override;
 
  private:
-  void PopulateCompiledDirectory(std::string, std::string&, std::string&, bool&);
   bool ValidateSubgraph(std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map);
   void PopulateConfigValue(ov::AnyMap& device_config);
   void EnableCaching();
@@ -64,11 +118,6 @@ class BasicBackend : public IBackend {
   DynamicFlags classify_shape_flags(const ov::CompiledModel& model);
   void ValidateOrtDimsAgainstPartialShape(const std::vector<int64_t>& ort_dims,
                                           const ov::PartialShape& partial_shape) const;
-
-#ifdef IO_BUFFER_ENABLED
-  void StartRemoteAsyncInference(Ort::KernelContext& context, std::shared_ptr<OVInferRequest> infer_request);
-#endif
-
   void CompleteAsyncInference(Ort::KernelContext& context, std::shared_ptr<OVInferRequest> infer_request);
 
   SessionContext& session_context_;
@@ -78,12 +127,10 @@ class BasicBackend : public IBackend {
   OVExeNetwork exe_network_;
   std::map<std::string, std::shared_ptr<ov::Node>> const_outputs_map_;
   std::unique_ptr<InferRequestsQueue> inferRequestsQueue_;
-#if defined IO_BUFFER_ENABLED
-  OVRemoteContextPtr remote_context_;
-#endif
-
   using ort_tensor_key_t = const std::string;
   std::map<ort_tensor_key_t, ov_tensor_data_t> ort_ov_tensor_map;
+  std::unique_ptr<OnnxToOvNetworkBindings> bindings_;
+  DynamicFlags ov_shapes;
 };
 
 
@@ -91,8 +138,9 @@ class InferRequestsQueue {
  public:
   InferRequestsQueue(OVExeNetwork& net, size_t nireq, std::function<void(OVInferRequestPtr)> initializer) {
     OVInferRequestPtr infer_request;
+    live_threads=nireq;
     for (size_t id = 0; id < nireq; id++) {
-      infer_request = std::make_shared<OVInferRequest>(net.CreateInferRequest());
+      infer_request = net.CreateInferRequest();
       initializer(infer_request);
       infer_requests_.push_back(infer_request);
     }
@@ -122,16 +170,26 @@ class InferRequestsQueue {
 
   OVInferRequestPtr getIdleRequest() {
     std::unique_lock<std::mutex> lock(_mutex);
+    if(live_threads==0) {
+      return nullptr;
+    }
+
     _cv.wait(lock, [this] { return infer_requests_.size() > 0; });
     auto request = infer_requests_.at(0);
     infer_requests_.erase(infer_requests_.begin());
     return request;
   }
 
+  void deleteRequest() {
+    std::unique_lock<std::mutex> lock(_mutex);
+    live_threads=live_threads-1;
+  }
+
  private:
   std::mutex _mutex;
   std::condition_variable _cv;
   std::vector<OVInferRequestPtr> infer_requests_;
+  int live_threads;
 };
 
 }  // namespace openvino_ep
