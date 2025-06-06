@@ -55,7 +55,7 @@ static std::vector<std::string> parseDevices(const std::string& device_string,
 OpenVINOExecutionProvider::OpenVINOExecutionProvider(const ProviderInfo& info, std::shared_ptr<SharedContext> shared_context)
     : IExecutionProvider{onnxruntime::kOpenVINOExecutionProvider},
       session_context_(info),
-      shared_context_{shared_context},
+      shared_context_{std::move(shared_context)},
       ep_ctx_handle_{session_context_.openvino_sdk_version, *GetLogger()} {
   InitProviderOrtApi();
 }
@@ -238,10 +238,39 @@ common::Status OpenVINOExecutionProvider::SetEpDynamicOptions(gsl::span<const ch
         LOGS_DEFAULT(WARNING) << "Supported types are 'Efficient' and 'Default' \n";
       }
       if (workload_type != "") {
-        LOGS_DEFAULT(INFO) << "SetEpDynamicOptions - modifying: " << key << "/" << value;
+        LOGS_DEFAULT(VERBOSE) << "SetEpDynamicOptions - modifying: " << key << "/" << value;
         for (auto& backend : backend_managers_) {
-          ov::CompiledModel& ov_compiled_model = backend.GetOVCompiledModel();
-          ov_compiled_model.set_property(ov::workload_type(workload_type));
+            ov::CompiledModel ov_compiled_model = backend.GetOVCompiledModel();
+            if(ov_compiled_model) {
+              ov_compiled_model.set_property(ov::workload_type(workload_type));
+          } else {
+            LOGS_DEFAULT(VERBOSE) << "Model is not compiled in OV as its dynamic";
+            ov::AnyMap map;
+            map["WORKLOAD_TYPE"] = workload_type;
+            if (session_context_.device_type == "NPU")
+              session_context_.load_config["NPU"] = std::move(map);
+            else
+              ORT_THROW(" WORKLOAD_TYPE property is supported only for NPU");
+          }
+        }
+      }
+    } else if (key == "kvcache_rewind") {
+      // Convert kvcache_rewind value to int64_t
+      int64_t index;
+      try {
+        index = std::stoll(value);
+      } catch (const std::exception& e) {
+        LOGS_DEFAULT(WARNING) << "Conversion for kvcache_rewind string value to int64_t index failed."
+                              << "Exception:" + std::string(e.what());
+        return Status::OK();
+      }
+
+      // Trigger KVCache Rewind for target Backend
+      for (auto& backend : backend_managers_) {
+        if (index >= 0) {
+          backend.RewindKVCache(static_cast<size_t>(index));
+        } else {
+          LOGS_DEFAULT(WARNING) << "kvcache_rewind index is < 0:\t" << index;
         }
       }
     } else {
