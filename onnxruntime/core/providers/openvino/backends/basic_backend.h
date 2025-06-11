@@ -114,8 +114,7 @@ class InferRequestPool {
  public:
   struct GuardedInferReq {
     OVInferRequestPtr infer_request_;
-
-    GuardedInferReq(InferRequestPool& queue, OVInferRequestPtr& infer_req) : queue_(queue), infer_request_(infer_req) {}
+    GuardedInferReq(InferRequestPool& queue, OVInferRequestPtr&& infer_req) : queue_(queue), infer_request_(std::move(infer_req)) {}
     ~GuardedInferReq() { queue_.putIdleRequest(std::move(infer_request_)); }
 
     // Movable but not copyable
@@ -129,7 +128,6 @@ class InferRequestPool {
   };
 
   InferRequestPool(OVExeNetwork& net, size_t initial_size, std::function<void(OVInferRequestPtr)> initializer) : exe_network_(net), initializer_(std::move(initializer)) {
-    OVInferRequestPtr infer_request;
     for (size_t id = 0; id < initial_size; id++) {
       infer_requests_.emplace_back(createInferRequest());
     }
@@ -141,9 +139,9 @@ class InferRequestPool {
     if (infer_requests_.empty()) {
       infer_requests_.emplace_back(createInferRequest());
     }
-    auto request = infer_requests_.back();
+    auto request = std::move(infer_requests_.back());
     infer_requests_.pop_back();
-    return GuardedInferReq(*this, request);
+    return GuardedInferReq(*this, std::move(request));
   }
 
   template <typename Func>
@@ -158,7 +156,7 @@ class InferRequestPool {
   void putIdleRequest(OVInferRequestPtr&& infer_request) {
     if (infer_request) {
       std::unique_lock<std::mutex> lock(_mutex);
-      infer_requests_.push_back(infer_request);
+      infer_requests_.emplace_back(std::move(infer_request));
     }
   }
 
