@@ -435,31 +435,27 @@ void BasicBackend::Infer(OrtKernelContext* ctx) const {
     infer_request->Infer();
   }
 
-    // Fill constant outputs if needed
-    for (const auto& [name, node] : const_outputs_map_) {
-        Ort::UnownedValue output_tensor = GetOutputTensor(context,
-                                                        name,
-                                                        subgraph_context_.output_names,
-                                                        node);
-        auto mem_info = output_tensor.GetTensorMemoryInfo();
-        ORT_ENFORCE(mem_info.GetAllocatorName() != OpenVINO_GPU,
-                    log_tag + "IO Buffering is not supported for constant subgraphs");
-        FillOutputsWithConstantData(node, output_tensor);
-    }
+  // Fill constant outputs if needed
+  for (const auto& [name, node] : const_outputs_map_) {
+    Ort::UnownedValue output_tensor = GetOutputTensor(context,
+                                                      name,
+                                                      subgraph_context_.output_names,
+                                                      node);
+    auto mem_info = output_tensor.GetTensorMemoryInfo();
+    FillOutputsWithConstantData(node, output_tensor);
+  }
 
-    LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
+  LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
   if (IsCILogEnabled()) {
     std::cout << "Inference successful" << std::endl;
   }
 
 #ifndef NDEBUG
-#ifndef IO_BUFFER_ENABLED
   // Print performance counts before releasing the infer_request for thread safety
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
     std::string& hw_target = session_context_.device_type;
     printPerformanceCounts(infer_request, std::cout, hw_target);
   }
-#endif
 #endif
 }
 
