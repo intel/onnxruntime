@@ -113,7 +113,7 @@ BackendManager::BackendManager(SessionContext& session_context,
     subgraph_context_.has_dynamic_input_shape = true;
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims";
     if (cpu_or_gpu || (npu && session_context_.enable_causallm) &&
-        !session_context_.disable_dynamic_shapes) {
+                          !session_context_.disable_dynamic_shapes) {
       LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Starting backend initialization. "
                          << "Creating backend Dynamic Shapes";
       try {
@@ -448,7 +448,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
   const auto& onnx_model_path_name = subgraph.ModelPath();
   // QDQ stripping enabled only for the NPU and experimentally on the GPU
   if ((session_context_.device_type.find("NPU") != std::string::npos ||
-      session_context_.device_type.find("GPU") != std::string::npos) &&
+       session_context_.device_type.find("GPU") != std::string::npos) &&
       (enable_ovep_qdq_optimizer || session_context_.so_share_ep_contexts)) {
     std::unique_ptr<onnxruntime::Model> model;
     Status status = CreateModelWithStrippedQDQNodes(subgraph, logger, session_context_.so_share_ep_contexts, enable_ovep_qdq_optimizer, model, shared_context_.shared_weights);

@@ -31,13 +31,13 @@ struct ov_tensor_data_t {
 };
 
 struct DynamicFlags {
-    bool is_static = true;          // default true if no dynamic dims
-    bool has_fully_dynamic = false;
-    bool has_bounded_dynamic = false;
+  bool is_static = true;  // default true if no dynamic dims
+  bool has_fully_dynamic = false;
+  bool has_bounded_dynamic = false;
 
-    bool is_mixed() const {
-        return has_fully_dynamic && has_bounded_dynamic;
-    }
+  bool is_mixed() const {
+    return has_fully_dynamic && has_bounded_dynamic;
+  }
 };
 
 struct OnnxToOvNetworkBindings {
@@ -62,8 +62,8 @@ struct OnnxToOvNetworkBindings {
         // However, these tensors are internally converted to a stateful representation, which removes them.
         // To prevent runtime exceptions, we simply continue processing here.
         if ((onnx_name.empty() || onnx_name == "beam_idx" ||
-            onnx_name.find("past_key_values") != std::string::npos ||
-            onnx_name.find("present") != std::string::npos) &&
+             onnx_name.find("past_key_values") != std::string::npos ||
+             onnx_name.find("present") != std::string::npos) &&
             session_context.enable_causallm) {
           continue;
         }
@@ -133,12 +133,11 @@ class BasicBackend : public IBackend {
   DynamicFlags ov_shapes;
 };
 
-
 class InferRequestsQueue {
  public:
   InferRequestsQueue(OVExeNetwork& net, size_t nireq, std::function<void(OVInferRequestPtr)> initializer) {
     OVInferRequestPtr infer_request;
-    live_threads=nireq;
+    live_threads = nireq;
     for (size_t id = 0; id < nireq; id++) {
       infer_request = net.CreateInferRequest();
       initializer(infer_request);
@@ -170,7 +169,7 @@ class InferRequestsQueue {
 
   OVInferRequestPtr getIdleRequest() {
     std::unique_lock<std::mutex> lock(_mutex);
-    if(live_threads==0) {
+    if (live_threads == 0) {
       return nullptr;
     }
 
@@ -182,7 +181,7 @@ class InferRequestsQueue {
 
   void deleteRequest() {
     std::unique_lock<std::mutex> lock(_mutex);
-    live_threads=live_threads-1;
+    live_threads = live_threads - 1;
   }
 
  private:
