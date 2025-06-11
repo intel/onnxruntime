@@ -353,23 +353,6 @@ void BasicBackend::SetNumThreads(ov::AnyMap& device_config) {
     device_config.emplace(ov::inference_num_threads(session_context_.num_of_threads));
 }
 
-DynamicFlags BasicBackend::classify_shape_flags(const ov::CompiledModel& model) {
-  DynamicFlags flags;
-  for (const auto& input : model.inputs()) {
-    auto shape = input.get_partial_shape();
-    for (const auto& dim : shape) {
-      if (dim.is_dynamic()) {
-        flags.is_static = false;
-        if (dim.get_min_length() == 0 && dim.get_max_length() == -1)
-          flags.has_fully_dynamic = true;
-        else
-          flags.has_bounded_dynamic = true;
-      }
-    }
-  }
-  return flags;
-}
-
 void BasicBackend::ValidateOrtDimsAgainstPartialShape(const std::vector<int64_t>& ort_dims,
                                                       const ov::PartialShape& partial_shape) const {
   // Check if the number of dimensions matches
@@ -406,7 +389,6 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
     const bool is_npu = session_context_.device_type.find("NPU") != std::string::npos;
     const bool is_cpu_or_gpu = is_cpu || is_gpu;
 
-    ov_shapes = classify_shape_flags(exe_network_.Get());
     // Loop over subgraph original input names to find the correspondent OV input name
     for (const auto& input_info : bindings_->network_inputs_) {
       size_t batch_slice_idx = 0;
@@ -414,14 +396,14 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
       auto tensor_info = tensor.GetTensorTypeAndShapeInfo();
       auto tensor_shape = tensor_info.GetShape();
       auto tensor_data = tensor.GetTensorData<char>();
-      if (ov_shapes.has_bounded_dynamic) {
+      if (input_info.IsBoundedDynamic()) {
         ov::PartialShape partial_shape = input_info.ov_shape;
         ValidateOrtDimsAgainstPartialShape(tensor_shape, partial_shape);
       }
       ov::Shape input_tensor_shape(tensor_shape.begin(), tensor_shape.end());
       OVTensorPtr tensor_ptr;
       if (is_cpu_or_gpu) {
-        if (ov_shapes.is_static) {
+        if (input_info.IsStatic()) {
           try {
             auto graph_input_blob = infer_request->GetTensor(input_info.name);
             FillInputBlob(std::move(graph_input_blob), batch_slice_idx, input_info.name, context, subgraph_context_);
@@ -462,25 +444,27 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
       }
     }
     // Handle output
-    if (is_npu && ov_shapes.is_static &&
-        !session_context_.enable_causallm) {
+    if (is_npu && !session_context_.enable_causallm) {
       // Set the output blob as remote blob
       for (const auto& output_info : bindings_->network_outputs_) {
-        Ort::UnownedValue tensor = context.GetOutput(output_info.onnx_index, output_info.onnx_shape);
+        if (output_info.IsStatic()) {
+          // Set remote tensor for static outputs only
+          Ort::UnownedValue tensor = context.GetOutput(output_info.onnx_index, output_info.onnx_shape);
 
-        ort_tensor_key_t ort_tensor_key{output_info.name};
-        const auto& it = ort_ov_tensor_map.find(ort_tensor_key);
-        if ((it == ort_ov_tensor_map.end()) || (it->second.ort_ptr != tensor.GetTensorRawData())) {
-          ov_tensor_data_t ov_tensor_data;
-          ov_tensor_data.ort_ptr = tensor.GetTensorRawData();
-          ov_tensor_data.tensor_ptr = std::make_shared<ov::Tensor>(output_info.type, output_info.ov_shape.get_shape(),
-                                                                   const_cast<void*>(tensor.GetTensorRawData()));
-          ort_ov_tensor_map[ort_tensor_key] = ov_tensor_data;
+          ort_tensor_key_t ort_tensor_key{output_info.name};
+          const auto& it = ort_ov_tensor_map.find(ort_tensor_key);
+          if ((it == ort_ov_tensor_map.end()) || (it->second.ort_ptr != tensor.GetTensorRawData())) {
+            ov_tensor_data_t ov_tensor_data;
+            ov_tensor_data.ort_ptr = tensor.GetTensorRawData();
+            ov_tensor_data.tensor_ptr = std::make_shared<ov::Tensor>(output_info.type, output_info.ov_shape.get_shape(),
+                                                                     const_cast<void*>(tensor.GetTensorRawData()));
+            ort_ov_tensor_map[ort_tensor_key] = ov_tensor_data;
 
-          try {
-            infer_request->SetTensor(output_info.name, ov_tensor_data.tensor_ptr);
-          } catch (const char* msg) {
-            ORT_THROW(msg);
+            try {
+              infer_request->SetTensor(output_info.name, ov_tensor_data.tensor_ptr);
+            } catch (const char* msg) {
+              ORT_THROW(msg);
+            }
           }
         }
       }
@@ -508,23 +492,25 @@ void BasicBackend::CompleteAsyncInference(Ort::KernelContext& context, OVInferRe
   bool cpu_or_gpu = session_context_.device_type.find("CPU") != std::string::npos ||
                     session_context_.device_type.find("GPU") != std::string::npos;
   bool npu = session_context_.device_type.find("NPU") != std::string::npos;
-  if (cpu_or_gpu || (npu && (session_context_.enable_causallm || ov_shapes.is_static))) {
+  if (cpu_or_gpu || (npu && (session_context_.enable_causallm))) {
     for (const auto& output_info : bindings_->network_outputs_) {
-      OVTensorPtr graph_output_blob;
-      try {
-        graph_output_blob = infer_request->GetTensor(output_info.name);
-      } catch (const char* msg) {
-        ORT_THROW(msg);
-      }
-      size_t batch_size = 1;
-      Ort::UnownedValue output_tensor =
-          GetOutputTensor(context, batch_size, infer_request, output_info.name, subgraph_context_.output_names);
-      auto mem_info = output_tensor.GetTensorMemoryInfo();
-      if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
-        return;
-      } else {
-        size_t batch_slice = 0;
-        FillOutputBlob(std::move(graph_output_blob), output_tensor, batch_slice);
+      if (output_info.IsStatic()) {
+        OVTensorPtr graph_output_blob;
+        try {
+          graph_output_blob = infer_request->GetTensor(output_info.name);
+        } catch (const char* msg) {
+          ORT_THROW(msg);
+        }
+        size_t batch_size = 1;
+        Ort::UnownedValue output_tensor =
+            GetOutputTensor(context, batch_size, infer_request, output_info.name, subgraph_context_.output_names);
+        auto mem_info = output_tensor.GetTensorMemoryInfo();
+        if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
+          return;
+        } else {
+          size_t batch_slice = 0;
+          FillOutputBlob(std::move(graph_output_blob), output_tensor, batch_slice);
+        }
       }
     }
   }
