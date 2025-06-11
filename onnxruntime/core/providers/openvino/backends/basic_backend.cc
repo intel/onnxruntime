@@ -585,7 +585,6 @@ void BasicBackend::Infer(OrtKernelContext* ctx) const {
                                                       name,
                                                       subgraph_context_.output_names,
                                                       node);
-    auto mem_info = output_tensor.GetTensorMemoryInfo();
     FillOutputsWithConstantData(node, output_tensor);
   }
 
