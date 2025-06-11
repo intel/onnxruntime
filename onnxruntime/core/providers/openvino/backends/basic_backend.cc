@@ -546,34 +546,60 @@ void BasicBackend::Infer(OrtKernelContext* ctx) const {
       infer_request->Infer();
     }
 
-    // Fill constant outputs if needed
-    for (const auto& [name, node] : const_outputs_map_) {
-      Ort::UnownedValue output_tensor = GetOutputTensor(context,
-                                                        name,
-                                                        subgraph_context_.output_names,
-                                                        node);
-      auto mem_info = output_tensor.GetTensorMemoryInfo();
-      ORT_ENFORCE(mem_info.GetAllocatorName() != OpenVINO_GPU,
-                  log_tag + "IO Buffering is not supported for constant subgraphs");
-      FillOutputsWithConstantData(node, output_tensor);
+    // Run Inference
+    infer_request->Infer();
+
+    // Copy outputs
+    for (const auto& output_info : bindings_->network_outputs_) {
+      auto ov_tensor = infer_request->GetTensor(output_info.name);
+      auto output_shape = ParameterShape::ToOrtShape(ov_tensor->get_shape());
+      auto ort_tensor = context.GetOutput(output_info.onnx_index, output_shape);
+
+      ORT_ENFORCE(ov_tensor->get_byte_size() == ort_tensor.GetTensorSizeInBytes(),
+                  log_tag + "Output tensor size mismatch for " + output_info.name);
+
+      std::memcpy(ort_tensor.GetTensorMutableRawData(),
+                  ov_tensor->data(),
+                  ov_tensor->get_byte_size());
     }
+  } else {
+    // Static shape inference
+
+    // Bind inputs
+    for (const auto& input_info : bindings_->network_inputs_) {
+      infer_request->SetTensor(input_info, const_cast<void*>(context.GetInput(input_info.onnx_index).GetTensorRawData()));
+    }
+
+    // Bind outputs
+    for (const auto& output_info : bindings_->network_outputs_) {
+      infer_request->SetTensor(output_info, context.GetOutput(output_info.onnx_index, output_info.shape).GetTensorMutableRawData());
+    }
+
+    // Run Inference
+    infer_request->Infer();
   }
 
-#endif
+  // Fill constant outputs if needed
+  for (const auto& [name, node] : const_outputs_map_) {
+    Ort::UnownedValue output_tensor = GetOutputTensor(context,
+                                                      name,
+                                                      subgraph_context_.output_names,
+                                                      node);
+    auto mem_info = output_tensor.GetTensorMemoryInfo();
+    FillOutputsWithConstantData(node, output_tensor);
+  }
 
-    LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
+  LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
   if (IsCILogEnabled()) {
     std::cout << "Inference successful" << std::endl;
   }
 
 #ifndef NDEBUG
-#ifndef IO_BUFFER_ENABLED
   // Print performance counts before releasing the infer_request for thread safety
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
     std::string& hw_target = session_context_.device_type;
     printPerformanceCounts(infer_request, std::cout, hw_target);
   }
-#endif
 #endif
 }
 
