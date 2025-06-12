@@ -39,7 +39,7 @@ GetCapability::GetCapability(const EPCtxHandler& ep_ctx_handler,
     if (enable_qdq_optimizer) npu_qdq_optimizer_enabled = true;
   } else if (enable_qdq_optimizer && device_type_.find("GPU") != std::string::npos) {
     npu_qdq_optimizer_enabled = true;
-    device_type_ = "CPU";
+    // device_type_ = "CPU"; // change in questio
   }
 
 #if OPENVINO_VERSION_MAJOR == 2024 && OPENVINO_VERSION_MINOR == 5

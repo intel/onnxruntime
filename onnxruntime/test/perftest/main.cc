@@ -7,8 +7,6 @@
 #include "command_args_parser.h"
 #include "performance_runner.h"
 #include <google/protobuf/stubs/common.h>
-#define WINDOWS_LEAN_AND_MEAN
-#include <windows.h>
 
 using namespace onnxruntime;
 const OrtApi* g_ort = NULL;
@@ -68,8 +66,6 @@ int wmain(int argc, wchar_t* argv[]) {
 #else
 int main(int argc, char* argv[]) {
 #endif
-  ::MessageBox(NULL, "Hello", "Hello", MB_OK);
-
   int retval = -1;
   ORT_TRY {
     retval = real_main(argc, argv);
