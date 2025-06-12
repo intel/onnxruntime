@@ -16,7 +16,6 @@
 #include "openvino/runtime/intel_npu/properties.hpp"
 #include "openvino/pass/convert_fp32_to_fp16.hpp"
 #include "openvino/frontend/manager.hpp"
-#include "core/common/narrow.h"
 
 #include <string>
 
@@ -31,53 +30,6 @@ typedef ov::ProfilingInfo OVProfilingInfo;
 typedef ov::Model OVNetwork;
 typedef std::shared_ptr<OVInferRequest> OVInferRequestPtr;
 typedef std::shared_ptr<OVTensor> OVTensorPtr;
-
-struct ParameterShape {
-  using ort_shape_t = std::vector<int64_t>;
-
-  static ov::PartialShape ToOvPartialShape(const ort_shape_t& ort_shape) {
-    std::vector<ov::Dimension> ov_shape(ort_shape.size());
-    std::transform(ort_shape.begin(), ort_shape.end(), ov_shape.begin(), [](int64_t dim) {
-      return dim == -1 ? ov::Dimension::dynamic() : ov::Dimension(dim);
-    });
-    return ov::PartialShape(ov_shape);
-  }
-
-  static ort_shape_t ToOrtShape(const ov::PartialShape& ov_shape) {
-    ort_shape_t ort_shape(ov_shape.size());
-    std::transform(ov_shape.begin(), ov_shape.end(), ort_shape.begin(), [](const auto& dim) {
-      return dim.is_dynamic() ? -1 : dim.get_length();
-    });
-    return ort_shape;
-  }
-
-  static ort_shape_t ToOrtShape(const ov::Shape& ov_shape) {
-    ort_shape_t ort_shape(ov_shape.size());
-    std::transform(ov_shape.begin(), ov_shape.end(), ort_shape.begin(), [](const auto& dim) {
-      return narrow<int64_t>(dim);
-    });
-    return ort_shape;
-  }
-
-  operator ov::Shape() const { return ov_.get_shape(); }
-  operator const ov::PartialShape&() const { return ov_; }
-  operator const ort_shape_t&() const { return ort_; }
-
-  explicit ParameterShape(const ort_shape_t& ort_shape) : ort_(ort_shape), ov_(ToOvPartialShape(ort_shape)) {}
-  explicit ParameterShape(const ov::PartialShape& ov_partial_shape) : ov_(ov_partial_shape), ort_(ToOrtShape(ov_partial_shape)) {}
-
- private:
-  ort_shape_t ort_;
-  ov::PartialShape ov_;
-};
-
-struct ParameterInfo {
-  std::string name;
-  uint32_t ov_index;
-  uint32_t onnx_index;
-  ov::element::Type type;
-  ParameterShape shape;
-};
 
 std::optional<bool> queryOVProperty(const std::string& property, const std::string& device_type);
 
@@ -166,17 +118,12 @@ class OVInferRequest {
   OVTensorPtr GetTensor(const std::string& name);
   std::string GetInputTensorName(uint32_t index);
 
-  // Set tensor described param_info and ort_ptr. Call infer req tensor if ort_ptr is last set.
-  void SetTensor(const ParameterInfo& param_info, void* ort_ptr) {
-    SetTensorShapeOverride(param_info, param_info.shape, ort_ptr);
-  }
-
   // Set tensor described param_info and ort_ptr. Overrides shape in param_info with shape_override. Call infer req tensor if ort_ptr is last set.
-  void SetTensorShapeOverride(const ParameterInfo& param_info, const ParameterShape& shape_override, void* ort_ptr) {
-    auto& cached_binding = bindings_cache_[param_info.name];
+  void SetTensor(const std::string& name, const ov::element::Type &type, const ov::Shape& shape, void* ort_ptr) {
+    auto& cached_binding = bindings_cache_[name];
     if (cached_binding.ort_ptr != ort_ptr) {
-      auto tensor_ptr = std::make_shared<ov::Tensor>(param_info.type, shape_override, const_cast<void*>(ort_ptr));
-      SetTensor(param_info.name, tensor_ptr);
+      auto tensor_ptr = std::make_shared<ov::Tensor>(type, shape, const_cast<void*>(ort_ptr));
+      SetTensor(name, tensor_ptr);
       cached_binding = {tensor_ptr, ort_ptr};
     }
   }

@@ -25,6 +25,14 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
+struct ParameterInfo {
+  std::string name;
+  uint32_t ov_index;
+  uint32_t onnx_index;
+  ov::element::Type type;
+  ParameterShape shape;
+};
+
 struct OnnxToOvNetworkBindings {
   std::vector<ParameterInfo> network_outputs_;
   std::vector<ParameterInfo> network_inputs_;
