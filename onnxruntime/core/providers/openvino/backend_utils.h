@@ -27,7 +27,46 @@
 
 namespace onnxruntime {
 namespace openvino_ep {
-static constexpr std::string log_tag = "[OpenVINO-EP] ";
+constexpr std::string log_tag = "[OpenVINO-EP] ";
+
+struct ParameterShape {
+  using ort_shape_t = std::vector<int64_t>;
+
+  static ov::PartialShape ToOvPartialShape(const ort_shape_t& ort_shape) {
+    std::vector<ov::Dimension> ov_shape(ort_shape.size());
+    std::transform(ort_shape.begin(), ort_shape.end(), ov_shape.begin(), [](int64_t dim) {
+      return dim == -1 ? ov::Dimension::dynamic() : ov::Dimension(dim);
+    });
+    return ov::PartialShape(ov_shape);
+  }
+
+  static ort_shape_t ToOrtShape(const ov::PartialShape& ov_shape) {
+    ort_shape_t ort_shape(ov_shape.size());
+    std::transform(ov_shape.begin(), ov_shape.end(), ort_shape.begin(), [](const auto& dim) {
+      return dim.is_dynamic() ? -1 : dim.get_length();
+    });
+    return ort_shape;
+  }
+
+  static ort_shape_t ToOrtShape(const ov::Shape& ov_shape) {
+    ort_shape_t ort_shape(ov_shape.size());
+    std::transform(ov_shape.begin(), ov_shape.end(), ort_shape.begin(), [](const auto& dim) {
+      return narrow<int64_t>(dim);
+    });
+    return ort_shape;
+  }
+
+  operator ov::Shape() const { return ov_.get_shape(); }
+  operator const ov::PartialShape&() const { return ov_; }
+  operator const ort_shape_t&() const { return ort_; }
+
+  explicit ParameterShape(const ort_shape_t& ort_shape) : ort_(ort_shape), ov_(ToOvPartialShape(ort_shape)) {}
+  explicit ParameterShape(const ov::PartialShape& ov_partial_shape) : ov_(ov_partial_shape), ort_(ToOrtShape(ov_partial_shape)) {}
+
+ private:
+  ort_shape_t ort_;
+  ov::PartialShape ov_;
+};
 
 namespace backend_utils {
 

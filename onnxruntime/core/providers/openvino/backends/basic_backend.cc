@@ -510,40 +510,10 @@ void BasicBackend::Infer(OrtKernelContext* ctx) const {
         auto tensor = context.GetInput(input_info.onnx_index);
         auto input_shape = ParameterShape(tensor.GetTensorTypeAndShapeInfo().GetShape());
 
-        infer_request->SetTensorShapeOverride(input_info, input_shape, const_cast<void*>(tensor.GetTensorRawData()));
-      }
-
-      // Run Inference
-      infer_request->Infer();
-
-      // Copy outputs
-      for (const auto& output_info : bindings_->network_outputs_) {
-        auto ov_tensor = infer_request->GetTensor(output_info.name);
-        auto output_shape = ParameterShape::ToOrtShape(ov_tensor->get_shape());
-        auto ort_tensor = context.GetOutput(output_info.onnx_index, output_shape);
-
-        ORT_ENFORCE(ov_tensor->get_byte_size() == ort_tensor.GetTensorSizeInBytes(),
-                    log_tag + "Output tensor size mismatch for " + output_info.name);
-
-        std::memcpy(ort_tensor.GetTensorMutableRawData(),
-                    ov_tensor->data(),
-                    ov_tensor->get_byte_size());
-      }
-    } else {
-      // Static shape inference
-
-      // Bind inputs
-      for (const auto& input_info : bindings_->network_inputs_) {
-        infer_request->SetTensor(input_info, const_cast<void*>(context.GetInput(input_info.onnx_index).GetTensorRawData()));
-      }
-
-      // Bind outputs
-      for (const auto& output_info : bindings_->network_outputs_) {
-        infer_request->SetTensor(output_info, context.GetOutput(output_info.onnx_index, output_info.shape).GetTensorMutableRawData());
-      }
-
-      // Run Inference
-      infer_request->Infer();
+      infer_request->SetTensor(input_info.name,
+                               input_info.type,
+                               input_shape,
+                               const_cast<void*>(tensor.GetTensorRawData()));
     }
 
     // Run Inference
@@ -567,12 +537,18 @@ void BasicBackend::Infer(OrtKernelContext* ctx) const {
 
     // Bind inputs
     for (const auto& input_info : bindings_->network_inputs_) {
-      infer_request->SetTensor(input_info, const_cast<void*>(context.GetInput(input_info.onnx_index).GetTensorRawData()));
+      infer_request->SetTensor(input_info.name,
+                               input_info.type,
+                               input_info.shape,
+                               const_cast<void*>(context.GetInput(input_info.onnx_index).GetTensorRawData()));
     }
 
     // Bind outputs
     for (const auto& output_info : bindings_->network_outputs_) {
-      infer_request->SetTensor(output_info, context.GetOutput(output_info.onnx_index, output_info.shape).GetTensorMutableRawData());
+      infer_request->SetTensor(output_info.name,
+                               output_info.type,
+                               output_info.shape,
+                               context.GetOutput(output_info.onnx_index, output_info.shape).GetTensorMutableRawData());
     }
 
     // Run Inference
