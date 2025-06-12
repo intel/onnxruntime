@@ -34,10 +34,14 @@ GetCapability::GetCapability(const EPCtxHandler& ep_ctx_handler,
                                                                 graph_viewer_(graph_viewer_param),
                                                                 device_type_(std::move(device_type_param)) {
   bool npu_qdq_optimizer_enabled = false;
-  if (device_type_.find("NPU") != std::string::npos || device_type_.find("GPU") != std::string::npos) {
+  if (device_type_.find("NPU") != std::string::npos) {
     device_type_ = "CPU";
     if (enable_qdq_optimizer) npu_qdq_optimizer_enabled = true;
+  } else if (enable_qdq_optimizer && device_type_.find("GPU") != std::string::npos) {
+    npu_qdq_optimizer_enabled = true;
+    device_type_ = "CPU";
   }
+
 #if OPENVINO_VERSION_MAJOR == 2024 && OPENVINO_VERSION_MINOR == 5
   data_ops_ = new DataOps(graph_viewer_, V_2024_5, device_type_, npu_qdq_optimizer_enabled);
 #elif OPENVINO_VERSION_MAJOR == 2024 && OPENVINO_VERSION_MINOR == 6
