@@ -340,6 +340,26 @@ typedef struct OrtAllocator {
    * those made during session initialization. This allows for separate memory management strategies for these allocations.
    */
   void*(ORT_API_CALL* Reserve)(struct OrtAllocator* this_, size_t size);  ///< Returns a pointer to an allocated block of `size` bytes
+
+  /**
+   * @brief Function used to get the statistics of the allocator.
+   *
+   * Return a pointer to the OrtKeyValuePairs structure that contains the statistics of the allocator
+   * and the user should call OrtApi::ReleaseKeyValuePairs.
+   * Supported keys are:
+   * - Limit: Bytes limit of the allocator. -1 if no limit is set.
+   * - InUse: Number of bytes in use.
+   * - TotalAllocated: The total number of allocated bytes by the allocator.
+   * - MaxInUse: The maximum bytes in use.
+   * - NumAllocs: Number of allocations.
+   * - NumReserves: Number of reserves. (Number of calls to Reserve() in arena-based allocators)
+   * - NumArenaExtensions: Number of arena extensions (Relevant only for arena based allocators)
+   * - NumArenaShrinkages: Number of arena shrinkages (Relevant only for arena based allocators)
+   * - MaxAllocSize: The max single allocation seen.
+   *
+   * NOTE: If the allocator does not implement this function, the OrtKeyValuePairs instance will be empty.
+   */
+  ORT_API2_STATUS(GetStats, _In_ const struct OrtAllocator* this_, _Outptr_ OrtKeyValuePairs** out);
 } OrtAllocator;
 
 typedef void(ORT_API_CALL* OrtLoggingFunction)(
@@ -355,6 +375,7 @@ typedef enum GraphOptimizationLevel {
   ORT_DISABLE_ALL = 0,
   ORT_ENABLE_BASIC = 1,
   ORT_ENABLE_EXTENDED = 2,
+  ORT_ENABLE_LAYOUT = 3,
   ORT_ENABLE_ALL = 99
 } GraphOptimizationLevel;
 
@@ -672,6 +693,7 @@ typedef struct OrtTensorRTProviderOptions {
 typedef struct OrtMIGraphXProviderOptions {
   int device_id;                                     // hip device id.
   int migraphx_fp16_enable;                          // MIGraphX FP16 precision. Default 0 = false, nonzero = true
+  int migraphx_fp8_enable;                           // MIGraphX FP8 precision. Default 0 = false, nonzero = true
   int migraphx_int8_enable;                          // MIGraphX INT8 precision. Default 0 = false, nonzero = true
   int migraphx_use_native_calibration_table;         // MIGraphx INT8 cal table. Default 0 = false, noznero = true
   const char* migraphx_int8_calibration_table_name;  // MIGraphx INT8 calibration table name
@@ -680,6 +702,21 @@ typedef struct OrtMIGraphXProviderOptions {
   int migraphx_load_compiled_model;                  // migraphx int8 cal table. Default 0 = false, noznero = true
   const char* migraphx_load_model_path;              // migraphx model path name
   bool migraphx_exhaustive_tune;                     // migraphx tuned compile  Default = false
+
+  /** \brief MIGraphX memory limit (To use all possible memory pass in maximum size_t)
+   *   Defaults to SIZE_MAX.
+   *   \note If a ::OrtArenaCfg has been applied, it will override this field
+   */
+  size_t migraphx_mem_limit;
+
+  /** \brief Strategy used to grow the memory arena
+   *   0 = kNextPowerOfTwo<br>
+   *   1 = kSameAsRequested<br>
+   *   Defaults to 0.
+   *   \note If a ::OrtArenaCfg has been applied, it will override this field
+   */
+  int migraphx_arena_extend_strategy;
+
 } OrtMIGraphXProviderOptions;
 
 /** \brief OpenVINO Provider Options
@@ -3719,6 +3756,7 @@ struct OrtApi {
    *      -# "gpu"
    *      -# "htp": Default.
    *      -# "saver"
+   *      -# "ir"
    *   "backend_path": File path to QNN backend library. Mutually exclusive with "backend_type".
    *   "profiling_level": QNN profiling level.
    *      Available options:
@@ -3740,6 +3778,14 @@ struct OrtApi {
    *      -# "low_power_saver"
    *      -# "power_saver"
    *      -# "sustained_high_performance"
+   *   "dump_qnn_ir_dlc": Use the QnnIr backend library to write .dlc files for each subgraph dispatched to QNN. When
+   *       enabled, inference results will be incorrect. Use only for debugging.
+   *      -# "0": Default: disabled
+   *      -# "1": enabled
+   *   "dump_qnn_ir_dlc_dir": Set the directory into which QnnIr will be configured to write QNN graphs as .dlc files.
+   *      Default is current working directory.
+   *   "qnn_ir_backend_path": File path to the QnnIr backend library. If "dump_qnn_ir_dlc" is enabled, use this path
+   *      instead of looking for the Ir backend in the standard location.
    *   "qnn_saver_path": File path to the QNN Saver backend library. If specified, QNN Saver will be enabled and will
    *      dump QNN API calls to disk for replay/debugging. QNN Saver produces incorrect model inference results and
    *      may alter model/EP partitioning. Use only for debugging.
@@ -5266,6 +5312,22 @@ struct OrtApi {
    * \since Version 1.23
    */
   ORT_API2_STATUS(GetTensorSizeInBytes, _In_ const OrtValue* ort_value, _Out_ size_t* size);
+
+  /** \brief Calls OrtAllocator::GetStats function
+   *
+   * Return a pointer to the OrtKeyValuePairs structure that contains the statistics of the allocator
+   * and the user should call OrtApi::ReleaseKeyValuePairs.
+   *
+   * NOTE: If the allocator does not implement this function, the OrtKeyValuePairs instance will be empty.
+   *
+   * \param[in] ort_allocator The allocator to get stats from
+   * \param[out] out A pointer to the OrtKeyValuePairs instance that contains the stats
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(AllocatorGetStats, _In_ const OrtAllocator* ort_allocator, _Outptr_ OrtKeyValuePairs** out);
 };
 
 /*
@@ -5782,6 +5844,21 @@ struct OrtModelEditorApi {
  * ORT Compile API
  */
 
+/** \brief Flags representing options to enable when compiling a model.
+ */
+typedef enum OrtCompileApiFlags {
+  // Default. Do not enable any additional compilation options.
+  OrtCompileApiFlags_NONE = 0,
+
+  // Force compilation to return an error (ORT_FAIL) if no nodes were compiled.
+  // Otherwise, a model with basic optimizations (ORT_ENABLE_BASIC) is still generated by default.
+  OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED = 1 << 0,
+
+  // Force compilation to return an error (ORT_FAIL) if a file with the same filename as the output model exists.
+  // Otherwise, compilation will automatically overwrite the output file if it exists.
+  OrtCompileApiFlags_ERROR_IF_OUTPUT_FILE_EXISTS = 1 << 1,
+} OrtCompileApiFlags;
+
 /**
  * \brief The OrtCompileApi struct provides functions to compile ONNX models.
  *
@@ -5964,6 +6041,18 @@ struct OrtCompileApi {
    * \since Version 1.22.
    */
   ORT_API2_STATUS(CompileModel, _In_ const OrtEnv* env, _In_ const OrtModelCompilationOptions* model_options);
+
+  /** \brief Sets flags from OrtCompileApiFlags that represent one or more boolean options to enable.
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] flags bitwise OR of flags in OrtCompileApiFlags to enable.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetFlags, _In_ OrtModelCompilationOptions* model_compile_options,
+                  size_t flags);
 };
 
 ORT_RUNTIME_CLASS(Ep);
