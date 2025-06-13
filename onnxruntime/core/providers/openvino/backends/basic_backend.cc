@@ -67,6 +67,9 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
     auto auto_unified_compile = ((hw_target.find("AUTO") == std::string::npos) ||
                                  (session_context_.OpenVINO_Version.at(0) >= 2024 &&
                                   session_context_.OpenVINO_Version.at(1) > 2));
+    bool disable_cpu_fallback = !(hw_target.find("NPU") != std::string::npos &&
+                                  !session_context_.so_disable_cpu_ep_fallback &&
+                                  !subgraph_context_.is_ep_ctx_graph);
     if (subgraph_context_.is_ep_ctx_graph) {
       // If the blob is held in an EPContext node, then skip FE+Compile
       // and directly move on to creating a backend with the executable blob
@@ -87,7 +90,7 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
       // Not enabled for models with external weights and when ep context is set.
       const std::string model = model_proto->SerializeAsString();
       // we have the serialized string, so we can release model proto to lower the peak memory consumption
-      model_proto.reset();
+      if (disable_cpu_fallback) model_proto.reset();
       exe_network_ = OVCore::Get()->CompileModel(model,
                                                  hw_target,
                                                  device_config,
@@ -95,7 +98,9 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
     } else {  // For all other types use ov::ov_core read_model() to generate OV IR
               // followed by ov::ov_core compile_model()
       std::string model = model_proto->SerializeAsString();
-      if (!subgraph_context.has_dynamic_input_shape) {
+      // Reset model proto only when cpu fallback is disabled or when the model has dynamic input shapes.
+      // This is to avoid memory peak usage when the model is large.
+      if (!subgraph_context.has_dynamic_input_shape && disable_cpu_fallback) {
         model_proto.reset();
       }
       auto ov_model = CreateOVModel(std::move(model), session_context_, const_outputs_map_);
@@ -492,25 +497,23 @@ void BasicBackend::CompleteAsyncInference(Ort::KernelContext& context, OVInferRe
   bool cpu_or_gpu = session_context_.device_type.find("CPU") != std::string::npos ||
                     session_context_.device_type.find("GPU") != std::string::npos;
   bool npu = session_context_.device_type.find("NPU") != std::string::npos;
-  if (cpu_or_gpu || (npu && (session_context_.enable_causallm))) {
-    for (const auto& output_info : bindings_->network_outputs_) {
-      if (output_info.IsStatic()) {
-        OVTensorPtr graph_output_blob;
-        try {
-          graph_output_blob = infer_request->GetTensor(output_info.name);
-        } catch (const char* msg) {
-          ORT_THROW(msg);
-        }
-        size_t batch_size = 1;
-        Ort::UnownedValue output_tensor =
-            GetOutputTensor(context, batch_size, infer_request, output_info.name, subgraph_context_.output_names);
-        auto mem_info = output_tensor.GetTensorMemoryInfo();
-        if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
-          return;
-        } else {
-          size_t batch_slice = 0;
-          FillOutputBlob(std::move(graph_output_blob), output_tensor, batch_slice);
-        }
+  for (const auto& output_info : bindings_->network_outputs_) {
+    if (cpu_or_gpu || (npu && (session_context_.enable_causallm || !output_info.IsStatic()))) {
+      OVTensorPtr graph_output_blob;
+      try {
+        graph_output_blob = infer_request->GetTensor(output_info.name);
+      } catch (const char* msg) {
+        ORT_THROW(msg);
+      }
+      size_t batch_size = 1;
+      Ort::UnownedValue output_tensor =
+          GetOutputTensor(context, batch_size, infer_request, output_info.name, subgraph_context_.output_names);
+      auto mem_info = output_tensor.GetTensorMemoryInfo();
+      if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
+        return;
+      } else {
+        size_t batch_slice = 0;
+        FillOutputBlob(std::move(graph_output_blob), output_tensor, batch_slice);
       }
     }
   }
