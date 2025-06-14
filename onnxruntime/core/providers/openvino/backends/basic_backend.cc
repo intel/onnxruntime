@@ -76,7 +76,8 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
       exe_network_ = OVCore::Get()->ImportModel(*model_stream,
                                                 hw_target,
                                                 device_config,
-                                                subgraph_context_.subgraph_name);
+                                                enable_causallm,
+                                                session_context_.onnx_model_path_name.string());
       model_stream.reset();  // Delete stream after it is no longer needed
     } else if (!session_context_.has_external_weights &&
                !subgraph_context_.has_dynamic_input_shape &&
