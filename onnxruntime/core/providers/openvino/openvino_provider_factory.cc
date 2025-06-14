@@ -238,44 +238,16 @@ static void ParseProviderInfo(const ProviderOptions& provider_options,
 struct OpenVINO_Provider : Provider {
   void* GetInfo() override { return &info_; }
 
-  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* void_params) override {
-    if (void_params == nullptr) {
-      LOGS_DEFAULT(ERROR) << "[OpenVINO EP] Passed NULL options to CreateExecutionProviderFactory()";
-      return nullptr;
-    }
+  if (provider_options.contains("reshape_input")) {
+    pi.reshape = OpenVINOParserUtils::ParseInputShape(provider_options.at("reshape_input"));
+  }
 
-    std::array<void*, 2> pointers_array = *reinterpret_cast<const std::array<void*, 2>*>(void_params);
-    const ProviderOptions provider_options = *reinterpret_cast<ProviderOptions*>(pointers_array[0]);
-    const ConfigOptions* config_options = reinterpret_cast<ConfigOptions*>(pointers_array[1]);
-
-    ProviderInfo pi;
-    pi.config_options = config_options;
-
-    // Lambda function to check for invalid keys and throw an error
-    auto validateKeys = [&]() {
-      for (const auto& pair : provider_options) {
-        if (pi.valid_provider_keys.find(pair.first) == pi.valid_provider_keys.end()) {
-          ORT_THROW("Invalid provider_option key: " + pair.first);
-        }
-      }
-    };
-    validateKeys();
-
-    std::string bool_flag = "";
-
-    // Minor optimization: we'll hold an OVCore reference to ensure we don't create a new core between ParseDeviceType and
-    // (potential) SharedContext creation.
-    auto ov_core = OVCore::Get();
-    pi.device_type = ParseDeviceType(ov_core, provider_options);
-
-    if (provider_options.contains("device_id")) {
-      std::string dev_id = provider_options.at("device_id").data();
-      LOGS_DEFAULT(WARNING) << "[OpenVINO] The options 'device_id' is deprecated. "
-                            << "Upgrade to set deice_type and precision session options.\n";
-      if (dev_id == "CPU" || dev_id == "GPU" || dev_id == "NPU") {
-        pi.device_type = std::move(dev_id);
-      } else {
-        ORT_THROW("[ERROR] [OpenVINO] Unsupported device_id is selected. Select from available options.");
+  if (provider_options.contains("load_config")) {
+    auto parse_config = [&](const std::string& config_str) -> std::map<std::string, ov::AnyMap> {
+      // If the config string is empty, return an empty map and skip processing
+      if (config_str.empty()) {
+        LOGS_DEFAULT(WARNING) << "Empty OV Config Map passed. Skipping load_config option parsing.\n";
+        return {};
       }
     }
     if (provider_options.contains("cache_dir")) {
@@ -400,7 +372,7 @@ struct OpenVINO_Provider : Provider {
   } catch (std::string msg) {
     ORT_THROW(msg);
   }
-  // Always true for NPU plugin or when passed .
+
   if (pi.device_type.find("NPU") != std::string::npos) {
     // For Stateful Compilation i.e. enable_causallm as True, we use the dynamic shapes path.
     if (pi.enable_causallm) {
