@@ -9,6 +9,7 @@
 #include "core/providers/openvino/backend_utils.h"
 #include "core/providers/openvino/backends/basic_backend.h"
 #include "core/providers/openvino/ov_stateful_patch_utils.h"
+#include "core/providers/openvino/exceptions.h"
 
 using Exception = ov::Exception;
 
@@ -203,7 +204,8 @@ OVExeNetwork OVCore::ImportModel(std::istream& model_stream,
     OVExeNetwork exe(obj, hw_target);
     return exe;
   } catch (const Exception& e) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph: " + name + e.what());
+    std::string message = log_tag + " Exception while Loading Network for graph: " + name + e.what();
+    throw ovep_exception(message, ovep_exception::type::import_model);
   } catch (...) {
     ORT_THROW(log_tag + " Exception while Loading Network for graph " + name);
   }
