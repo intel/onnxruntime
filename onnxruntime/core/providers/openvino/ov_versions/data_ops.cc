@@ -322,6 +322,10 @@ void DataOps::populate_types_supported() {
       std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8));
   supported_types_cpu_.insert(
       std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8));
+  supported_types_gpu_.insert(
+      std::make_pair(V_2025_1, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16));
+  supported_types_gpu_.insert(
+      std::make_pair(V_2025_1, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16));
   supported_types_cpu_.insert(
       std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64));
   supported_types_cpu_.insert(
