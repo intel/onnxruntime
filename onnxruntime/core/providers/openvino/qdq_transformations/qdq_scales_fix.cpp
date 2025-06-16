@@ -23,7 +23,6 @@ using NodeRef = std::reference_wrapper<const Node>;
 struct GraphNode;
 float get_initializer_value(const Graph& graph, const std::string& initializer_name);
 void remove_node_and_reconnect(Graph& graph, const GraphNode& node_to_remove, NodeIndex next_input);
-void generate_graph_from_memory(Graph& graph, fs::path path);
 
 template <typename T, typename V>
 bool contains(V&& begin, V&& end, const T& val) {
@@ -389,6 +388,7 @@ struct CustomGraph {
 
     const auto& q_node = *q.node_ptr;
     const auto& dq_node = *dq.node_ptr;
+    const auto& prev_node = *prev.node_ptr;
     ORT_ENFORCE(q_node.GetInputEdgesCount() == 1);   // One input to q
     ORT_ENFORCE(q_node.GetOutputEdgesCount() == 1);  // One q->dq edge
     auto in_edge = q_node.InputEdgesBegin();
@@ -404,16 +404,49 @@ struct CustomGraph {
     remove_edge(q_node, dq_node, 0, 0);
 
     // Replace all edges from dq to outputs with input to output
-    for (auto out_edge = dq_node.OutputEdgesBegin(); out_edge != dq_node.OutputEdgesEnd(); out_edge.operator++()) {
-      // Remove dq edge to output
-      remove_edge(dq_node, out_edge->GetNode(), out_edge->GetSrcArgIndex(), out_edge->GetDstArgIndex());
+    if (dq_node.GetOutputEdgesCount() > 0) {
+      for (auto out_edge = dq_node.OutputEdgesBegin(); out_edge != dq_node.OutputEdgesEnd(); out_edge.operator++()) {
+        // Remove dq edge to output
+        remove_edge(dq_node, out_edge->GetNode(), out_edge->GetSrcArgIndex(), out_edge->GetDstArgIndex());
 
-      // Add edge input->output
-      {
-        auto in_edge_src_index = in_edge->GetNode().Index();
-        auto out_edge_dst_index = out_edge->GetNode().Index();
-        original_graph.AddEdge(in_edge_src_index, out_edge_dst_index, in_edge->GetSrcArgIndex(), out_edge->GetDstArgIndex());
+        // Add edge input->output
+        {
+          auto in_edge_src_index = in_edge->GetNode().Index();
+          auto out_edge_dst_index = out_edge->GetNode().Index();
+          original_graph.AddEdge(in_edge_src_index, out_edge_dst_index, in_edge->GetSrcArgIndex(), out_edge->GetDstArgIndex());
+        }
       }
+    } else {
+      // Copy input/output defs
+      std::vector<NodeArg*> prev_input_defs(prev_node.InputDefs().size());
+      std::vector<NodeArg*> prev_output_defs(prev_node.OutputDefs().size());
+      auto transform_f = [this](const NodeArg* iter) { return &original_graph.GetOrCreateNodeArg(iter->Name(), iter->TypeAsProto()); };
+       auto fill_vectors = [transform_f](const auto& src, auto& dst) {
+        std::transform(src.begin(), src.end(), dst.begin(), transform_f);
+      };
+      fill_vectors(prev_node.InputDefs(), prev_input_defs);
+      fill_vectors(prev_node.OutputDefs(), prev_output_defs);
+
+      // Update def corresponding to DQ output
+      ORT_ENFORCE(dq_node.OutputDefs().size() == 1);  // One dq->output
+      auto dq_output_def = dq_node.OutputDefs()[0];
+      prev_output_defs[in_edge->GetSrcArgIndex()] = &original_graph.GetOrCreateNodeArg(dq_output_def->Name(), dq_output_def->TypeAsProto());
+
+      // Get attributes
+      auto attributes = NodeAttributes::Create();
+      *attributes = prev_node.GetAttributes();
+
+      // Add new input node
+      original_graph.AddNode(prev_node.Name(),
+                             prev_node.OpType(),
+                             prev_node.Description(),
+                             prev_input_defs,
+                             prev_output_defs,
+                             std::move(*attributes.release()),
+                             prev_node.Domain());
+
+      // Remove original input node
+      original_graph.RemoveNode(prev_node.Index());
     }
 
     original_graph.RemoveNode(q_node.Index());
@@ -619,7 +652,6 @@ void scale_graph(CustomGraph& gen_graph,
     if (cur_node->visited < cur_node->from_node.size()) {
       cur_node->queued = false;
     } else {
-
       if (cur_node->op_type == "QuantizeLinear" &&
           cur_node->to_node[0]->op_type == "DequantizeLinear") {
         auto scale_name = *std::next(cur_node->node_input_name.begin());  // Scale
