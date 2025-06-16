@@ -68,6 +68,9 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
     auto auto_unified_compile = ((hw_target.find("AUTO") == std::string::npos) ||
                                  (session_context_.OpenVINO_Version.at(0) >= 2024 &&
                                   session_context_.OpenVINO_Version.at(1) > 2));
+    bool disable_cpu_fallback = !(hw_target.find("NPU") != std::string::npos &&
+                                  !session_context_.so_disable_cpu_ep_fallback &&
+                                  !subgraph_context_.is_ep_ctx_graph);
     if (subgraph_context_.is_ep_ctx_graph) {
       // If the blob is held in an EPContext node, then skip FE+Compile
       // and directly move on to creating a backend with the executable blob
@@ -79,14 +82,16 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
     } else if (!session_context_.has_external_weights &&
                !subgraph_context_.has_dynamic_input_shape &&
                !session_context_.so_context_enable &&
-               !enable_causallm && auto_unified_compile) {
+               session_context_.reshape.empty() &&
+               !enable_causallm &&
+               auto_unified_compile) {
       // Unified OV compile_model is efficient when ov model caching is enabled
       // Unified OV compile_model API is supported with AUTO from version 2024.3 and above
       // Inputs with static dimensions
       // Not enabled for models with external weights and when ep context is set.
       const std::string model = model_proto->SerializeAsString();
       // we have the serialized string, so we can release model proto to lower the peak memory consumption
-      model_proto.reset();
+      if (disable_cpu_fallback) model_proto.reset();
       exe_network_ = OVCore::Get()->CompileModel(model,
                                                  hw_target,
                                                  device_config,
@@ -94,7 +99,9 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
     } else {  // For all other types use ov::ov_core read_model() to generate OV IR
               // followed by ov::ov_core compile_model()
       std::string model = model_proto->SerializeAsString();
-      if (!subgraph_context.has_dynamic_input_shape) {
+      // Reset model proto only when cpu fallback is disabled or when the model has dynamic input shapes.
+      // This is to avoid memory peak usage when the model is large.
+      if (!subgraph_context.has_dynamic_input_shape && disable_cpu_fallback) {
         model_proto.reset();
       }
       auto ov_model = CreateOVModel(std::move(model), session_context_, const_outputs_map_);
@@ -352,6 +359,26 @@ void BasicBackend::SetNumThreads(ov::AnyMap& device_config) {
     device_config.emplace(ov::inference_num_threads(session_context_.num_of_threads));
 }
 
+void BasicBackend::ValidateOrtDimsAgainstPartialShape(const std::vector<int64_t>& ort_dims,
+                                                      const ov::PartialShape& partial_shape) const {
+  // Check if the number of dimensions matches
+  if (static_cast<int64_t>(ort_dims.size()) != partial_shape.rank().get_length()) {
+    ORT_THROW("Mismatch in number of dimensions between ORT tensor and OpenVINO PartialShape.");
+  }
+  // Validate each dimension
+  for (size_t i = 0; i < ort_dims.size(); ++i) {
+    const auto& ov_dim = partial_shape[i];  // OpenVINO dimension at index i
+    int64_t ort_dim = ort_dims[i];          // ORT dimension at index i
+
+    // Check if the ORT dimension is within the specified range
+    int64_t min_dim = ov_dim.get_min_length();
+    int64_t max_dim = ov_dim.get_max_length();
+    if (ort_dim < min_dim || ort_dim > max_dim) {
+      ORT_THROW(" ORT Dimension is out of range");
+    }
+  }
+}
+
 void BasicBackend::RewindKVCache(size_t index) {
   infer_req_pool_->forEachIdleRequest([&](OVInferRequestPtr& infer_request) {
     infer_request->RewindKVCache(index);
@@ -397,7 +424,11 @@ void BasicBackend::Infer(OrtKernelContext* ctx) const {
     for (const auto& input_info : bindings_->network_inputs_) {
       // Set the input shape based on the input tensor from ort
       auto tensor = context.GetInput(input_info.onnx_index);
-      auto input_shape = ParameterShape(tensor.GetTensorTypeAndShapeInfo().GetShape());
+      auto ort_shape = tensor.GetTensorTypeAndShapeInfo().GetShape();
+      if (input_info.IsBoundedDynamic()) {
+        ValidateOrtDimsAgainstPartialShape(ort_shape, input_info.shape);
+      }
+      auto input_shape = ParameterShape(ort_shape);
 
       infer_request->SetTensor(input_info.name,
                                input_info.type,

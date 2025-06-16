@@ -31,6 +31,21 @@ struct ParameterInfo {
   uint32_t onnx_index;
   ov::element::Type type;
   ParameterShape shape;
+  uint8_t dynamic_flags = 0;
+
+  // Query methods
+  bool IsStatic() const { return dynamic_flags == 0; }
+  bool IsFullyDynamic() const { return dynamic_flags & 1; }
+  bool IsBoundedDynamic() const { return dynamic_flags & 2; }
+  bool IsMixed() const { return (dynamic_flags & 3) == 3; }
+
+  // Setter methods
+  void SetFullyDynamic(bool value) {
+    dynamic_flags = value ? (dynamic_flags | 1) : (dynamic_flags & ~1);
+  }
+  void SetBoundedDynamic(bool value) {
+    dynamic_flags = value ? (dynamic_flags | 2) : (dynamic_flags & ~2);
+  }
 };
 
 struct OnnxToOvNetworkBindings {
@@ -69,15 +84,35 @@ struct OnnxToOvNetworkBindings {
         auto ov_param_index = std::distance(ov_parameters.begin(), it);
 
         auto shape = ov_parameters[ov_param_index].get_partial_shape();
-        if (shape.is_dynamic()) {
-          has_dynamic_io_ = true;
-        }
         auto type = ov_parameters[ov_param_index].get_element_type();
         ParameterInfo info{onnx_name, ov_param_index, onnx_param_index, type, ParameterShape{shape}};
+
+        // Analyze shape dynamism and set flags
+        if (!shape.is_static()) {
+          has_dynamic_io_ = true;
+          // Analyze dynamic dimensions
+          bool has_fully_dynamic = false;
+          bool has_bounded_dynamic = false;
+
+          for (const auto& dim : shape) {
+            if (dim.is_dynamic()) {
+              if (dim.get_interval().has_upper_bound()) {
+                has_bounded_dynamic = true;
+              } else {
+                has_fully_dynamic = true;
+              }
+            }
+          }
+
+          info.SetFullyDynamic(has_fully_dynamic);
+          info.SetBoundedDynamic(has_bounded_dynamic);
+        }
+
         input_output_map.push_back(std::move(info));
       }
     };
 
+    // Populate inputs and outputs
     populate(network_inputs_, subgraph_context.input_names, exec_network.Get().inputs());
     populate(network_outputs_, subgraph_context.output_names, exec_network.Get().outputs());
   }
@@ -106,6 +141,8 @@ class BasicBackend : public IBackend {
   void EnableGPUThrottling(ov::AnyMap& device_config);
   void EnableStreams();
   void SetNumThreads(ov::AnyMap& device_config);
+  void ValidateOrtDimsAgainstPartialShape(const std::vector<int64_t>& ort_dims,
+                                          const ov::PartialShape& partial_shape) const;
 
   SessionContext& session_context_;
   SubGraphContext subgraph_context_;
