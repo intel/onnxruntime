@@ -194,28 +194,64 @@ OVExeNetwork OVCore::CompileModel(const std::string& onnx_model,
 OVExeNetwork OVCore::ImportModel(std::istream& model_stream,
                                  std::string hw_target,
                                  const ov::AnyMap& device_config,
+                                 std::string name) {
+  try {
+    ov::CompiledModel obj;
+    obj = core.import_model(model_stream, hw_target, device_config);
+#ifndef NDEBUG
+    printDebugInfo(exe.Get());
+#endif
+    OVExeNetwork exe(obj, hw_target);
+    return exe;
+  } catch (const Exception& e) {
+    ORT_THROW(log_tag + " Exception while Loading Network for graph: " + name + e.what());
+  } catch (...) {
+    ORT_THROW(log_tag + " Exception while Loading Network for graph " + name);
+  }
+}
+
+OVExeNetwork OVCore::ImportEPCtxOVIREncapsulation(std::istream& model_stream,
+                                 std::string hw_target,
+                                 const ov::AnyMap& device_config,
                                  bool enable_causallm,
+                                 std::filesystem::path context_file_path,
                                  std::string name) {
   return OvExceptionBoundary([&]() {
     OVExeNetwork exe;
 
     bool isXML = backend_utils::IsModelStreamXML(model_stream);
 
-    if (!isXML) {
-      auto obj = core.import_model(model_stream, hw_target, device_config);
-      exe = OVExeNetwork(obj, hw_target);
-    } else {
+    ORT_ENFORCE(!context_file_path.string().empty(),
+                "The session option ep.context_file_path is not set for EPContext node with OVIR Encapsulation. "
+                "Current value: '" + context_file_path.string() + "'");
+
+    // Helper function to check if file exists and is readable
+    const auto check_file_access = [&context_file_path](const std::filesystem::path& path) {
+      try {
+        const auto status = std::filesystem::status(path);
+        if (!std::filesystem::exists(status)) {
+          ORT_THROW(log_tag + "Required file missing: " + path.string());
+        }
+        std::ifstream file(path);
+        if (!file.is_open()) {
+          ORT_THROW(log_tag + "Required file not readable: " + path.string());
+        }
+      } catch (const std::exception& e) {
+        ORT_THROW(log_tag + "Exception while checking file access for: " + path.string() + " - " + e.what());
+      }
+    };
+
+    if (isXML) {
       // If the model is XML, we need to load it with the XML content in read_model()
       // where weights from bin file is directly consumed
-      std::string xml_file_name = name;
-      if (name.size() >= 5 && name.substr(name.size() - 5) == ".onnx") {
-        xml_file_name.replace(name.size() - 5, 5, ".xml");
-      } else {
-        throw std::runtime_error("Invalid model name. Make sure *.onnx, *.xml, and *.bin carry the same name.");
-      }
+      auto xml_file_path = context_file_path.parent_path() / (context_file_path.stem().string() + ".xml");
+
+      check_file_access(xml_file_path);
+
+      LOGS_DEFAULT(INFO) << log_tag << "Reading OVIR from XML file path: " << xml_file_path.string();
 
       // Load the model explicitly with XML contents
-      std::shared_ptr<ov::Model> model = core.read_model(xml_file_name);
+      std::shared_ptr<ov::Model> model = core.read_model(xml_file_path.string());
 
       if (enable_causallm) {
         exe = OVCore::Get()->StatefulCompileModel(model, hw_target, device_config);

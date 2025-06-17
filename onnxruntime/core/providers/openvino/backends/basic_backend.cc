@@ -72,13 +72,23 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
                                   !session_context_.so_disable_cpu_ep_fallback &&
                                   !subgraph_context_.is_ep_ctx_graph);
     if (subgraph_context_.is_ep_ctx_graph) {
-      // If the blob is held in an EPContext node, then skip FE+Compile
-      // and directly move on to creating a backend with the executable blob
-      exe_network_ = OVCore::Get()->ImportModel(*model_stream,
-                                                hw_target,
-                                                device_config,
-                                                enable_causallm,
-                                                session_context_.onnx_model_path_name.string());
+      if (subgraph_context_.is_ep_ctx_ovir_encapsulated) {
+        // If the EPContext node with OVIR Encapsulation, then create
+        // an executable network from EP_CACHE_CONTEXT using read_model() & compile_model()
+        exe_network_ = OVCore::Get()->ImportEPCtxOVIREncapsulation(*model_stream,
+                                                                    hw_target,
+                                                                    device_config,
+                                                                    enable_causallm,
+                                                                    session_context_.so_context_file_path,
+                                                                    subgraph_context_.subgraph_name);
+      } else {
+        // If the blob is held in an EPContext node, then skip FE+Compile
+        // and directly move on to creating a backend with the executable blob
+        exe_network_ = OVCore::Get()->ImportModel(*model_stream,
+                                                  hw_target,
+                                                  device_config,
+                                                  subgraph_context_.subgraph_name);
+      }
       model_stream.reset();  // Delete stream after it is no longer needed
     } else if (!session_context_.has_external_weights &&
                !subgraph_context_.has_dynamic_input_shape &&
