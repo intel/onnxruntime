@@ -43,6 +43,8 @@ BackendManager::BackendManager(SessionContext& session_context,
                                                               session_context_(session_context),
                                                               shared_context_{shared_context} {
   subgraph_context_.is_ep_ctx_graph = ep_ctx_handle_.CheckForOVEPCtxNodeInGraph(subgraph);
+  // If the graph contains a OVIR wrapped node, we check if it has xml file attribute
+  subgraph_context_.is_ep_ctx_ovir_encapsulated = ep_ctx_handle_.CheckEPCacheContextAttribute(subgraph, "xml");
 
   bool cpu_or_gpu = session_context_.device_type.find("CPU") != std::string::npos ||
                     session_context_.device_type.find("GPU") != std::string::npos;
