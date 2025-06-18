@@ -47,7 +47,6 @@ void printDebugInfo(const ov::CompiledModel& obj) {
               continue;
             OPENVINO_SUPPRESS_DEPRECATED_END
             std::cout << "    " << item2.first << ": " << item2.second.as<std::string>() << std::endl;
-          }
         }
       } else {
         std::cout << "  " << cfg << ": " << prop.as<std::string>() << std::endl;
@@ -195,7 +194,7 @@ OVExeNetwork OVCore::ImportModel(std::istream& model_stream,
                                  std::string hw_target,
                                  const ov::AnyMap& device_config,
                                  std::string name) {
-  try {
+  return OvExceptionBoundary([&]() {
     ov::CompiledModel obj;
     obj = core.import_model(model_stream, hw_target, device_config);
 #ifndef NDEBUG
@@ -203,37 +202,28 @@ OVExeNetwork OVCore::ImportModel(std::istream& model_stream,
 #endif
     OVExeNetwork exe(obj, hw_target);
     return exe;
-  } catch (const Exception& e) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph: " + name + e.what());
-  } catch (...) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph " + name);
-  }
+  },
+                             "Exception while Loading Network for graph {}", name);
 }
 
 OVExeNetwork OVCore::ImportEPCtxOVIREncapsulation(std::istream& model_stream,
-                                 std::string hw_target,
-                                 const ov::AnyMap& device_config,
-                                 bool enable_causallm,
-                                 std::filesystem::path context_file_path,
-                                 std::string name) {
+                                                  std::string& hw_target,
+                                                  const ov::AnyMap& device_config,
+                                                  bool enable_causallm,
+                                                  std::filesystem::path model_file_path) {
   return OvExceptionBoundary([&]() {
     OVExeNetwork exe;
 
     bool isXML = backend_utils::IsModelStreamXML(model_stream);
 
-    ORT_ENFORCE(!context_file_path.string().empty(),
-                "The session option ep.context_file_path is not set for EPContext node with OVIR Encapsulation. "
-                "Current value: '" + context_file_path.string() + "'");
-
     // Helper function to check if file exists and is readable
-    const auto check_file_access = [&context_file_path](const std::filesystem::path& path) {
+    const auto check_file_access = [&model_file_path](const std::filesystem::path& path) {
       try {
-        const auto status = std::filesystem::status(path);
-        if (!std::filesystem::exists(status)) {
-          ORT_THROW(log_tag + "Required file missing: " + path.string());
+        if (!std::filesystem::exists(path) || std::filesystem::is_empty(path)) {
+          ORT_THROW(log_tag + "Required file missing or empty: " + path.string());
         }
         std::ifstream file(path);
-        if (!file.is_open()) {
+        if (!file) {
           ORT_THROW(log_tag + "Required file not readable: " + path.string());
         }
       } catch (const std::exception& e) {
@@ -244,7 +234,7 @@ OVExeNetwork OVCore::ImportEPCtxOVIREncapsulation(std::istream& model_stream,
     if (isXML) {
       // If the model is XML, we need to load it with the XML content in read_model()
       // where weights from bin file is directly consumed
-      auto xml_file_path = context_file_path.parent_path() / (context_file_path.stem().string() + ".xml");
+      auto xml_file_path = model_file_path.parent_path() / (model_file_path.stem().string() + ".xml");
 
       check_file_access(xml_file_path);
 
@@ -266,7 +256,7 @@ OVExeNetwork OVCore::ImportEPCtxOVIREncapsulation(std::istream& model_stream,
 #endif
     return exe;
   },
-                             "Exception while Loading Network for graph {}", name);
+                             "Exception while Loading Network from OVIR model file {}", model_file_path.string());
 }
 
 void OVCore::SetCache(const std::string& cache_dir_path) {
