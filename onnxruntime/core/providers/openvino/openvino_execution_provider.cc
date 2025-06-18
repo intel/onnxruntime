@@ -192,7 +192,7 @@ common::Status OpenVINOExecutionProvider::Compile(
         file << metadata;
       }
     }
-  } catch (ovep_exception ex) {
+  } catch (const ovep_exception& ex) {
     status = ex;
   }
 
