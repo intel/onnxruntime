@@ -199,9 +199,10 @@ BackendManager::BackendManager(SessionContext& session_context,
       }
     }
   }
-  if (session_context_.so_context_enable && !subgraph_context_.is_ep_ctx_graph) {
+  if (session_context_.so_context_enable &&
+    (subgraph_context_.is_ep_ctx_ovir_encapsulated || !subgraph_context_.is_ep_ctx_graph)) {
     auto status = onnxruntime::openvino_ep::BackendManager::ExportCompiledBlobAsEPCtxNode(subgraph);
-    if ((!status.IsOK())) {
+    if (!status.IsOK()) {
       ORT_THROW(status);
     }
   }
