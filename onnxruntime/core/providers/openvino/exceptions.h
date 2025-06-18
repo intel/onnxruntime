@@ -48,7 +48,8 @@ struct ovep_exception : public std::exception {
       return {category_ort, common::INVALID_GRAPH, message};
     }
 
-    return Status::OK();
+    std::string error_message = "Unhandled exception type: " + std::to_string(static_cast<int>(type_));
+    return {category_ort, common::FAIL, error_message};
   }
 
  protected:
