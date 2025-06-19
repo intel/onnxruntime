@@ -211,7 +211,7 @@ OVExeNetwork OVCore::ImportEPCtxOVIREncapsulation(std::istream& model_stream,
                                                   const ov::AnyMap& device_config,
                                                   bool enable_causallm,
                                                   std::filesystem::path model_file_path) {
-  try {
+  return OvExceptionBoundary([&]() {
     OVExeNetwork exe;
 
     bool isXML = backend_utils::IsModelStreamXML(model_stream);
@@ -255,12 +255,10 @@ OVExeNetwork OVCore::ImportEPCtxOVIREncapsulation(std::istream& model_stream,
     printDebugInfo(exe.Get());
 #endif
     return exe;
-  } catch (const Exception& e) {
-    ORT_THROW(log_tag + " Exception while Loading Network from OVIR model file: " + model_file_path.string() + e.what());
-  } catch (...) {
-    ORT_THROW(log_tag + " Exception while Loading Network from OVIR model file: " + model_file_path.string());
-  }
+  },
+                             "Exception while Loading Network from OVIR model file: {}", model_file_path.string());
 }
+
 
 void OVCore::SetCache(const std::string& cache_dir_path) {
   core.set_property(ov::cache_dir(cache_dir_path));
