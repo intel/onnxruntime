@@ -104,13 +104,21 @@ common::Status OpenVINOExecutionProvider::Compile(
 
   // Temporary code to read metadata before it moves to the .bin
   auto& metadata = shared_context_->shared_weights.metadata;
-  if (session_context_.so_share_ep_contexts && metadata.empty()) {
-    // Metadata is always read from model location, this could be a source or epctx model
-    fs::path metadata_filename = session_context_.onnx_model_path_name.parent_path() / "metadata.bin";
-    std::ifstream file(metadata_filename, std::ios::binary);
-    if (file) {
-      file >> metadata;
+  if (session_context_.so_share_ep_contexts &&
+      !session_context_.so_context_enable &&
+      metadata.empty()) {
+    fs::path context_model_file_path = session_context_.so_context_file_path;
+    if (context_model_file_path.empty()) {
+      // If ep.context_file_path is not set the input model path is used
+      context_model_file_path = session_context_.onnx_model_path_name;
     }
+
+    // Metadata is always read from model location, this could be a source or epctx model
+    fs::path metadata_filename = context_model_file_path.filename().stem().string() + "_metadata.bin";
+    fs::path metadata_file_path = context_model_file_path.parent_path() / metadata_filename;
+    std::ifstream file(metadata_file_path, std::ios::binary);
+    ORT_RETURN_IF_NOT(file, "Metadata file was not found");
+    file >> metadata;
   }
 
   struct OpenVINOEPFunctionState {
@@ -174,19 +182,18 @@ common::Status OpenVINOExecutionProvider::Compile(
   }
 
   if (session_context_.so_share_ep_contexts) {
-    fs::path metadata_filename;
-    if (session_context_.so_context_file_path.empty()) {
-      metadata_filename = session_context_.onnx_model_path_name.parent_path() / "metadata.bin";
-    } else {
-      metadata_filename = session_context_.so_context_file_path.parent_path() / "metadata.bin";
+    fs::path metadata_filepath = session_context_.so_context_file_path;
+    if (metadata_filepath.empty()) {
+      metadata_filepath = session_context_.onnx_model_path_name;
     }
+    auto metadata_filename = metadata_filepath.stem().string() + "_metadata.bin";
+    metadata_filepath.replace_filename(metadata_filename);
 
     // Metadata is generated only for shared contexts
     // If saving metadata then save it to the provided path or ose the original model path
     // Multiple calls to Compile() will update the metadata and for the last call
     //   the resulting file will contain the aggregated content
-    std::ofstream file(metadata_filename, std::ios::binary);
-    if (file) {
+    if (std::ofstream file{metadata_filepath, std::ios::binary}) {
       file << metadata;
     }
   }
