@@ -100,12 +100,11 @@ BackendManager::BackendManager(SessionContext& session_context,
     weight_filename /= sw.external_weight_filename;
     std::ifstream weight_file(weight_filename);
 
-    if (weight_file) {
-      if (!sw.mapped_weights) {
-        sw.mapped_weights = std::make_unique<SharedContext::SharedWeights::WeightsFile>(weight_filename);
-      }
-      backend_utils::CreateOVTensors(session_context_.device_type, sw.metadata, *sw.mapped_weights);
+    ORT_ENFORCE(weight_file, "Initializer file not found");
+    if (!sw.mapped_weights) {
+      sw.mapped_weights = std::make_unique<SharedContext::SharedWeights::WeightsFile>(weight_filename);
     }
+    backend_utils::CreateOVTensors(session_context_.device_type, sw.metadata, *sw.mapped_weights);
   }
 
   if (ModelHasSymbolicInputDims(subgraph)) {
