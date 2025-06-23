@@ -248,7 +248,7 @@ struct GraphNode {
     auto print_string_vector = [](std::vector<std::string> nodes) -> std::string {
       // std::sort(nodes.begin(), nodes.end());
       std::string ret = "[";
-      for (size_t i = 0, size = nodes.size(); auto node : nodes) {
+      for (size_t i = 0, size = nodes.size(); const auto& node : nodes) {
         ret += node;
         if (++i < size) {
           ret += ", ";
@@ -353,111 +353,147 @@ struct CustomGraph {
 
   void remove_qdq_pair(const GraphNode& node, std::list<GraphNode>& removed) {
     auto& q = node;
-    auto& dq = *node.to_node[0];
-    // q only have 1 input
+    InlinedVector<GraphNode*> dq_ptrs;
+
+    for (auto& child : q.to_node) {
+      if (child->node_ptr && child->node_ptr->OpType() == "DequantizeLinear") {
+        dq_ptrs.push_back(child);
+      }
+    }
+
+    if (dq_ptrs.empty()) {
+      return;
+    }
+
+    for (std::size_t i = 1; i < dq_ptrs.size(); ++i) {
+      if (dq_ptrs[i]->node_input_name[1] != dq_ptrs[0]->node_input_name[1] ||
+          dq_ptrs[i]->node_input_name[2] != dq_ptrs[0]->node_input_name[2]) {
+        return;
+      }
+    }
+
     auto& prev = *node.from_node[0];
+    const auto& q_node = *q.node_ptr;
 
-    for (auto sup : dq.to_node) {
-      for (uint32_t index = 0; auto x : sup->from_node) {
-        if (dq == *x) {
-          sup->from_node[index] = &prev;
+    bool is_prev_input = (prev.node_ptr == nullptr);
+    std::string prev_output_name = is_prev_input ? prev.node_name : prev.node_output_name[0];
+
+    InlinedVector<std::pair<const NodeArg*, const NodeArg*>> output_replacements;
+    for (auto dq_ptr : dq_ptrs) {
+      for (auto dst_node : dq_ptr->to_node) {
+        for (auto& scr_node : dst_node->from_node) {
+          if (*dq_ptr == *scr_node) {
+            scr_node = &prev;
+          }
         }
-        index++;
+
+        auto it = std::find(dst_node->node_input_name.begin(), dst_node->node_input_name.end(), dq_ptr->node_output_name[0]);
+        if (it != dst_node->node_input_name.end()) {
+          *it = prev_output_name;
+        }
       }
-      if (auto iter = std::find(sup->node_input_name.begin(), sup->node_input_name.end(), dq.node_output_name[0]); iter != sup->node_input_name.end()) {
-        *iter = prev.node_output_name[0];
+      for (auto& output : original_graph.GetOutputs()) {
+        if (output->Name() == dq_ptr->node_output_name[0]) {
+          const NodeArg* replacement_arg = nullptr;
+          if (!is_prev_input) {
+            replacement_arg = prev.node_ptr->OutputDefs()[0];
+          } else {
+            replacement_arg = original_graph.GetNodeArg(prev.node_name);
+            ORT_ENFORCE(replacement_arg != nullptr, "Input not found: " + prev.node_name);
+          }
+          output_replacements.emplace_back(output, replacement_arg);
+        }
       }
     }
 
-    prev.to_node = dq.to_node;
-
-    for (auto& output : original_graph.GetOutputs()) {
-      if (output->Name() == dq.to_node[0]->node_name) {
-        prev.node_output_name[0] = output->Name();
+    prev.to_node.erase(std::remove(prev.to_node.begin(), prev.to_node.end(), &q), prev.to_node.end());
+    for (auto dq_ptr : dq_ptrs) {
+      for (auto dst_node : dq_ptr->to_node) {
+        auto it = std::find(prev.to_node.begin(), prev.to_node.end(), dst_node);
+        if (it == prev.to_node.end()) {
+          prev.to_node.push_back(dst_node);
+        }
       }
     }
-
     auto q_iter = std::find(nodes.begin(), nodes.end(), q);
     if (q_iter != nodes.end()) {
       removed.splice(removed.end(), nodes, q_iter);
     }
-    auto dq_iter = std::find(nodes.begin(), nodes.end(), dq);
-    if (dq_iter != nodes.end()) {
-      removed.splice(removed.end(), nodes, dq_iter);
-    }
 
-    const auto& q_node = *q.node_ptr;
-    const auto& dq_node = *dq.node_ptr;
-    const auto& prev_node = *prev.node_ptr;
-    ORT_ENFORCE(q_node.GetInputEdgesCount() == 1);   // One input to q
-    ORT_ENFORCE(q_node.GetOutputEdgesCount() == 1);  // One q->dq edge
-    auto in_edge = q_node.InputEdgesBegin();
+    for (auto dq_ptr : dq_ptrs) {
+      auto dq_iter = std::find(nodes.begin(), nodes.end(), *dq_ptr);
+      if (dq_iter != nodes.end()) {
+        removed.splice(removed.end(), nodes, dq_iter);
+      }
+    }
 
     auto remove_edge = [this](const Node& src, const Node& dst, int src_arg, int dst_arg) {
       original_graph.RemoveEdge(src.Index(), dst.Index(), src_arg, dst_arg);
     };
 
-    // Remove input edge to q
-    remove_edge(in_edge->GetNode(), q_node, in_edge->GetSrcArgIndex(), in_edge->GetDstArgIndex());
+    auto in_edge = q_node.InputEdgesBegin();
+    ORT_ENFORCE(in_edge != q_node.InputEdgesEnd(), "Q node must have an input edge");
+    const int prev_output_index = in_edge->GetSrcArgIndex();
 
-    // Remove q edge to dq
-    remove_edge(q_node, dq_node, 0, 0);
+    if (in_edge != q_node.InputEdgesEnd()) {
+      remove_edge(in_edge->GetNode(), q_node,
+                  in_edge->GetSrcArgIndex(), in_edge->GetDstArgIndex());
+    }
+    for (auto dq_ptr : dq_ptrs) {
+      auto& dq_node_ref = *dq_ptr->node_ptr;
 
-    // Replace all edges from dq to outputs with input to output
-    if (dq_node.GetOutputEdgesCount() > 0) {
-      for (auto out_edge = dq_node.OutputEdgesBegin(); out_edge != dq_node.OutputEdgesEnd(); out_edge.operator++()) {
-        // Remove dq edge to output
-        remove_edge(dq_node, out_edge->GetNode(), out_edge->GetSrcArgIndex(), out_edge->GetDstArgIndex());
-
-        // Add edge input->output
-        {
-          auto in_edge_src_index = in_edge->GetNode().Index();
-          auto out_edge_dst_index = out_edge->GetNode().Index();
-          original_graph.AddEdge(in_edge_src_index, out_edge_dst_index, in_edge->GetSrcArgIndex(), out_edge->GetDstArgIndex());
+      for (auto edge_it = dq_node_ref.InputEdgesBegin(); edge_it != dq_node_ref.InputEdgesEnd(); ++edge_it) {
+        if (edge_it->GetNode().Index() == q_node.Index()) {
+          remove_edge(edge_it->GetNode(), dq_node_ref, edge_it->GetSrcArgIndex(), edge_it->GetDstArgIndex());
+          break;
         }
       }
-    } else {
-      // Copy input/output defs
-      std::vector<NodeArg*> prev_input_defs(prev_node.InputDefs().size());
-      std::vector<NodeArg*> prev_output_defs(prev_node.OutputDefs().size());
-      auto transform_f = [this](const NodeArg* iter) { return &original_graph.GetOrCreateNodeArg(iter->Name(), iter->TypeAsProto()); };
-       auto fill_vectors = [transform_f](const auto& src, auto& dst) {
-        std::transform(src.begin(), src.end(), dst.begin(), transform_f);
-      };
-      fill_vectors(prev_node.InputDefs(), prev_input_defs);
-      fill_vectors(prev_node.OutputDefs(), prev_output_defs);
 
-      // Update def corresponding to DQ output
-      ORT_ENFORCE(dq_node.OutputDefs().size() == 1);  // One dq->output
-      auto dq_output_def = dq_node.OutputDefs()[0];
-      prev_output_defs[in_edge->GetSrcArgIndex()] = &original_graph.GetOrCreateNodeArg(dq_output_def->Name(), dq_output_def->TypeAsProto());
+      std::vector<std::tuple<NodeIndex, int, int>> output_edges;  // (dst_node_index, src_arg, dst_arg)
+      for (auto out_edge_it = dq_node_ref.OutputEdgesBegin(); out_edge_it != dq_node_ref.OutputEdgesEnd(); ++out_edge_it) {
+        output_edges.emplace_back(out_edge_it->GetNode().Index(),
+                                  out_edge_it->GetSrcArgIndex(),
+                                  out_edge_it->GetDstArgIndex());
+      }
 
-      // Get attributes
-      auto attributes = NodeAttributes::Create();
-      *attributes = prev_node.GetAttributes();
+      for (const auto& edge : output_edges) {
+        original_graph.RemoveEdge(dq_node_ref.Index(), std::get<0>(edge),
+                                  std::get<1>(edge), std::get<2>(edge));
+      }
 
-      // Add new input node
-      original_graph.AddNode(prev_node.Name(),
-                             prev_node.OpType(),
-                             prev_node.Description(),
-                             prev_input_defs,
-                             prev_output_defs,
-                             std::move(*attributes.release()),
-                             prev_node.Domain());
+      if (!is_prev_input) {
+        for (const auto& edge : output_edges) {
+          original_graph.AddEdge(prev.node_ptr->Index(),
+                                 std::get<0>(edge),
+                                 prev_output_index,
+                                 std::get<2>(edge));
+        }
+      }
+    }
 
-      // Remove original input node
-      original_graph.RemoveNode(prev_node.Index());
+    if (!output_replacements.empty()) {
+      auto outputs = original_graph.GetOutputs();
+      for (auto& output : outputs) {
+        for (const auto& replacement : output_replacements) {
+          if (output == replacement.first) {
+            output = replacement.second;
+            break;
+          }
+        }
+      }
+      original_graph.SetOutputs(outputs);
     }
 
     original_graph.RemoveNode(q_node.Index());
-    original_graph.RemoveNode(dq_node.Index());
+    for (auto dq_ptr : dq_ptrs) {
+      original_graph.RemoveNode(dq_ptr->node_ptr->Index());
+    }
   }
 
   std::list<GraphNode> remove_qdq(float threshold = 1.f, bool scale_output = false) {
     std::list<GraphNode> removed;
-    std::list<GraphNode*> nodes_copy;
+    std::vector<GraphNode*> nodes_copy;
     std::for_each(nodes.begin(), nodes.end(), [&nodes_copy](GraphNode& node) { nodes_copy.push_back(&node); });
-
     for (auto node : nodes_copy) {
       if (std::find(nodes.begin(), nodes.end(), *node) == nodes.end()) {
         continue;
@@ -465,7 +501,13 @@ struct CustomGraph {
 
       if ((node->op_type == "QuantizeLinear") &&
           (node->to_node[0]->op_type == "DequantizeLinear")) {
-        if (!scale_output && node->down_propagate_to_output()) {
+        const auto& zero_point_name = node->node_input_name[2];
+        const auto p_initializer = original_graph.GetConstantInitializer(zero_point_name, false);
+        bool is_16_bit = p_initializer->has_data_type() &&
+                         (p_initializer->data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT16 ||
+                          p_initializer->data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT16);
+
+        if (!scale_output && node->down_propagate_to_output() && is_16_bit) {
           remove_qdq_pair(*node, removed);
           continue;
         }
@@ -707,71 +749,152 @@ void scale_graph(CustomGraph& gen_graph,
 
 Status copy_model(const GraphViewer& src_graph_viewer,
                   const logging::Logger& logger, std::unique_ptr<onnxruntime::Model>& model) {
-  // Constructs model from scratch using the metadata in src_graph
   model = src_graph_viewer.CreateModel(logger);
   const auto& src_graph = src_graph_viewer.GetGraph();
-
-  //
-  // Initialize model/graph metadata.
-  //
   auto& dst_graph = model->MainGraph();
 
-  // Set inputs outputs explicitly to make sure the order is same as the user model.
-  auto inputs = src_graph.GetInputs();
-  auto outputs = src_graph.GetOutputs();
+  const auto& inputs = src_graph.GetInputs();
+  const auto& outputs = src_graph.GetOutputs();
+
+  struct InputReplacement {
+    NodeArg* graph_input;
+    NodeArg* identity_output;
+  };
+  std::unordered_map<std::string, InputReplacement> input_replacement_map;
+
+  struct OutputReplacement {
+    NodeArg* intermediate_arg;
+    NodeArg* original_output;
+  };
+  std::unordered_map<std::string, OutputReplacement> output_replacement_map;
 
   InlinedVector<const NodeArg*> dst_graph_inputs;
   dst_graph_inputs.reserve(inputs.size());
   for (auto& input : inputs) {
-    auto input_arg = src_graph.GetNodeArg(input->Name());
-    auto& dst_graph_input_arg = dst_graph.GetOrCreateNodeArg(input_arg->Name(), input_arg->TypeAsProto());
-    dst_graph_inputs.push_back(&dst_graph_input_arg);
+    const auto& input_name = input->Name();
+    auto input_arg = src_graph.GetNodeArg(input_name);
+
+    auto& dst_input_arg = dst_graph.GetOrCreateNodeArg(input_name, input_arg->TypeAsProto());
+    dst_graph_inputs.push_back(&dst_input_arg);
+
+    auto output_name = input_name + "_identity_output";
+    auto& identity_output_arg = dst_graph.GetOrCreateNodeArg(output_name, input_arg->TypeAsProto());
+
+    input_replacement_map[input_name] = {&dst_input_arg, &identity_output_arg};
   }
 
   InlinedVector<const NodeArg*> dst_graph_outputs;
-  dst_graph_outputs.reserve(outputs.size());
   for (auto& output : outputs) {
-    auto output_arg = src_graph.GetNodeArg(output->Name());
-    auto& dst_graph_output_arg = dst_graph.GetOrCreateNodeArg(output_arg->Name(), output_arg->TypeAsProto());
-    dst_graph_outputs.push_back(&dst_graph_output_arg);
+    const auto& output_name = output->Name();
+    auto output_arg = src_graph.GetNodeArg(output_name);
+
+    std::string intermediate_name = "tmp_" + output_name;
+    auto& intermediate_out = dst_graph.GetOrCreateNodeArg(intermediate_name, output_arg->TypeAsProto());
+
+    auto& original_out = dst_graph.GetOrCreateNodeArg(output_name, output_arg->TypeAsProto());
+
+    output_replacement_map[output_name] = {&intermediate_out, &original_out};
+    dst_graph_outputs.push_back(&original_out);
   }
 
   dst_graph.SetInputs(dst_graph_inputs);
   dst_graph.SetOutputs(dst_graph_outputs);
   dst_graph.SetName(src_graph.Name());
 
-  // Mark outer scope NodeArgs
   for (const auto& name : src_graph_viewer.GetOuterScopeNodeArgNames()) {
-    auto* node_arg = src_graph.GetNodeArg(name);
+    auto node_arg = src_graph.GetNodeArg(name);
     ORT_RETURN_IF_NOT(node_arg != nullptr, "Outer scope node arg name '" + name + "'was added but does not exist. ");
     dst_graph.AddOuterScopeNodeArg(name);
   }
 
-  // Add nodes
-  for (auto pnode : src_graph.Nodes()) {
-    if (pnode->NodeType() == Node::Type::Fused) continue;
-    dst_graph.AddNode(*pnode);
+  for (auto& input : inputs) {
+    const auto& input_name = input->Name();
+    auto it = input_replacement_map.find(input_name);
+    ORT_RETURN_IF_NOT(it != input_replacement_map.end(), "Missing replacement for input: " + input_name);
+
+    InputReplacement& repl = it->second;
+    InlinedVector<NodeArg*> input_args = {repl.graph_input};
+    InlinedVector<NodeArg*> output_args = {repl.identity_output};
+
+    std::string node_name = "IdentityInsertion_" + input_name;
+    dst_graph.AddNode(node_name, "Identity", "Inserted identity node",
+                      input_args, output_args,
+                      nullptr, "");
   }
 
-  // Handle constant initializers
+  for (auto pnode : src_graph.Nodes()) {
+    if (pnode->NodeType() == Node::Type::Fused) continue;
+
+    InlinedVector<NodeArg*> new_input_args;
+    for (auto input_arg : pnode->InputDefs()) {
+      if (!input_arg) {
+        new_input_args.push_back(nullptr);
+        continue;
+      }
+
+      auto it = input_replacement_map.find(input_arg->Name());
+      if (it != input_replacement_map.end()) {
+        new_input_args.push_back(it->second.identity_output);
+      } else {
+        auto& new_arg = dst_graph.GetOrCreateNodeArg(input_arg->Name(), input_arg->TypeAsProto());
+        new_input_args.push_back(&new_arg);
+      }
+    }
+    InlinedVector<NodeArg*> new_output_args;
+    for (auto output_arg : pnode->OutputDefs()) {
+      if (output_arg == nullptr) {
+        new_output_args.push_back(nullptr);
+        continue;
+      }
+
+      auto it_output = output_replacement_map.find(output_arg->Name());
+      if (it_output != output_replacement_map.end()) {
+        new_output_args.push_back(it_output->second.intermediate_arg);
+      } else {
+        auto& new_arg = dst_graph.GetOrCreateNodeArg(output_arg->Name(), output_arg->TypeAsProto());
+        new_output_args.push_back(&new_arg);
+      }
+    }
+
+    dst_graph.AddNode(pnode->Name(), pnode->OpType(), pnode->Description(),
+                      new_input_args, new_output_args,
+                      &pnode->GetAttributes(), pnode->Domain());
+  }
+
+  for (auto& output : outputs) {
+    const std::string& output_name = output->Name();
+    auto it = output_replacement_map.find(output_name);
+    if (it == output_replacement_map.end()) continue;
+
+    OutputReplacement& repl = it->second;
+    InlinedVector<NodeArg*> input_args = {repl.intermediate_arg};
+    InlinedVector<NodeArg*> output_args = {repl.original_output};
+
+    std::string node_name = "IdentityInsertion_" + output_name;
+    dst_graph.AddNode(node_name, "Identity", "Inserted identitynode",
+                      input_args, output_args, nullptr, "");
+  }
+
   for (auto& [name, tensor_proto] : src_graph.GetAllInitializedTensors()) {
     dst_graph.AddInitializedTensor(*tensor_proto);
   }
-  for (const auto node_arg : src_graph.GetInputsIncludingInitializers()) {
-    // Skip non initializer
-    auto check_inputs = [node_arg](const NodeArg* input_node_arg) { return input_node_arg->Name() == node_arg->Name(); };
-    if (std::find_if(dst_graph_inputs.begin(), dst_graph_inputs.end(), check_inputs) != dst_graph_inputs.end()) continue;
 
-    // Add initializer
-    const auto src_tensor_proto = src_graph.GetConstantInitializer(node_arg->Name(), true);
-    auto dst_tensor_proto = onnx::TensorProto::Create();
-    dst_tensor_proto->copy_from(src_tensor_proto);
-    dst_graph.AddInitializedTensor(*dst_tensor_proto);
+  for (auto node_arg : src_graph.GetInputsIncludingInitializers()) {
+    auto check_inputs = [node_arg](auto input_node_arg) {
+      return input_node_arg->Name() == node_arg->Name();
+    };
+    if (std::find_if(dst_graph_inputs.begin(), dst_graph_inputs.end(), check_inputs) != dst_graph_inputs.end())
+      continue;
+
+    auto src_tensor_proto = src_graph.GetConstantInitializer(node_arg->Name(), true);
+    if (src_tensor_proto) {
+      auto dst_tensor_proto = onnx::TensorProto::Create();
+      dst_tensor_proto->copy_from(src_tensor_proto);
+      dst_graph.AddInitializedTensor(*dst_tensor_proto);
+    }
   }
 
-  // Validate graph, remove unnecessary initializers, and run type/shape inference.
   ORT_RETURN_IF_ERROR(dst_graph.Resolve());
-
   return Status::OK();
 }
 
