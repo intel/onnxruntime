@@ -440,7 +440,8 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     DumpOpenVINOEPModel(onnx_model_path_name, model_proto.get(), fused_node);
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     return model_proto;
-  } else if (session_context_.device_type.find("GPU") != std::string::npos) {
+  } else if ((session_context_.device_type.find("GPU") != std::string::npos) &&
+      enable_ovep_qdq_optimizer) {
     // Create a copy of the model
     std::unique_ptr<onnxruntime::Model> model;
     Status status = qdq_scales_fix::Transform(subgraph, logger, model);
