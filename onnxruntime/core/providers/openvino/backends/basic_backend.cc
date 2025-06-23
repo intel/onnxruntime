@@ -82,9 +82,9 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
 
           ORT_ENFORCE(!session_context_.so_context_file_path.empty() &&
           std::filesystem::path(session_context_.so_context_file_path).is_absolute() &&
-          std::filesystem::exists(session_context_.so_context_file_path),
-          log_tag + "Context file path must be non-empty & absolute, when using CreateSessionFormArray() API explicitly."
-          "Please set a valid absolute path for ep.context_file_path in session options.");
+          std::filesystem::exists(session_context_.so_context_file_path), log_tag +
+          "Context file path must be non-empty & absolute, when using CreateSessionFormArray() API explicitly."
+          " Please set a valid absolute path for ep.context_file_path in session options.");
           // Return absolute context file path as input to ImportEPCtxOVIREncapsulation() function.
           return session_context_.so_context_file_path;
 

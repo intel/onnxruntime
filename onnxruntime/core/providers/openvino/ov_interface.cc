@@ -197,10 +197,10 @@ OVExeNetwork OVCore::ImportModel(std::istream& model_stream,
   return OvExceptionBoundary([&]() {
     ov::CompiledModel obj;
     obj = core.import_model(model_stream, hw_target, device_config);
+    OVExeNetwork exe(obj, hw_target);
 #ifndef NDEBUG
     printDebugInfo(exe.Get());
 #endif
-    OVExeNetwork exe(obj, hw_target);
     return exe;
   },
                              "Exception while Loading Network for graph {}", name);
