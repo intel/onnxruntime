@@ -189,7 +189,7 @@ common::Status OpenVINOExecutionProvider::Compile(
     // For models after the first the metadata name comes from the shared context
     fs::path metadata_file_path = shared_context_->shared_weights.metadata_filepath;
     if (metadata_file_path.empty()) {
-      session_context_.so_context_file_path;
+      metadata_file_path = session_context_.so_context_file_path;
       if (metadata_file_path.empty()) {
         metadata_file_path = session_context_.onnx_model_path_name;
       }

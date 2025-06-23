@@ -91,9 +91,9 @@ BackendManager::BackendManager(SessionContext& session_context,
   std::string device_type = session_context_.device_type;
 
   auto& sw = shared_context_.shared_weights;
-  if (session_context_.so_share_ep_contexts) {
+  if (session_context_.so_share_ep_contexts && !sw.metadata.empty()) {
     std::filesystem::path weight_filename = session_context_.onnx_model_path_name.parent_path();
-    if (sw.external_weight_filename.empty() && !sw.metadata.empty()) {
+    if (sw.external_weight_filename.empty()) {
       // Reasonable assumption that all metadata entries have the same external file location
       sw.external_weight_filename = sw.metadata.begin()->second.location;
     }
