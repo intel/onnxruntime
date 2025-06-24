@@ -577,6 +577,32 @@ float get_initializer_value(const Graph& graph, const std::string& initializer_n
   return get_float_initializer_data(p_initializer);
 }
 
+template <typename T>
+T* get_mutable_initializer_data(Graph& graph, const std::string& name) {
+  auto initializer = graph.GetConstantInitializer(name, true);
+  if (!initializer) return nullptr;
+
+  if constexpr (std::is_same_v<T, float>) {
+    if (initializer->data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT)
+      return nullptr;
+  }
+
+  return reinterpret_cast<T*>(const_cast<char*>(initializer->raw_data().data()));
+}
+
+std::size_t get_initializer_size(const Graph& graph, const std::string& name) {
+  auto initializer = graph.GetConstantInitializer(name, true);
+  if (!initializer) return 0;
+
+  std::size_t size = 1;
+  if (!initializer->dims_size())
+    return 0;
+  for (int i = 0; i < initializer->dims_size(); ++i) {
+    size *= initializer->dims()[i];
+  }
+  return size;
+}
+
 void update_initializer_value(Graph& graph, const std::string& initializer_name, const float new_value) {
   const auto p_initializer = graph.GetConstantInitializer(initializer_name, false);
 
@@ -677,18 +703,19 @@ CustomGraph generate_graph_from_onnx(Graph& graph) {
   return gen_graph;
 }
 
-void scale_graph(CustomGraph& gen_graph,
+bool scale_graph(CustomGraph& gen_graph,
                  float threshold = 1.f,
                  float ratio = 10,
                  bool scale_output = false) {
+  bool needs_second_run = false;
   gen_graph.initailize_search(threshold, scale_output);
   auto q = gen_graph.get_start_nodes();
   auto pred = [](const GraphNode* left, const GraphNode* right) -> bool {
     return left->node_name < right->node_name;
   };
   q.sort(pred);
-  auto special_node = std::find_if(gen_graph.nodes.begin(), gen_graph.nodes.end(), [](const GraphNode& node) { return node.node_name == "/encoder/down_blocks.3/resnets.0/Add"; });
-  while (q.size() > 0) {
+
+  while (!q.empty()) {
     auto cur_node = q.front();
     q.pop_front();
     if (cur_node->visited < cur_node->from_node.size()) {
@@ -696,7 +723,8 @@ void scale_graph(CustomGraph& gen_graph,
     } else {
       if (cur_node->op_type == "QuantizeLinear" &&
           cur_node->to_node[0]->op_type == "DequantizeLinear") {
-        auto scale_name = *std::next(cur_node->node_input_name.begin());  // Scale
+        needs_second_run = true;
+        auto scale_name = *std::next(cur_node->node_input_name.begin());
         auto scale_value = get_initializer_value(gen_graph.original_graph, scale_name);
 
         // QDQ pair with scale over 1
@@ -745,7 +773,32 @@ void scale_graph(CustomGraph& gen_graph,
       }
     }
   }
+
+  for (auto& node : gen_graph.nodes) {
+    if (node.op_type == "DequantizeLinear" && node.scale_factor != 1.0f) {
+      const auto& scale_name = node.node_input_name[1];
+
+      auto scale_data = get_mutable_initializer_data<float>(gen_graph.original_graph, scale_name);
+      if (scale_data) {
+        const auto scale_size = get_initializer_size(gen_graph.original_graph, scale_name);
+        if (!scale_size) {
+          auto it = gen_graph.original_graph.GetConstantInitializer(scale_name, true);
+          auto cur_scale = get_float_initializer_data(it);
+          cur_scale /= node.scale_factor;
+          set_float_initializer_data(it, cur_scale);
+        } else {
+          for (std::size_t i = 0; i < scale_size; ++i) {
+            scale_data[i] /= node.scale_factor;
+          }
+        }
+      }
+
+      node.scale_factor = 1.0f;
+    }
+  }
+  return needs_second_run;
 }
+
 
 Status copy_model(const GraphViewer& src_graph_viewer,
                   const logging::Logger& logger, std::unique_ptr<onnxruntime::Model>& model) {
@@ -907,7 +960,9 @@ Status Transform(const GraphViewer& src_graph_viewer,
   float threshold{1.f};
   float ratio{10.f};
   bool scale_output{false};
-  scale_graph(g, threshold, ratio, scale_output);
+  auto needs_second_run = scale_graph(g, threshold, ratio, scale_output);
+  if (needs_second_run)
+      scale_graph(g, threshold * 100, ratio, scale_output);
   return status;
 }
 }  // namespace qdq_scales_fix
