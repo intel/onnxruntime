@@ -26,7 +26,6 @@ struct ovep_exception : public std::exception {
                                          type_{type},
                                          error_code_{ze_result_code_from_string(message)},
                                          error_name_{ze_result_name_from_string(message)} {}
-  //ovep_exception(const std::exception& ex) : message_{ex.what()} {}
 
   const char* what() const noexcept override {
     return message_.data();
@@ -59,24 +58,22 @@ struct ovep_exception : public std::exception {
   std::string error_name_;
 
  private:
-  uint32_t ze_result_code_from_string(const std::string &ov_exception_string) {
+  uint32_t ze_result_code_from_string(const std::string& ov_exception_string) {
     uint32_t error_code{0};
     std::regex error_code_pattern("code 0x([0-9a-fA-F]+)");
     std::smatch matches;
     if (std::regex_search(ov_exception_string, matches, error_code_pattern)) {
       std::from_chars(&(*matches[1].first), &(*matches[1].second), error_code, 16);
     }
-    // std::string message{error_message + ", code 0x" + std::to_string(error_code) + "\nModel needs to be recompiled\n"};
     return error_code;
   }
-  std::string ze_result_name_from_string(const std::string &ov_exception_string) {
+  std::string ze_result_name_from_string(const std::string& ov_exception_string) {
     std::string error_message = "UNKNOWN NPU ERROR";
     std::regex error_message_pattern(R"(\bZE_\w*\b)");
     std::smatch matches;
     if (std::regex_search(ov_exception_string, matches, error_message_pattern)) {
       error_message = matches[0];
     }
-    // std::string message{error_message + ", code 0x" + std::to_string(error_code) + "\nModel needs to be recompiled\n"};
     return error_message;
   }
 };
