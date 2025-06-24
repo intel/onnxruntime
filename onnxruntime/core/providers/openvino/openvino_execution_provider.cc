@@ -114,7 +114,7 @@ common::Status OpenVINOExecutionProvider::Compile(
     }
 
     // Metadata is always read from model location, this could be a source or epctx model
-    fs::path metadata_filename = context_model_file_path.filename().stem().string() + "_metadata.bin";
+    fs::path metadata_filename = context_model_file_path.stem().string() + "_metadata.bin";
     fs::path metadata_file_path = context_model_file_path.parent_path() / metadata_filename;
     std::ifstream file(metadata_file_path, std::ios::binary);
     ORT_RETURN_IF_NOT(file, "Metadata file was not found: " + metadata_file_path.string());
@@ -202,9 +202,9 @@ common::Status OpenVINOExecutionProvider::Compile(
     // If saving metadata then save it to the provided path or ose the original model path
     // Multiple calls to Compile() will update the metadata and for the last call
     //   the resulting file will contain the aggregated content
-    if (std::ofstream file{metadata_file_path, std::ios::binary}) {
-      file << metadata;
-    }
+    std::ofstream file{metadata_file_path, std::ios::binary};
+    ORT_RETURN_IF_NOT(file, "Metadata file could not be written: ", metadata_file_path);
+    file << metadata;
   }
 
   return status;
