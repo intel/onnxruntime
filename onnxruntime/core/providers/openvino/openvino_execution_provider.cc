@@ -12,6 +12,7 @@
 #include "core/providers/openvino/onnx_ctx_model_helper.h"
 #include "core/providers/openvino/ov_versions/capability.h"
 #include "core/providers/openvino/qdq_transformations/qdq_stripping.h"
+#include "core/providers/openvino/exceptions.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "openvino/core/version.hpp"
 #ifdef USE_OVEP_NPU_MEMORY
@@ -94,101 +95,105 @@ common::Status OpenVINOExecutionProvider::Compile(
   auto& logger = *GetLogger();
   Status status = Status::OK();
 
-  if (!fused_nodes.empty()) {
-    // Assume these properties are constant for all the model subgraphs, otherwise move to SubGraphContext
-    const auto& graph_body_viewer_0 = fused_nodes[0].filtered_graph.get();
-    session_context_.onnx_model_path_name = graph_body_viewer_0.ModelPath().string();
-    session_context_.onnx_opset_version =
-        graph_body_viewer_0.DomainToVersionMap().at(kOnnxDomain);
-  }
-
-  // Temporary code to read metadata before it moves to the .bin
-  auto& metadata = shared_context_->shared_weights.metadata;
-  if (session_context_.so_share_ep_contexts && metadata.empty()) {
-    // Metadata is always read from model location, this could be a source or epctx model
-    fs::path metadata_filename = session_context_.onnx_model_path_name.parent_path() / "metadata.bin";
-    std::ifstream file(metadata_filename, std::ios::binary);
-    if (file) {
-      file >> metadata;
+  try {
+    if (!fused_nodes.empty()) {
+      // Assume these properties are constant for all the model subgraphs, otherwise move to SubGraphContext
+      const auto& graph_body_viewer_0 = fused_nodes[0].filtered_graph.get();
+      session_context_.onnx_model_path_name = graph_body_viewer_0.ModelPath().string();
+      session_context_.onnx_opset_version =
+          graph_body_viewer_0.DomainToVersionMap().at(kOnnxDomain);
     }
-  }
 
-  struct OpenVINOEPFunctionState {
-    AllocateFunc allocate_func = nullptr;
-    DestroyFunc destroy_func = nullptr;
-    AllocatorHandle allocator_handle = nullptr;
-    BackendManager& backend_manager;
-  };
-
-  for (const FusedNodeAndGraph& fused_node_graph : fused_nodes) {
-    const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
-    const Node& fused_node = fused_node_graph.fused_node;
-
-    NodeComputeInfo compute_info;
-
-    // During backend creation, we check if user wants to use precompiled blob onnx model or the original model
-    // For precompiled blob, directly load the model instead of compiling the model
-    // For original model, check if the user wants to export a model with pre-compiled blob
-
-    auto& backend_manager = backend_managers_.emplace_back(session_context_,
-                                                           *shared_context_,
-                                                           fused_node,
-                                                           graph_body_viewer,
-                                                           logger,
-                                                           ep_ctx_handle_);
-
-    compute_info.create_state_func =
-        [&backend_manager](ComputeContext* context, FunctionState* state) {
-          OpenVINOEPFunctionState* p = new OpenVINOEPFunctionState{
-              .allocate_func = context->allocate_func,
-              .destroy_func = context->release_func,
-              .allocator_handle = context->allocator_handle,
-              .backend_manager = backend_manager};
-          *state = static_cast<FunctionState>(p);
-          return 0;
-        };
-
-    compute_info.compute_func = [](FunctionState state, const OrtApi* /* api */, OrtKernelContext* context) {
-      auto function_state = static_cast<OpenVINOEPFunctionState*>(state);
-      try {
-        function_state->backend_manager.Compute(context);
-      } catch (const std::exception& ex) {
-        return common::Status(common::ONNXRUNTIME, common::FAIL, ex.what());
+    // Temporary code to read metadata before it moves to the .bin
+    auto& metadata = shared_context_->shared_weights.metadata;
+    if (session_context_.so_share_ep_contexts && metadata.empty()) {
+      // Metadata is always read from model location, this could be a source or epctx model
+      fs::path metadata_filename = session_context_.onnx_model_path_name.parent_path() / "metadata.bin";
+      std::ifstream file(metadata_filename, std::ios::binary);
+      if (file) {
+        file >> metadata;
       }
-      return Status::OK();
+    }
+
+    struct OpenVINOEPFunctionState {
+      AllocateFunc allocate_func = nullptr;
+      DestroyFunc destroy_func = nullptr;
+      AllocatorHandle allocator_handle = nullptr;
+      BackendManager& backend_manager;
     };
 
-    compute_info.release_state_func =
-        [](FunctionState state) {
-          if (state) {
-            OpenVINOEPFunctionState* function_state = static_cast<OpenVINOEPFunctionState*>(state);
-            delete function_state;
-          }
-        };
+    for (const FusedNodeAndGraph& fused_node_graph : fused_nodes) {
+      const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
+      const Node& fused_node = fused_node_graph.fused_node;
 
-    node_compute_funcs.push_back(std::move(compute_info));
+      NodeComputeInfo compute_info;
 
-    if (!status.IsOK()) {
-      break;
+      // During backend creation, we check if user wants to use precompiled blob onnx model or the original model
+      // For precompiled blob, directly load the model instead of compiling the model
+      // For original model, check if the user wants to export a model with pre-compiled blob
+
+      auto& backend_manager = backend_managers_.emplace_back(session_context_,
+                                                             *shared_context_,
+                                                             fused_node,
+                                                             graph_body_viewer,
+                                                             logger,
+                                                             ep_ctx_handle_);
+
+      compute_info.create_state_func =
+          [&backend_manager](ComputeContext* context, FunctionState* state) {
+            OpenVINOEPFunctionState* p = new OpenVINOEPFunctionState{
+                .allocate_func = context->allocate_func,
+                .destroy_func = context->release_func,
+                .allocator_handle = context->allocator_handle,
+                .backend_manager = backend_manager};
+            *state = static_cast<FunctionState>(p);
+            return 0;
+          };
+
+      compute_info.compute_func = [](FunctionState state, const OrtApi* /* api */, OrtKernelContext* context) {
+        auto function_state = static_cast<OpenVINOEPFunctionState*>(state);
+        try {
+          function_state->backend_manager.Compute(context);
+        } catch (const std::exception& ex) {
+          return common::Status(common::ONNXRUNTIME, common::FAIL, ex.what());
+        }
+        return Status::OK();
+      };
+
+      compute_info.release_state_func =
+          [](FunctionState state) {
+            if (state) {
+              OpenVINOEPFunctionState* function_state = static_cast<OpenVINOEPFunctionState*>(state);
+              delete function_state;
+            }
+          };
+
+      node_compute_funcs.push_back(std::move(compute_info));
+
+      if (!status.IsOK()) {
+        break;
+      }
     }
-  }
 
-  if (session_context_.so_share_ep_contexts) {
-    fs::path metadata_filename;
-    if (session_context_.so_context_file_path.empty()) {
-      metadata_filename = session_context_.onnx_model_path_name.parent_path() / "metadata.bin";
-    } else {
-      metadata_filename = session_context_.so_context_file_path.parent_path() / "metadata.bin";
-    }
+    if (session_context_.so_share_ep_contexts) {
+      fs::path metadata_filename;
+      if (session_context_.so_context_file_path.empty()) {
+        metadata_filename = session_context_.onnx_model_path_name.parent_path() / "metadata.bin";
+      } else {
+        metadata_filename = session_context_.so_context_file_path.parent_path() / "metadata.bin";
+      }
 
-    // Metadata is generated only for shared contexts
-    // If saving metadata then save it to the provided path or ose the original model path
-    // Multiple calls to Compile() will update the metadata and for the last call
-    //   the resulting file will contain the aggregated content
-    std::ofstream file(metadata_filename, std::ios::binary);
-    if (file) {
-      file << metadata;
+      // Metadata is generated only for shared contexts
+      // If saving metadata then save it to the provided path or ose the original model path
+      // Multiple calls to Compile() will update the metadata and for the last call
+      //   the resulting file will contain the aggregated content
+      std::ofstream file(metadata_filename, std::ios::binary);
+      if (file) {
+        file << metadata;
+      }
     }
+  } catch (const ovep_exception& ex) {
+    status = ex;
   }
 
   return status;
