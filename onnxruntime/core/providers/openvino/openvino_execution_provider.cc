@@ -199,7 +199,7 @@ common::Status OpenVINOExecutionProvider::Compile(
     }
 
     // Metadata is generated only for shared contexts
-    // If saving metadata then save it to the provided path or ose the original model path
+    // If saving metadata then save it to the provided path or use the original model path
     // Multiple calls to Compile() will update the metadata and for the last call
     //   the resulting file will contain the aggregated content
     std::ofstream file{metadata_file_path, std::ios::binary};
