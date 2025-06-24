@@ -166,10 +166,11 @@ BackendManager::BackendManager(SessionContext& session_context,
         } catch (std::string const& msg) {
           ORT_THROW(msg);
         }
-      } else {
-        ORT_RETHROW;
-      }
+      } else
 #endif
+      {
+        throw ex;
+      }
     }
   }
   if (session_context_.so_context_enable &&
