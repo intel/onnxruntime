@@ -43,6 +43,9 @@ BackendManager::BackendManager(SessionContext& session_context,
                                                               session_context_(session_context),
                                                               shared_context_{shared_context} {
   subgraph_context_.is_ep_ctx_graph = ep_ctx_handle_.CheckForOVEPCtxNodeInGraph(subgraph);
+  // If the graph contains a OVIR wrapped node, we check if it has matching xml file name attribute
+  subgraph_context_.is_ep_ctx_ovir_encapsulated = ep_ctx_handle_.CheckEPCacheContextAttribute(subgraph,
+                    session_context_.onnx_model_path_name.filename().replace_extension("xml").string());
 
   bool cpu_or_gpu = session_context_.device_type.find("CPU") != std::string::npos ||
                     session_context_.device_type.find("GPU") != std::string::npos;
@@ -197,9 +200,10 @@ BackendManager::BackendManager(SessionContext& session_context,
       }
     }
   }
-  if (session_context_.so_context_enable && !subgraph_context_.is_ep_ctx_graph) {
+  if (session_context_.so_context_enable &&
+    (subgraph_context_.is_ep_ctx_ovir_encapsulated || !subgraph_context_.is_ep_ctx_graph)) {
     auto status = onnxruntime::openvino_ep::BackendManager::ExportCompiledBlobAsEPCtxNode(subgraph);
-    if ((!status.IsOK())) {
+    if (!status.IsOK()) {
       ORT_THROW(status);
     }
   }
