@@ -22,7 +22,6 @@ namespace fs = std::filesystem;
 using NodeRef = std::reference_wrapper<const Node>;
 struct GraphNode;
 float get_initializer_value(const Graph& graph, const std::string& initializer_name);
-void remove_node_and_reconnect(Graph& graph, const GraphNode& node_to_remove, NodeIndex next_input);
 
 template <typename T, typename V>
 bool contains(V&& begin, V&& end, const T& val) {
@@ -226,7 +225,7 @@ struct GraphNode {
     //                           queued,
     //                           visited,
     //                           scale_factor);
-    auto print_node_vector = [](std::vector<GraphNode*> nodes) -> std::string {
+    auto print_node_vector = [](const std::vector<GraphNode*>& nodes) -> std::string {
       // auto comp = [](const GraphNode* left, const GraphNode* right) -> bool {
       //   return left->node_name < right->node_name;
       // };
@@ -245,7 +244,7 @@ struct GraphNode {
     std::string from_node_str = print_node_vector(from_node);
     std::string to_node_str = print_node_vector(to_node);
 
-    auto print_string_vector = [](std::vector<std::string> nodes) -> std::string {
+    auto print_string_vector = [](const std::vector<std::string>& nodes) -> std::string {
       // std::sort(nodes.begin(), nodes.end());
       std::string ret = "[";
       for (size_t i = 0, size = nodes.size(); const auto& node : nodes) {
@@ -506,8 +505,9 @@ struct CustomGraph {
         bool is_16_bit = p_initializer->has_data_type() &&
                          (p_initializer->data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT16 ||
                           p_initializer->data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT16);
-
-        if (!scale_output && node->down_propagate_to_output() && is_16_bit) {
+        if (!is_16_bit)
+          continue;
+        if (!scale_output && node->down_propagate_to_output()) {
           remove_qdq_pair(*node, removed);
           continue;
         }
@@ -624,37 +624,6 @@ void update_initializer_value(Graph& graph, const std::string& initializer_name,
   graph.AddInitializedTensor(*new_tensor);
 }
 
-void remove_node_and_reconnect(Graph& graph, const GraphNode& node_to_remove, NodeIndex next_input) {
-  const auto& n2r = *(node_to_remove.node_ptr);
-
-  ORT_ENFORCE(n2r.GetOutputEdgesCount() == 1);
-  ORT_ENFORCE(n2r.GetInputEdgesCount() == 1);
-
-  auto in_edge = n2r.InputEdgesBegin();
-  auto out_edge = n2r.OutputEdgesBegin();
-
-  // Remove in_edge
-  {
-    const auto& src_node = in_edge->GetNode();
-    graph.RemoveEdge(src_node.Index(), n2r.Index(), in_edge->GetSrcArgIndex(), in_edge->GetDstArgIndex());
-  }
-
-  // Remove out_edge
-  {
-    const auto& dst_node = out_edge->GetNode();
-    graph.RemoveEdge(n2r.Index(), dst_node.Index(), out_edge->GetSrcArgIndex(), out_edge->GetDstArgIndex());
-  }
-
-  // Add next_input->out_edge node
-  {
-    auto in_edge_src_index = in_edge->GetNode().Index();
-    auto out_edge_dst_index = out_edge->GetNode().Index();
-    graph.AddEdge(in_edge_src_index, out_edge_dst_index, in_edge->GetSrcArgIndex(), out_edge->GetDstArgIndex());
-  }
-
-  graph.RemoveNode(n2r.Index());
-}
-
 CustomGraph generate_graph_from_onnx(Graph& graph) {
   CustomGraph gen_graph{graph};
 
@@ -718,7 +687,7 @@ bool scale_graph(CustomGraph& gen_graph,
   while (!q.empty()) {
     auto cur_node = q.front();
     q.pop_front();
-    if (cur_node->visited < cur_node->from_node.size()) {
+    if (static_cast<std::size_t>(cur_node->visited) < cur_node->from_node.size()) {
       cur_node->queued = false;
     } else {
       if (cur_node->op_type == "QuantizeLinear" &&
