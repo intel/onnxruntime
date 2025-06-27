@@ -11,6 +11,8 @@
 #include "core/providers/openvino/backend_utils.h"
 #include "core/providers/openvino/backends/basic_backend.h"
 #include "core/providers/openvino/ov_stateful_patch_utils.h"
+#include "ov_delegate.hpp"
+#include "mock_model.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -68,6 +70,9 @@ std::optional<bool> queryOVProperty(const std::string& property, const std::stri
   }
 }
 
+  std::shared_ptr<OVNetwork> OVCore::ReadModel(const OrtGraph* graph) {
+    return OvExceptionBoundary([&]() {
+      // Try to load with FrontEndManager
 std::shared_ptr<OVNetwork> OVCore::ReadModel(std::string&& model, const std::string& model_path) {
   return OvExceptionBoundary([&]() {
     std::istringstream modelStringStream(std::move(model));
@@ -77,29 +82,51 @@ std::shared_ptr<OVNetwork> OVCore::ReadModel(std::string&& model, const std::str
     ov::frontend::FrontEnd::Ptr FE;
     ov::frontend::InputModel::Ptr inputModel;
 
-    ov::AnyVector params{&modelStream, model_path};
+      auto ort_delegate = new ort_graph_delegate(Ort::GetApi(), graph);
+      auto delegate = std::shared_ptr<ov::frontend::GraphIterator>(ort_delegate);
+      ov::AnyVector params{delegate};
 
-    FE = manager.load_by_model(params);
-    if (FE) {
-      inputModel = FE->load(params);
-      return FE->convert(inputModel);
-    } else {
-      ORT_THROW(log_tag + "Unknown exception while Reading network");
-    }
-  },
-                             "Exception while Reading network");
-}
-
-OVExeNetwork OVCore::StatefulCompileModel(std::shared_ptr<OVNetwork>& model,
-                                          std::string& hw_target,
-                                          const ov::AnyMap& device_config) {
-  ov::CompiledModel compiled_model;
-  ov::AnyMap config = device_config;
-
-  if (onnxruntime::openvino_ep::backend_utils::IsDebugEnabled()) {
-    std::cout << "Stateless OV Model Statistic:" << std::endl;
-    LogBasicModelInfo(model);
+      ov::frontend::FrontEndManager manager;
+      auto frontend = manager.load_by_model(params);
+      if (frontend) {
+        auto inputModel = frontend->load(params);
+        return frontend->convert(inputModel);
+      } else {
+        ORT_THROW(log_tag + "Unknown exception while Reading network");
+      }
+    },
+                               "Exception while Reading network");
   }
+
+  std::shared_ptr<OVNetwork> OVCore::ReadModel(std::string && model, const std::string& model_path) {
+    return OvExceptionBoundary([&]() {
+      const auto& api = Ort::GetApi();
+      auto mock = build_model(api);
+      return ReadModel(mock.graph);
+    },
+                               "Exception while Reading network");
+
+    // return OvExceptionBoundary([&]() {
+    //   std::istringstream modelStringStream(std::move(model));
+    //   std::istream& modelStream = modelStringStream;
+    //   // Try to load with FrontEndManager
+    //   ov::frontend::FrontEndManager manager;
+    //   ov::frontend::FrontEnd::Ptr FE;
+    //   ov::frontend::InputModel::Ptr inputModel;
+
+    //  ov::AnyVector params{&modelStream, model_path};
+
+    //  FE = manager.load_by_model(params);
+    //  if (FE) {
+    //    inputModel = FE->load(params);
+    //    return FE->convert(inputModel);
+    //  } else {
+    //    ORT_THROW(log_tag + "Unknown exception while Reading network");
+    //  }
+    //},
+    //                           "Exception while Reading network");
+  }
+}
 
   bool model_status = IsStateful(model);
   LOGS_DEFAULT(INFO) << log_tag << "Model IsStateful() Status:\t" << (model_status ? "True" : "False");
