@@ -296,15 +296,43 @@ struct OrtEpApi {
    * \since Version 1.23.
    */
   ORT_API_T(OrtDeviceMemoryType, MemoryDevice_GetMemoryType, _In_ const OrtMemoryDevice* memory_device);
+
+  /** \brief Get the vendor ID from an OrtMemoryDevice instance.
+   *
+   * The vendor ID is used to identify the vendor of the device, and is typically set to the PCI vendor ID.
+   *
+   * If the device is not vendor specific (e.g. CPU memory) the vendor ID is set to 0.
+   *
+   * \param[in] memory_device OrtMemoryDevice instance.
+   * \return The vendor ID value.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(uint32_t, MemoryDevice_GetVendorId, _In_ const OrtMemoryDevice* memory_device);
+
+  /** \brief Get the device ID from an OrtMemoryDevice instance.
+   *
+   * \param[in] memory_device OrtMemoryDevice instance.
+   * \return The device ID.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(uint32_t, MemoryDevice_GetDeviceId, _In_ const OrtMemoryDevice* memory_device);
 };
 
 /**
- * \brief The data layout type that is preferred by an EP.
+ * \brief The data layout type.
+ *
+ * EPs may specify a preferred data layout type. ORT's default layout type is OrtEpDataLayout_NCHW, or
+ * OrtEpDataLayout_Default.
+ *
  * \since Version 1.23.
  */
 typedef enum OrtEpDataLayout {
   OrtEpDataLayout_NCHW = 0,
   OrtEpDataLayout_NHWC,
+
+  OrtEpDataLayout_Default = OrtEpDataLayout_NCHW,
 } OrtEpDataLayout;
 
 /**
@@ -419,6 +447,34 @@ struct OrtEp {
    */
   OrtStatus*(ORT_API_CALL* GetPreferredDataLayout)(_In_ OrtEp* this_ptr,
                                                    _Out_ OrtEpDataLayout* preferred_data_layout);
+
+  /** \brief Given an op with domain `domain` and type `op_type`, determine whether an associated node's data layout
+   *         should be converted to `target_data_layout`.
+   *         If the EP prefers a non-default data layout (see `GetPreferredDataLayout()`), this function will be called
+   *         during layout transformation with `target_data_layout` set to the EP's preferred data layout.
+   *
+   * \note Implementation of this function is optional.
+   *       If an EP prefers a non-default data layout, it may implement this to customize the specific op data layout
+   *       preferences at a finer granularity.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[in] domain The op domain. An empty string means the ONNX domain.
+   * \param[in] op_type The op type.
+   * \param[in] target_data_layout The target data layout.
+   * \param[out] should_convert Whether the associated node's data layout should be converted to `target_data_layout`.
+   *                            If greater than 0, convert.
+   *                            If 0, don't convert.
+   *                            Otherwise, if less than 0, leave the decision to ORT.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  OrtStatus*(ORT_API_CALL* ShouldConvertDataLayoutForOp)(_In_ OrtEp* this_ptr,
+                                                         _In_z_ const char* domain,
+                                                         _In_z_ const char* op_type,
+                                                         _In_ OrtEpDataLayout target_data_layout,
+                                                         _Outptr_ int* should_convert);
 
   /** \brief Set dynamic options on this EP.
    *
