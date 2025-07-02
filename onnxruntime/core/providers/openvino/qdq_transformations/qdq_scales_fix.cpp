@@ -571,14 +571,8 @@ struct CustomGraph {
   Graph& original_graph;
 };
 
-float get_initializer_value(const Graph& graph, const std::string& initializer_name) {
-  const auto p_initializer = graph.GetConstantInitializer(initializer_name, false);
-
-  return get_float_initializer_data(p_initializer);
-}
-
 template <typename T>
-T* get_mutable_initializer_data(Graph& graph, const std::string& name) {
+T* get_mutable_initializer_data(const Graph& graph, const std::string& name) {
   auto initializer = graph.GetConstantInitializer(name, true);
   if (!initializer) return nullptr;
 
@@ -601,6 +595,19 @@ std::size_t get_initializer_size(const Graph& graph, const std::string& name) {
     size *= initializer->dims()[i];
   }
   return size;
+}
+
+float get_initializer_value(const Graph& graph, const std::string& initializer_name) {
+  const auto p_initializer = graph.GetConstantInitializer(initializer_name, false);
+
+  if (p_initializer->has_raw_data()) {
+    auto raw_data = get_mutable_initializer_data<float>(graph, initializer_name);
+    auto size = get_initializer_size(graph, initializer_name);
+    ORT_ENFORCE(size == 1, "Expected an initializer to be of size 1");
+    return raw_data[0];
+  }
+  else
+    return get_float_initializer_data(p_initializer);
 }
 
 void update_initializer_value(Graph& graph, const std::string& initializer_name, const float new_value) {
