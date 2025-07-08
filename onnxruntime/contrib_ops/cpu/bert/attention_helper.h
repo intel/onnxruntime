@@ -162,16 +162,82 @@ T* ConcatStateChunkGQA(const T* past,
                        size_t new_chunk_length,
                        bool past_present_share_buffer,
                        std::ptrdiff_t i) {
+  
+  // CRITICAL SAFETY FIX: Validate all input parameters to prevent buffer overflows
+  // The debugger showed past_chunk_length = 18446744073709551520 (0xFFFFFFFFFFFFFF20)
+  // which indicates an underflow occurred in the caller
+  
+  if (present == nullptr || chunk == nullptr) {
+    return nullptr;
+  }
+
+  // Check for arithmetic underflow/overflow in past_chunk_length
+  // This is the root cause - past_chunk_length should never be this large
+  if (past_chunk_length > SIZE_MAX / 2 || past_chunk_length > present_buff_chunk_length) {
+    // Likely an underflow - past_chunk_length should never exceed buffer length
+    return nullptr;
+  }
+
+  // Validate that buffer operations won't exceed allocated memory
+  if (i < 0) {
+    return nullptr;
+  }
+
+  // Check for overflow in buffer index calculation
+  if (static_cast<size_t>(i) > (SIZE_MAX / present_buff_chunk_length)) {
+    return nullptr;
+  }
+
+  // Validate that the total chunk length fits in the buffer
+  if ((past_chunk_length + new_chunk_length) > present_buff_chunk_length) {
+    return nullptr;
+  }
+
+  // Additional validation for new_chunk_length
+  if (new_chunk_length > present_buff_chunk_length) {
+    return nullptr;
+  }
+
   T* start = present + i * present_buff_chunk_length;
 
   T* p = start;
   if (!past_present_share_buffer && past_chunk_length > 0) {
+    // Additional validation for past buffer access
+    if (past == nullptr) {
+      return nullptr;
+    }
+    
+    // Check for overflow in past buffer index calculation
+    if (static_cast<size_t>(i) > (SIZE_MAX / past_buff_chunk_length)) {
+      return nullptr;
+    }
+    
+    // Validate past_chunk_length doesn't exceed past buffer capacity
+    if (past_chunk_length > past_buff_chunk_length) {
+      return nullptr;
+    }
+    
     const T* src_past = past + i * past_buff_chunk_length;
-    memcpy(p, src_past, past_chunk_length * sizeof(T));
+    
+    // Final validation before memcpy
+    if (past_chunk_length > 0) {
+      memcpy(p, src_past, past_chunk_length * sizeof(T));
+    }
   }
+  
   p += past_chunk_length;
 
-  memcpy(p, chunk, new_chunk_length * sizeof(T));
+  // Final validation before the problematic memcpy
+  if (new_chunk_length > 0) {
+    // Ensure we don't write beyond the allocated buffer
+    ptrdiff_t remaining_space = (start + present_buff_chunk_length) - p;
+    if (remaining_space < 0 || static_cast<size_t>(remaining_space) < new_chunk_length) {
+      return nullptr;
+    }
+    
+    memcpy(p, chunk, new_chunk_length * sizeof(T));
+  }
+  
   return start;
 }
 
