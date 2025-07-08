@@ -14,9 +14,9 @@ Abstract:
 
 --*/
 
-
 #include <cassert>
-
+#include <algorithm>
+#include <cstring>
 #include "rotary_embedding.h"
 #include "rotary_embedding_kernel_avx2.h"
 
@@ -25,236 +25,237 @@ namespace rope_avx2 {
 namespace {
 
 typedef __m256 float32x8_t;
-static constexpr int32_t mask_buffer[16] = {-1, -1, -1, -1, -1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0};
 
-template <bool interleaved>
-void
-RopeKernel_Avx2_fp16_Impl(
-    const MLAS_FP16* input,
-    const MLAS_FP16* sin_data,
-    const MLAS_FP16* cos_data,
-    size_t dim,
-    MLAS_FP16* output
-);
-
-float32x8_t
-load_fp16_and_convert_to_fp32(const MLAS_FP16* input)
-{
-    __m128i fp16 = _mm_lddqu_si128(reinterpret_cast<const __m128i*>(input));
-    return _mm256_cvtph_ps(fp16);
+// Helper functions for FP16 conversion
+inline float32x8_t load_fp16_to_fp32(const MLAS_FP16* src) {
+    __m128i fp16_data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(src));
+    return _mm256_cvtph_ps(fp16_data);
 }
 
-void
-convert_to_fp16_and_store(MLAS_FP16* dst_fp16, const __m256 output)
-{
-    __m128i fp16_chunk = _mm256_cvtps_ph(output, _MM_FROUND_TO_NEAREST_INT);
-    _mm_storeu_si128(reinterpret_cast<__m128i*>(dst_fp16), fp16_chunk);
+inline void store_fp32_to_fp16(MLAS_FP16* dst, const float32x8_t src) {
+    __m128i fp16_data = _mm256_cvtps_ph(src, _MM_FROUND_TO_NEAREST_INT);
+    _mm_storeu_si128(reinterpret_cast<__m128i*>(dst), fp16_data);
 }
 
-template <>
-void
-RopeKernel_Avx2_fp16_Impl<false>(
-    const MLAS_FP16* input,
-    const MLAS_FP16* sin_data,
-    const MLAS_FP16* cos_data,
-    size_t dim,
-    MLAS_FP16* output
-)
-{
-  // ?cast input -> const unsigned short*
-    const size_t half_dim = dim >> 1;
-    size_t i = 0, j = half_dim;
-    for (; i + 7 < half_dim; i += 8, j += 8) {
-        float32x8_t real = load_fp16_and_convert_to_fp32(input + i);
-        float32x8_t imag = load_fp16_and_convert_to_fp32(input + j);
-        float32x8_t sin_val = load_fp16_and_convert_to_fp32(sin_data + i);
-        float32x8_t cos_val = load_fp16_and_convert_to_fp32(cos_data + i);
-        // Compute Real and Imaginary output values
-        float32x8_t real_out = _mm256_fmsub_ps(real, cos_val, _mm256_mul_ps(imag, sin_val));
-        float32x8_t imag_out = _mm256_fmadd_ps(real, sin_val, _mm256_mul_ps(imag, cos_val));
-        // Store back into non interleaved format
-        convert_to_fp16_and_store(output + i, real_out);
-        convert_to_fp16_and_store(output + j, imag_out);
+// Non-interleaved RoPE kernel for FP32
+void rope_fp32_non_interleaved(const float* input, const float* sin_data,
+                               const float* cos_data, size_t dim, float* output) {
+    if (!input || !sin_data || !cos_data || !output || dim == 0 || (dim & 1)) {
+        return;
     }
-    for (; i < half_dim; i++, j++) {
-        float real = input[i].ToFloat();
-        float imag = input[j].ToFloat();
-        float sin_val = sin_data[i];
-        float cos_val = cos_data[i];
+
+    const size_t half_dim = dim >> 1;
+    constexpr size_t vector_width = 8;
+
+    size_t i = 0;
+
+    // SIMD processing
+    if (half_dim >= vector_width) {
+        const size_t simd_end = (half_dim / vector_width) * vector_width;
+
+        for (; i < simd_end; i += vector_width) {
+            const size_t j = half_dim + i;
+
+            const float32x8_t real = _mm256_loadu_ps(input + i);
+            const float32x8_t imag = _mm256_loadu_ps(input + j);
+            const float32x8_t sin_val = _mm256_loadu_ps(sin_data + i);
+            const float32x8_t cos_val = _mm256_loadu_ps(cos_data + i);
+
+            const float32x8_t real_out = _mm256_fmsub_ps(real, cos_val, _mm256_mul_ps(imag, sin_val));
+            const float32x8_t imag_out = _mm256_fmadd_ps(real, sin_val, _mm256_mul_ps(imag, cos_val));
+
+            _mm256_storeu_ps(output + i, real_out);
+            _mm256_storeu_ps(output + j, imag_out);
+        }
+    }
+
+    // Scalar cleanup
+    for (; i < half_dim; ++i) {
+        const size_t j = half_dim + i;
+        const float real = input[i];
+        const float imag = input[j];
+        const float sin_val = sin_data[i];
+        const float cos_val = cos_data[i];
+
+        output[i] = real * cos_val - imag * sin_val;
+        output[j] = real * sin_val + imag * cos_val;
+    }
+}
+
+// Interleaved RoPE kernel for FP32
+void rope_fp32_interleaved(const float* input, const float* sin_data,
+                          const float* cos_data, size_t dim, float* output) {
+    if (!input || !sin_data || !cos_data || !output || dim == 0 || (dim & 1)) {
+        return;
+    }
+
+    constexpr size_t vector_width = 16;
+    const __m256i shuffle_mask = _mm256_set_epi32(7, 6, 3, 2, 5, 4, 1, 0);
+
+    size_t i = 0;
+
+    // SIMD processing
+    if (dim >= vector_width) {
+        const size_t simd_end = (dim / vector_width) * vector_width;
+
+        for (; i < simd_end; i += vector_width) {
+            const size_t sin_cos_idx = i >> 1;
+
+            const float32x8_t x0 = _mm256_loadu_ps(input + i);
+            const float32x8_t x1 = _mm256_loadu_ps(input + i + 8);
+
+            // Deinterleave real and imaginary parts
+            const float32x8_t real_s = _mm256_shuffle_ps(x0, x1, 0b10001000);
+            const float32x8_t imag_s = _mm256_shuffle_ps(x0, x1, 0b11011101);
+            const float32x8_t real = _mm256_permutevar8x32_ps(real_s, shuffle_mask);
+            const float32x8_t imag = _mm256_permutevar8x32_ps(imag_s, shuffle_mask);
+
+            const float32x8_t sin_val = _mm256_loadu_ps(sin_data + sin_cos_idx);
+            const float32x8_t cos_val = _mm256_loadu_ps(cos_data + sin_cos_idx);
+
+            // RoPE computation
+            const float32x8_t real_out = _mm256_fmsub_ps(real, cos_val, _mm256_mul_ps(imag, sin_val));
+            const float32x8_t imag_out = _mm256_fmadd_ps(real, sin_val, _mm256_mul_ps(imag, cos_val));
+
+            // Reinterleave and store
+            const float32x8_t real_out_s = _mm256_permutevar8x32_ps(real_out, shuffle_mask);
+            const float32x8_t imag_out_s = _mm256_permutevar8x32_ps(imag_out, shuffle_mask);
+            const float32x8_t y0 = _mm256_unpacklo_ps(real_out_s, imag_out_s);
+            const float32x8_t y1 = _mm256_unpackhi_ps(real_out_s, imag_out_s);
+
+            _mm256_storeu_ps(output + i, y0);
+            _mm256_storeu_ps(output + i + 8, y1);
+        }
+    }
+
+    // Scalar cleanup
+    for (; i + 1 < dim; i += 2) {
+        const size_t sin_cos_idx = i >> 1;
+        const float real = input[i];
+        const float imag = input[i + 1];
+        const float cos_val = cos_data[sin_cos_idx];
+        const float sin_val = sin_data[sin_cos_idx];
+
+        output[i] = real * cos_val - imag * sin_val;
+        output[i + 1] = real * sin_val + imag * cos_val;
+    }
+}
+
+// Non-interleaved RoPE kernel for FP16
+void rope_fp16_non_interleaved(const MLAS_FP16* input, const MLAS_FP16* sin_data,
+                               const MLAS_FP16* cos_data, size_t dim, MLAS_FP16* output) {
+    if (!input || !sin_data || !cos_data || !output || dim == 0 || (dim & 1)) {
+        return;
+    }
+
+    const size_t half_dim = dim >> 1;
+    constexpr size_t vector_width = 8;
+
+    size_t i = 0;
+
+    // SIMD processing
+    if (half_dim >= vector_width) {
+        const size_t simd_end = (half_dim / vector_width) * vector_width;
+
+        for (; i < simd_end; i += vector_width) {
+            const size_t j = half_dim + i;
+
+            const float32x8_t real = load_fp16_to_fp32(input + i);
+            const float32x8_t imag = load_fp16_to_fp32(input + j);
+            const float32x8_t sin_val = load_fp16_to_fp32(sin_data + i);
+            const float32x8_t cos_val = load_fp16_to_fp32(cos_data + i);
+
+            const float32x8_t real_out = _mm256_fmsub_ps(real, cos_val, _mm256_mul_ps(imag, sin_val));
+            const float32x8_t imag_out = _mm256_fmadd_ps(real, sin_val, _mm256_mul_ps(imag, cos_val));
+
+            store_fp32_to_fp16(output + i, real_out);
+            store_fp32_to_fp16(output + j, imag_out);
+        }
+    }
+
+    // Scalar cleanup
+    for (; i < half_dim; ++i) {
+        const size_t j = half_dim + i;
+        const float real = input[i].ToFloat();
+        const float imag = input[j].ToFloat();
+        const float sin_val = sin_data[i].ToFloat();
+        const float cos_val = cos_data[i].ToFloat();
+
         output[i] = MLAS_FP16(real * cos_val - imag * sin_val);
         output[j] = MLAS_FP16(real * sin_val + imag * cos_val);
     }
 }
 
-template <>
-void
-RopeKernel_Avx2_fp16_Impl<true>(
-    const MLAS_FP16* input,
-    const MLAS_FP16* sin_data,
-    const MLAS_FP16* cos_data,
-    size_t dim,
-    MLAS_FP16* output
-)
-{
-    // ?cast input -> const unsigned short*
-    size_t i = 0;
-    for (; i + 15 < dim; i += 16) {
-        float32x8_t x0 = load_fp16_and_convert_to_fp32(input + i);
-        float32x8_t x1 = load_fp16_and_convert_to_fp32(input + i + 8);
-        float32x8_t real_s = _mm256_shuffle_ps(x0, x1, 0b10001000);
-        float32x8_t imag_s = _mm256_shuffle_ps(x0, x1, 0b11011101);
-        __m256i in_mask_vec = _mm256_set_epi32(7, 6, 3, 2, 5, 4, 1, 0);
-        float32x8_t real = _mm256_permutevar8x32_ps(real_s, in_mask_vec);
-        float32x8_t imag = _mm256_permutevar8x32_ps(imag_s, in_mask_vec);
-        float32x8_t sin_val = load_fp16_and_convert_to_fp32(sin_data + i / 2);
-        float32x8_t cos_val = load_fp16_and_convert_to_fp32(cos_data + i / 2);
-        // Compute Real and Imaginary output values
-        float32x8_t real_out = _mm256_fmsub_ps(real, cos_val, _mm256_mul_ps(imag, sin_val));
-        float32x8_t imag_out = _mm256_fmadd_ps(real, sin_val, _mm256_mul_ps(imag, cos_val));
-        // Store back into interleaved format
-        __m256i out_mask_vec = _mm256_set_epi32(7, 6, 3, 2, 5, 4, 1, 0);
-        float32x8_t real_out_s = _mm256_permutevar8x32_ps(real_out, out_mask_vec);
-        float32x8_t imag_out_s = _mm256_permutevar8x32_ps(imag_out, out_mask_vec);
-        float32x8_t y0 = _mm256_unpacklo_ps(real_out_s, imag_out_s);
-        float32x8_t y1 = _mm256_unpackhi_ps(real_out_s, imag_out_s);
-
-        // Store back into non interleaved format
-        convert_to_fp16_and_store(output + i, y0);
-        convert_to_fp16_and_store(output + i + 8, y1);
+// Interleaved RoPE kernel for FP16
+void rope_fp16_interleaved(const MLAS_FP16* input, const MLAS_FP16* sin_data,
+                          const MLAS_FP16* cos_data, size_t dim, MLAS_FP16* output) {
+    if (!input || !sin_data || !cos_data || !output || dim == 0 || (dim & 1)) {
+        return;
     }
 
-    for (; i < dim; i++) {
-        size_t cache_idx = i / 2;
-        bool sign = i & 1;
-        size_t j = sign ? i - 1 : i + 1;
+    constexpr size_t vector_width = 16;
+    const __m256i shuffle_mask = _mm256_set_epi32(7, 6, 3, 2, 5, 4, 1, 0);
 
-        float output_data_i = input[i].ToFloat() * cos_data[cache_idx].ToFloat();
-        float input_data_j = input[j].ToFloat();
-        float sin_data_cache_idx = sin_data[cache_idx].ToFloat();
-        if (sign) {
-            output_data_i += input_data_j * sin_data_cache_idx;
-        } else {
-            output_data_i -= input_data_j * sin_data_cache_idx;
+    size_t i = 0;
+
+    // SIMD processing
+    if (dim >= vector_width) {
+        const size_t simd_end = (dim / vector_width) * vector_width;
+
+        for (; i < simd_end; i += vector_width) {
+            const size_t sin_cos_idx = i >> 1;
+
+            const float32x8_t x0 = load_fp16_to_fp32(input + i);
+            const float32x8_t x1 = load_fp16_to_fp32(input + i + 8);
+
+            // Deinterleave
+            const float32x8_t real_s = _mm256_shuffle_ps(x0, x1, 0b10001000);
+            const float32x8_t imag_s = _mm256_shuffle_ps(x0, x1, 0b11011101);
+            const float32x8_t real = _mm256_permutevar8x32_ps(real_s, shuffle_mask);
+            const float32x8_t imag = _mm256_permutevar8x32_ps(imag_s, shuffle_mask);
+
+            const float32x8_t sin_val = load_fp16_to_fp32(sin_data + sin_cos_idx);
+            const float32x8_t cos_val = load_fp16_to_fp32(cos_data + sin_cos_idx);
+
+            // RoPE computation
+            const float32x8_t real_out = _mm256_fmsub_ps(real, cos_val, _mm256_mul_ps(imag, sin_val));
+            const float32x8_t imag_out = _mm256_fmadd_ps(real, sin_val, _mm256_mul_ps(imag, cos_val));
+
+            // Reinterleave
+            const float32x8_t real_out_s = _mm256_permutevar8x32_ps(real_out, shuffle_mask);
+            const float32x8_t imag_out_s = _mm256_permutevar8x32_ps(imag_out, shuffle_mask);
+            const float32x8_t y0 = _mm256_unpacklo_ps(real_out_s, imag_out_s);
+            const float32x8_t y1 = _mm256_unpackhi_ps(real_out_s, imag_out_s);
+
+            store_fp32_to_fp16(output + i, y0);
+            store_fp32_to_fp16(output + i + 8, y1);
         }
-        output[i] = MLAS_FP16(output_data_i);
+    }
+
+    // Scalar cleanup
+    for (; i < dim; ++i) {
+        const size_t sin_cos_idx = i >> 1;
+        const bool is_imag = i & 1;
+        const size_t pair_idx = is_imag ? i - 1 : i + 1;
+
+        if (pair_idx < dim && sin_cos_idx < (dim >> 1)) {
+            const float input_i = input[i].ToFloat();
+            const float input_pair = input[pair_idx].ToFloat();
+            const float cos_val = cos_data[sin_cos_idx].ToFloat();
+            const float sin_val = sin_data[sin_cos_idx].ToFloat();
+
+            const float result = is_imag ?
+                (input_pair * sin_val + input_i * cos_val) :
+                (input_i * cos_val - input_pair * sin_val);
+
+            output[i] = MLAS_FP16(result);
+        } else {
+            output[i] = input[i];
+        }
     }
 }
 
-template <bool interleaved>
-void
-RopeKernel_Avx2_fp32_Impl(
-    const float* input,
-    const float* sin_data,
-    const float* cos_data,
-    size_t dim,
-    float* output
-);
-
-template <>
-void
-RopeKernel_Avx2_fp32_Impl<false>(
-    const float* input,
-    const float* sin_data,
-    const float* cos_data,
-    size_t dim,
-    float* output
-) {
-    const size_t half_dim = dim >> 1;
-    size_t i = 0, j = half_dim;
-    for (; i + 7 < half_dim; i += 8, j += 8) {
-        float32x8_t real = _mm256_loadu_ps(input + i);
-        float32x8_t imag = _mm256_loadu_ps(input + j);
-        float32x8_t sin_val = _mm256_loadu_ps(sin_data + i);
-        float32x8_t cos_val = _mm256_loadu_ps(cos_data + i);
-        //Compute Real and Imaginary output values
-        float32x8_t real_out = _mm256_fmsub_ps(real, cos_val, _mm256_mul_ps(imag, sin_val));
-        float32x8_t imag_out = _mm256_fmadd_ps(real, sin_val, _mm256_mul_ps(imag, cos_val));
-        //Store back into non interleaved format
-        _mm256_storeu_ps(output + i, real_out);
-        _mm256_storeu_ps(output + j, imag_out);
-    }
-    if (half_dim - i != 0) {
-        size_t rem = half_dim - i;
-        const __m256i mask = _mm256_loadu_si256((const __m256i*)(mask_buffer + 8 - rem));
-        //Use a mask to load the remaining input values
-        float32x8_t real = _mm256_maskload_ps(input + i, mask);
-        float32x8_t imag = _mm256_maskload_ps(input + j, mask);
-        float32x8_t sin_val = _mm256_maskload_ps(sin_data + i, mask);
-        float32x8_t cos_val = _mm256_maskload_ps(cos_data + i, mask);
-        //Compute Real and Imaginary output values
-        float32x8_t real_out = _mm256_fmsub_ps(real, cos_val, _mm256_mul_ps(imag, sin_val));
-        float32x8_t imag_out = _mm256_fmadd_ps(real, sin_val, _mm256_mul_ps(imag, cos_val));
-        //Store back into non interleaved format
-        _mm256_maskstore_ps(output + i, mask, real_out);
-        _mm256_maskstore_ps(output + j, mask, imag_out);
-    }
-}
-
-template <>
-void
-RopeKernel_Avx2_fp32_Impl<true>(
-    const float* input,
-    const float* sin_data,
-    const float* cos_data,
-    size_t dim,
-    float* output
-) {
-    size_t i = 0;
-    for (; i + 15 < dim; i += 16) {
-        float32x8_t x0 = _mm256_loadu_ps(input + i);
-        float32x8_t x1 = _mm256_loadu_ps(input + i + 8);
-        //Load imaginary and real values to separate non-interleaved vectors
-        float32x8_t real_s = _mm256_shuffle_ps(x0, x1, 0b10001000);
-        float32x8_t imag_s = _mm256_shuffle_ps(x0, x1, 0b11011101);
-        __m256i in_mask_vec = _mm256_set_epi32(7, 6, 3, 2, 5, 4, 1, 0);
-        float32x8_t real = _mm256_permutevar8x32_ps(real_s, in_mask_vec);
-        float32x8_t imag = _mm256_permutevar8x32_ps(imag_s, in_mask_vec);
-        float32x8_t sin_val = _mm256_loadu_ps(sin_data + i / 2);
-        float32x8_t cos_val = _mm256_loadu_ps(cos_data + i / 2);
-        //Compute Real and Imaginary output values
-        float32x8_t real_out = _mm256_fmsub_ps(real, cos_val, _mm256_mul_ps(imag, sin_val));
-        float32x8_t imag_out = _mm256_fmadd_ps(real, sin_val, _mm256_mul_ps(imag, cos_val));
-        //Store back into interleaved format
-        __m256i out_mask_vec = _mm256_set_epi32(7, 6, 3, 2, 5, 4, 1, 0);
-        float32x8_t real_out_s = _mm256_permutevar8x32_ps(real_out, out_mask_vec);
-        float32x8_t imag_out_s = _mm256_permutevar8x32_ps(imag_out, out_mask_vec);
-        float32x8_t y0 = _mm256_unpacklo_ps(real_out_s, imag_out_s);
-        float32x8_t y1 = _mm256_unpackhi_ps(real_out_s, imag_out_s);
-        _mm256_storeu_ps(output + i, y0);
-        _mm256_storeu_ps(output + i + 8, y1);
-    }
-    if (dim - i != 0) {
-        size_t rem = dim - i;
-        const __m256i mask0 = _mm256_loadu_si256((const __m256i*)(mask_buffer + 8 - (rem>8?8:rem)));
-        const __m256i mask1 = _mm256_loadu_si256((const __m256i*)(mask_buffer + 8 - (rem>8?(rem-8):0)));
-        float32x8_t x0 = _mm256_maskload_ps(input + i, mask0);   //Load the first set of data using mask
-        float32x8_t x1 = _mm256_maskload_ps(input + i + 8, mask1); //Load the reminder of data using a second mask
-        //Load imaginary and real values to separate non-interleaved vectors
-        float32x8_t real_s = _mm256_shuffle_ps(x0, x1, 0b10001000);
-        float32x8_t imag_s = _mm256_shuffle_ps(x0, x1, 0b11011101);
-        __m256i in_mask_vec = _mm256_set_epi32(7, 6, 3, 2, 5, 4, 1, 0);
-        float32x8_t real = _mm256_permutevar8x32_ps(real_s, in_mask_vec);
-        float32x8_t imag = _mm256_permutevar8x32_ps(imag_s, in_mask_vec);
-        // Use masked loads for sin/cos data to avoid reading beyond buffer bounds
-        size_t cos_sin_rem = rem / 2;
-        const __m256i cos_sin_mask = _mm256_loadu_si256((const __m256i*)(mask_buffer + 8 - cos_sin_rem));
-        float32x8_t sin_val = _mm256_maskload_ps(sin_data + i / 2, cos_sin_mask);
-        float32x8_t cos_val = _mm256_maskload_ps(cos_data + i / 2, cos_sin_mask);
-        //Compute Real and Imaginary output values
-        float32x8_t real_out = _mm256_fmsub_ps(real, cos_val, _mm256_mul_ps(imag, sin_val));
-        float32x8_t imag_out = _mm256_fmadd_ps(real, sin_val, _mm256_mul_ps(imag, cos_val));
-        //Store back into interleaved format
-        __m256i out_mask_vec = _mm256_set_epi32(7, 6, 3, 2, 5, 4, 1, 0);
-        float32x8_t real_out_s = _mm256_permutevar8x32_ps(real_out, out_mask_vec);
-        float32x8_t imag_out_s = _mm256_permutevar8x32_ps(imag_out, out_mask_vec);
-        float32x8_t y0 = _mm256_unpacklo_ps(real_out_s, imag_out_s);
-        float32x8_t y1 = _mm256_unpackhi_ps(real_out_s, imag_out_s);
-        _mm256_maskstore_ps(output + i, mask0, y0);
-        _mm256_maskstore_ps(output + i + 8, mask1, y1);
-    }
-}
-
-}  // rope_avx2 namespace
+}  // anonymous namespace
 
 void
 RopeKernel_Avx2_fp32(
@@ -266,16 +267,14 @@ RopeKernel_Avx2_fp32(
     float* output
 ) {
     // real part and imaginary part must be paired
-    assert(dim % 2 == 0);
-    const auto* input_impl = reinterpret_cast<const float*>(input);
-    const auto* sin_impl = reinterpret_cast<const float*>(sin_data);
-    const auto* cos_impl = reinterpret_cast<const float*>(cos_data);
-    auto* output_impl = reinterpret_cast<float*>(output);
+    if (!input || !output || !sin_data || !cos_data || dim == 0 || dim % 2 != 0) {
+        return;
+    }
 
     if (interleaved) {
-        RopeKernel_Avx2_fp32_Impl<true>(input_impl, sin_impl, cos_impl, dim, output_impl);
+        rope_fp32_interleaved(input, sin_data, cos_data, dim, output);
     } else {
-        RopeKernel_Avx2_fp32_Impl<false>(input_impl, sin_impl, cos_impl, dim, output_impl);
+        rope_fp32_non_interleaved(input, sin_data, cos_data, dim, output);
     }
 }
 
@@ -290,15 +289,18 @@ RopeKernel_Avx2_fp16(
 )
 {
     // real part and imaginary part must be paired
-    assert(dim % 2 == 0);
+    if (!input || !output || !sin_data || !cos_data || dim == 0 || dim % 2 != 0) {
+        return;
+    }
 
     if (interleaved) {
-        RopeKernel_Avx2_fp16_Impl<true>(input, sin_data, cos_data, dim, output);
+        rope_fp16_interleaved(input, sin_data, cos_data, dim, output);
     } else {
-        RopeKernel_Avx2_fp16_Impl<false>(input, sin_data, cos_data, dim, output);
+        rope_fp16_non_interleaved(input, sin_data, cos_data, dim, output);
     }
 }
-}
+
+}  // namespace rope_avx2
 
 //
 // Kernel dispatch structure definition.

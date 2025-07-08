@@ -162,16 +162,34 @@ T* ConcatStateChunkGQA(const T* past,
                        size_t new_chunk_length,
                        bool past_present_share_buffer,
                        std::ptrdiff_t i) {
-  T* start = present + i * present_buff_chunk_length;
 
-  T* p = start;
-  if (!past_present_share_buffer && past_chunk_length > 0) {
-    const T* src_past = past + i * past_buff_chunk_length;
-    memcpy(p, src_past, past_chunk_length * sizeof(T));
+  if (present == nullptr || chunk == nullptr) {
+    return nullptr;
   }
+
+  if (past_chunk_length > present_buff_chunk_length ||
+      new_chunk_length > present_buff_chunk_length ||
+      (past_chunk_length + new_chunk_length) > present_buff_chunk_length ||
+      i < 0) {
+    return nullptr;
+  }
+
+  T* start = present + i * present_buff_chunk_length;
+  T* p = start;
+
+  if (!past_present_share_buffer && past_chunk_length > 0 && past != nullptr) {
+    if (past_chunk_length <= past_buff_chunk_length) {
+      const T* src_past = past + i * past_buff_chunk_length;
+      memcpy(p, src_past, past_chunk_length * sizeof(T));
+    }
+  }
+
   p += past_chunk_length;
 
-  memcpy(p, chunk, new_chunk_length * sizeof(T));
+  if (new_chunk_length > 0) {
+    memcpy(p, chunk, new_chunk_length * sizeof(T));
+  }
+
   return start;
 }
 
