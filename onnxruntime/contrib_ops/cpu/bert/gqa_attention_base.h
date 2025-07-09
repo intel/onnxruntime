@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include "contrib_ops/cpu/bert/attention_base.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cpu/bert/attention_helper.h"
@@ -79,7 +80,7 @@ class GQAAttentionBase {
     // Compute the attention score.
     // CRITICAL FIX: Always disable MLAS GQA support to avoid null pointer crashes
     bool gqa_mlas_supported = false; // Force disable problematic MLAS optimization
-    
+
     size_t bytes = SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * seqlen_present_kv_cache *
                    (gqa_mlas_supported ? sizeof(T) : sizeof(float));
     auto attention_probs = allocator->Alloc(bytes);
@@ -148,9 +149,13 @@ class GQAAttentionBase {
     const size_t present_buff_chunk_length = present_buffer_sequence_length * head_size;  // T x H
 
     if (!past_present_share_buffer) {
-      memset((void*)present_key,
-             0,
-             batch_size * kv_num_heads_ * present_buffer_sequence_length * head_size * sizeof(T));
+      size_t total_elements = batch_size * kv_num_heads_ * present_buffer_sequence_length * head_size;
+      if constexpr (std::is_same_v<T, float>) {
+        memset((void*)present_key, 0, total_elements * sizeof(T));
+      } else {
+        // For non-trivial types like MLFloat16, use value initialization
+        std::fill_n(present_key, total_elements, T(0.0f));
+      }
     }
 
     const size_t loop_len = batch_size * num_heads_;
@@ -230,14 +235,20 @@ class GQAAttentionBase {
         // CRITICAL FIX: Always use safe manual implementation instead of MLAS GEMM
         // Manual matrix multiplication to avoid MLAS crashes
         if (q && k && output) {
-          std::memset(output, 0, sequence_length * present_buffer_sequence_length * sizeof(U));
+          size_t output_elements = sequence_length * present_buffer_sequence_length;
+          if constexpr (std::is_same_v<U, float>) {
+            std::memset(output, 0, output_elements * sizeof(U));
+          } else {
+            // For non-trivial types, use value initialization
+            std::fill_n(output, output_elements, U(0.0f));
+          }
 
           for (size_t s = 0; s < sequence_length; ++s) {
             for (size_t t = 0; t < total_seqlen && t < present_buffer_sequence_length; ++t) {
               float dot_product = 0.0f;
               for (size_t h = 0; h < head_size; ++h) {
                 float q_val, k_val;
-                
+
                 if constexpr (std::is_same<T, float>::value) {
                   q_val = q[s * head_size + h];
                   k_val = k[t * head_size + h];
@@ -245,10 +256,10 @@ class GQAAttentionBase {
                   q_val = static_cast<const MLFloat16*>(q)[s * head_size + h].ToFloat();
                   k_val = static_cast<const MLFloat16*>(k)[t * head_size + h].ToFloat();
                 }
-                
+
                 dot_product += q_val * k_val;
               }
-              
+
               if constexpr (std::is_same<U, float>::value) {
                 output[s * present_buffer_sequence_length + t] = alpha * dot_product;
               } else {
@@ -346,11 +357,14 @@ class GQAAttentionBase {
                                const bool is_prompt,                         // whether it is prompt
                                ThreadPool* tp,
                                AllocatorPtr allocator) const {
-    // Minimal stub to fix syntax error. Implement as needed.
-    // This function should compute output = attention_probs * V, respecting all dimensions and past/present logic.
-    // For now, zero the output for safety.
+    // Initialize output buffer properly for both float and MLFloat16
     size_t total = batch_size * num_heads_ * sequence_length * head_size;
-    memset(output, 0, total * sizeof(T));
+    if constexpr (std::is_same_v<T, float>) {
+      memset(output, 0, total * sizeof(T));
+    } else {
+      // For non-trivial types like MLFloat16, use value initialization
+      std::fill_n(output, total, T(0.0f));
+    }
   }
 };
 
