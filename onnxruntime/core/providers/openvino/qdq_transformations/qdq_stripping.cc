@@ -839,7 +839,7 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
     const auto& initializer_tensor = *init;
 
     std::unique_ptr<ONNX_NAMESPACE::TensorProto> init_with_data;
-    ORT_RETURN_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(initializer_tensor, init_with_data));
+    // ORT_RETURN_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(initializer_tensor, init_with_data));
 
     // Check if the initializer has external data
     if (!init_with_data &&
@@ -875,7 +875,7 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
         const auto& initializer_tensor = *src_graph.GetConstantInitializer(input->Name(), true);
 
         std::unique_ptr<ONNX_NAMESPACE::TensorProto> init_with_data;
-        ORT_RETURN_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(initializer_tensor, init_with_data));
+        // ORT_RETURN_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(initializer_tensor, init_with_data));
 
         // Check if the initializer has external data
         if (!init_with_data &&
