@@ -1,6 +1,5 @@
 #include "contrib_ops/cpu/bert/rotary_embedding.h"
 #include "contrib_ops/cpu/bert/rotary_embedding_helper.h"
-
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
 
@@ -10,7 +9,6 @@ using namespace onnxruntime::contrib::rotary_embedding_helper;
 namespace onnxruntime {
 namespace contrib {
 
-// These ops are internal-only, so register outside of onnx
 #define REGISTER_KERNEL_TYPED(T)                                        \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
       RotaryEmbedding,                                                  \
@@ -39,7 +37,6 @@ RotaryEmbedding<T>::RotaryEmbedding(const OpKernelInfo& info) : OpKernel(info) {
   }
 }
 
-// TODO: rotary embedding in place
 template <typename T>
 Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters parameters, const T* input,
                           const int64_t* position_ids, const T* cos_cache, const T* sin_cache, T* output,
@@ -54,50 +51,33 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
   const int position_ids_format = parameters.position_ids_format;
   const int rotary_emb_dim = parameters.rotary_embedding_dim;
   const int half_rotary_emb_dim = rotary_emb_dim / 2;
-  
-  // Calculate maximum cache size to validate cache bounds
   const int max_sequence_length = parameters.max_sequence_length;
-  const int64_t max_cache_size = static_cast<int64_t>(max_sequence_length) * half_rotary_emb_dim;
-  
-  // Parallel to calculate based on head_size
+
   const int loop_len = batch_size * sequence_length * n_heads;
-  // The cost is calculated as:
-  //   - head_size * sizeof(T) for reading input
-  //   - head_size * sizeof(T) for writing output
-  //   - rotary_emb_dim * 32 for the rotary embedding operations (32 is an approximation of the number of CPU cycles)
   const double cost = static_cast<double>(head_size * sizeof(T) * 2 + rotary_emb_dim * 32);
+  
   ThreadPool::TryParallelFor(tp, loop_len, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
     for (std::ptrdiff_t ptr = begin; ptr != end; ++ptr) {
       const int b = static_cast<int>((ptr / n_heads) / sequence_length);
       const int s = static_cast<int>((ptr / n_heads) % sequence_length);
       const int n = static_cast<int>(ptr % n_heads);
-      // Identify the index of batch, sequence, and head (specific range) in the input/output tensor
-      // for read/write
+      
       const int block_offset = b * batch_stride + s * seq_stride + n * head_stride;
-
       const T* input_data = input + block_offset;
       T* output_data = output + block_offset;
 
-      // Cache is (M, H/2) or (M, rotary_embedding_dim/2)
       const int position_id = (position_ids_format == 0)
                                   ? static_cast<int>(position_ids[0]) + s
                                   : static_cast<int>(position_ids[b * sequence_length + s]);
       
-      // CRITICAL FIX: Validate cache offset to prevent buffer overflow
+      // Validate cache bounds
       const int64_t cache_offset_64 = static_cast<int64_t>(position_id) * half_rotary_emb_dim;
+      const int64_t max_cache_size = static_cast<int64_t>(max_sequence_length) * half_rotary_emb_dim;
       
-      // Check if cache offset is within bounds
       if (cache_offset_64 < 0 || cache_offset_64 >= max_cache_size || 
           cache_offset_64 + half_rotary_emb_dim > max_cache_size) {
-        // Cache access would be out of bounds, use identity transformation
-        std::memcpy(output_data, input_data, rotary_emb_dim * sizeof(T));
-        
-        // Copy remaining data if rotary_emb_dim < head_size
-        if (rotary_emb_dim < head_size) {
-          std::memcpy(output_data + rotary_emb_dim,
-                      input_data + rotary_emb_dim,
-                      (head_size - rotary_emb_dim) * sizeof(T));
-        }
+        // Out of bounds - copy input to output
+        std::memcpy(output_data, input_data, head_size * sizeof(T));
         continue;
       }
       
@@ -145,7 +125,6 @@ Status RotaryEmbedding<T>::Compute(OpKernelContext* context) const {
   Tensor* output = context->Output(0, input->Shape());
 
   if (is_packed_batching == false && parameters.sequence_length > parameters.max_sequence_length) {
-    // Launch update_cos_sin_cache kernel with scale
     ORT_NOT_IMPLEMENTED("Updating cos_cache and sin_cache in RotaryEmbedding is not currently supported");
   }
 
@@ -155,8 +134,6 @@ Status RotaryEmbedding<T>::Compute(OpKernelContext* context) const {
   const T* sin_cache_data = sin_cache->Data<T>();
   T* output_dest = output->MutableData<T>();
 
-  AllocatorPtr allocator;
-  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
   auto* tp = context->GetOperatorThreadPool();
 
   return RunRotaryEmbedding<T>(tp, parameters, input_src, pos_ids_data, cos_cache_data, sin_cache_data, output_dest,
