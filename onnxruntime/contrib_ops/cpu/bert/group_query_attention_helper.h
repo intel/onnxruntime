@@ -372,9 +372,10 @@ Status CheckCustomAttentionInputs(const T* position_ids,
                              "attention_bias dimension 2 must be equal to the sequence length, got ", attn_bias_shape[2]);
     }
 
-    if (attn_bias_shape[3] != parameters.total_sequence_length) {
+    // Allow broadcasting for dimension 3: can be 1 or total_sequence_length
+    if ((attn_bias_shape[3] != parameters.total_sequence_length) && (attn_bias_shape[3] != 1)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "attention_bias dimension 3 must be equal to total_sequence_length, got ", attn_bias_shape[3]);
+                             "attention_bias dimension 3 must be equal to total_sequence_length or 1 for broadcasting, got ", attn_bias_shape[3]);
     }
   }
 
