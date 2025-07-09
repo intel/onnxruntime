@@ -22,9 +22,12 @@ jobs:
     name: Build and Test OpenVINO EP (AlamLinux8, Py3.12)
     # Use the reusable workflow as the other Linux CI pipelines
     uses: ./.github/workflows/reusable_linux_build_intel.yml
+    strategy:
+      matrix:
+       build_config: [Release, Debug, RelWithDebinfo]  
     with:
       pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU"
-      build_config: Release
+      build_config: ${{ matrix.build_config }}
       # Architecture: OpenVino only supports Intel X64
       architecture: x64
       dockerfile_path: tools/ci_build/github/linux/docker/inference/x86_64/python/openvino/Dockerfile
