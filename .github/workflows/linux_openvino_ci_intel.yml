@@ -24,7 +24,7 @@ jobs:
     uses: ./.github/workflows/reusable_linux_build_intel.yml
     strategy:
       matrix:
-       build_config: [Release, Debug, RelWithDebinfo]  
+       build_config: [Release, Debug, RelWithDebInfo]  
     with:
       pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU"
       build_config: ${{ matrix.build_config }}

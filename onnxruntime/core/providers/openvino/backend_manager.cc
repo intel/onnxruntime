@@ -76,6 +76,8 @@ BackendManager::BackendManager(SessionContext& session_context,
     subgraph_context_.input_names.insert({node->Name(), index++});
   }
 
+
+
   for (uint32_t index = 0; const auto& node : subgraph.GetOutputs()) {
     subgraph_context_.output_names.insert({node->Name(), index++});
   }
