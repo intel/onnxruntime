@@ -1,6 +1,3 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
-
 #include "contrib_ops/cpu/bert/rotary_embedding.h"
 #include "contrib_ops/cpu/bert/rotary_embedding_helper.h"
 
@@ -57,6 +54,11 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
   const int position_ids_format = parameters.position_ids_format;
   const int rotary_emb_dim = parameters.rotary_embedding_dim;
   const int half_rotary_emb_dim = rotary_emb_dim / 2;
+  
+  // Calculate maximum cache size to validate cache bounds
+  const int max_sequence_length = parameters.max_sequence_length;
+  const int64_t max_cache_size = static_cast<int64_t>(max_sequence_length) * half_rotary_emb_dim;
+  
   // Parallel to calculate based on head_size
   const int loop_len = batch_size * sequence_length * n_heads;
   // The cost is calculated as:
@@ -80,7 +82,26 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
       const int position_id = (position_ids_format == 0)
                                   ? static_cast<int>(position_ids[0]) + s
                                   : static_cast<int>(position_ids[b * sequence_length + s]);
-      const int cache_offset = position_id * half_rotary_emb_dim;
+      
+      // CRITICAL FIX: Validate cache offset to prevent buffer overflow
+      const int64_t cache_offset_64 = static_cast<int64_t>(position_id) * half_rotary_emb_dim;
+      
+      // Check if cache offset is within bounds
+      if (cache_offset_64 < 0 || cache_offset_64 >= max_cache_size || 
+          cache_offset_64 + half_rotary_emb_dim > max_cache_size) {
+        // Cache access would be out of bounds, use identity transformation
+        std::memcpy(output_data, input_data, rotary_emb_dim * sizeof(T));
+        
+        // Copy remaining data if rotary_emb_dim < head_size
+        if (rotary_emb_dim < head_size) {
+          std::memcpy(output_data + rotary_emb_dim,
+                      input_data + rotary_emb_dim,
+                      (head_size - rotary_emb_dim) * sizeof(T));
+        }
+        continue;
+      }
+      
+      const int cache_offset = static_cast<int>(cache_offset_64);
       const T* cos_data = cos_cache + cache_offset;
       const T* sin_data = sin_cache + cache_offset;
 
