@@ -17,6 +17,14 @@
 using namespace onnxruntime::openvino_ep;
 using ov_core_singleton = onnxruntime::openvino_ep::WeakSingleton<ov::Core>;
 
+static void InitCxxApi(const OrtApiBase& ort_api_base) {
+  static std::once_flag init_api;
+  std::call_once(init_api, [&]() {
+    const OrtApi* ort_api = ort_api_base.GetApi(ORT_API_VERSION);
+    Ort::InitApi(ort_api);
+  });
+}
+
 OpenVINOEpPluginFactory::OpenVINOEpPluginFactory(const std::string& ep_name, ApiPtrs apis, const std::string& ov_metadevice_name, std::shared_ptr<ov::Core> core)
     : ApiPtrs{apis},
       ep_name_(ov_metadevice_name.empty() ? ep_name : ep_name + "." + ov_metadevice_name),
@@ -30,6 +38,7 @@ OpenVINOEpPluginFactory::OpenVINOEpPluginFactory(const std::string& ep_name, Api
   OrtEpFactory::CreateAllocator = CreateAllocatorImpl;
   OrtEpFactory::ReleaseAllocator = ReleaseAllocatorImpl;
   OrtEpFactory::CreateDataTransfer = CreateDataTransferImpl;
+  OrtEpFactory::GetVersion = GetVersionImpl;
   ort_version_supported = ORT_API_VERSION;  // Set to the ORT version we were compiled with.
 }
 
@@ -95,10 +104,14 @@ OrtStatus* OpenVINOEpPluginFactory::GetSupportedDevices(const OrtHardwareDevice*
     };
 
     auto filtered_devices = GetOvDevices(ov_device_type);
-    auto matched_device = std::find_if(filtered_devices.begin(), filtered_devices.end(), [&](const std::string& ov_device) {
-      uint32_t ort_device_id = ort_api.HardwareDevice_DeviceId(&device);
-      return device_type == OrtHardwareDeviceType_CPU || ort_device_id == get_pci_device_id(ov_device);
-    });
+    auto matched_device = filtered_devices.begin();
+    if (filtered_devices.size() > 1 && device_type == OrtHardwareDeviceType::OrtHardwareDeviceType_GPU) {
+      // If there are multiple devices of the same type, we need to match by device ID.
+      matched_device = std::find_if(filtered_devices.begin(), filtered_devices.end(), [&](const std::string& ov_device) {
+        uint32_t ort_device_id = ort_api.HardwareDevice_DeviceId(&device);
+        return ort_device_id == get_pci_device_id(ov_device);
+      });
+    }
 
     if (matched_device == filtered_devices.end()) {
       // We didn't find a matching OpenVINO device for the OrtHardwareDevice.
@@ -170,7 +183,7 @@ OrtStatus* OpenVINOEpPluginFactory::CreateEp(const OrtHardwareDevice* const* dev
   }
 
   // Create a new OpenVINO execution provider with this factory's device type
-  auto ov_ep = std::make_unique<OpenVINOEpPlugin>(*this, ep_name_, *session_options, *logger, ov_device_string);
+  auto ov_ep = std::make_unique<OpenVINOEpPlugin>(*this, ep_name_, *session_options, *logger, ov_device_string, ov_core_);
   *ep = ov_ep.release();
   return nullptr;
 }
@@ -202,9 +215,8 @@ extern "C" {
 //
 OrtStatus* CreateEpFactories(const char* registration_name, const OrtApiBase* ort_api_base,
                              OrtEpFactory** factories, size_t max_factories, size_t* num_factories) {
-  const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
-  const OrtEpApi* ort_ep_api = ort_api->GetEpApi();
-  const ApiPtrs api_ptrs{*ort_api, *ort_ep_api};
+  InitCxxApi(*ort_api_base);
+  const ApiPtrs api_ptrs{Ort::GetApi(), Ort::GetEpApi()};
 
   // Get available devices from OpenVINO
   auto ov_core = ov_core_singleton::Get();
@@ -214,8 +226,7 @@ OrtStatus* CreateEpFactories(const char* registration_name, const OrtApiBase* or
 
   const size_t required_factories = supported_factories.size();
   if (max_factories < required_factories) {
-    return ort_api->CreateStatus(ORT_INVALID_ARGUMENT,
-                                 std::format("Not enough space to return EP factories. Need at least {} slots.", required_factories).c_str());
+    return Ort::Status(std::format("Not enough space to return EP factories. Need at least {} factories.", required_factories).c_str(), ORT_INVALID_ARGUMENT);
   }
 
   size_t factory_index = 0;

@@ -6,7 +6,26 @@
 #include <vector>
 #include <string>
 
-#include "onnxruntime_c_api.h"
+#define ORT_API_MANUAL_INIT
+#include "onnxruntime_cxx_api.h"
+#undef ORT_API_MANUAL_INIT
+
+#include "openvino/openvino.hpp"
+
+#define RETURN_IF_ERROR(fn)    \
+  do {                         \
+    OrtStatus* _status = (fn); \
+    if (_status != nullptr) {  \
+      return _status;          \
+    }                          \
+  } while (0)
+
+#define RETURN_IF(cond, ort_api, msg)                    \
+  do {                                                   \
+    if ((cond)) {                                        \
+      return (ort_api).CreateStatus(ORT_EP_FAIL, (msg)); \
+    }                                                    \
+  } while (0)
 
 #define OVEP_DISABLE_MOVE(class_name) \
   class_name(class_name&&) = delete;  \
@@ -20,6 +39,11 @@
   OVEP_DISABLE_COPY(class_name)                \
   OVEP_DISABLE_MOVE(class_name)
 
+#define OVEP_PLUGIN_VERSION "0.0.0"
+
+namespace onnxruntime {
+namespace openvino_ep {
+
 struct ApiPtrs {
   const OrtApi& ort_api;
   const OrtEpApi& ep_api;
@@ -28,7 +52,7 @@ struct ApiPtrs {
 class OpenVINOEpPlugin : public OrtEp,
                          public ApiPtrs {
  public:
-  OpenVINOEpPlugin(ApiPtrs apis, const std::string& name, const OrtSessionOptions& session_options, const OrtLogger& logger, const std::string ov_device_type);
+  OpenVINOEpPlugin(ApiPtrs apis, const std::string& name, const OrtSessionOptions& session_options, const OrtLogger& logger, const std::string ov_device_type, std::shared_ptr<ov::Core> ov_core);
   ~OpenVINOEpPlugin();
 
   OVEP_DISABLE_COPY_AND_MOVE(OpenVINOEpPlugin)
@@ -72,4 +96,8 @@ class OpenVINOEpPlugin : public OrtEp,
   std::vector<const OrtHardwareDevice*> hardware_devices_;
   const OrtLogger& logger_;
   std::string ov_device_type_;  // OpenVINO device type (CPU, GPU, NPU, AUTO, etc.)
+  std::shared_ptr<ov::Core> ov_core_;
 };
+
+}  // namespace openvino_ep
+}  // namespace onnxruntime

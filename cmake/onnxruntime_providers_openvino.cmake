@@ -70,8 +70,9 @@ if(NOT MSVC)
 endif()
 
 add_dependencies(${onnxruntime_providers_openvino_target} onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
-target_include_directories(${onnxruntime_providers_openvino_target} SYSTEM PUBLIC ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${OpenVINO_INCLUDE_DIR} ${OPENVINO_INCLUDE_DIR_LIST} ${PYTHON_INCLUDE_DIRS})
-target_link_libraries(${onnxruntime_providers_openvino_target} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 ${OPENVINO_LIB_LIST} ${ABSEIL_LIBS} Eigen3::Eigen)
+target_include_directories(${onnxruntime_providers_openvino_target} SYSTEM PUBLIC ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${PROTOBUF_LIB} ${OpenVINO_INCLUDE_DIR} ${OPENVINO_INCLUDE_DIR_LIST} ${PYTHON_INCLUDE_DIRS})
+target_link_libraries(${onnxruntime_providers_openvino_target} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 ${OPENVINO_LIB_LIST} ${ABSEIL_LIBS} Eigen3::Eigen
+  onnx onnx_proto ${PROTOBUF_LIB})
 
 if(MSVC)
   target_compile_options(${onnxruntime_providers_openvino_target} PRIVATE /wd4099 /wd4275 /wd4100 /wd4005)

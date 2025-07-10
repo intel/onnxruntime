@@ -11,6 +11,9 @@
 #include "ov_provider.h"
 #include "openvino/openvino.hpp"
 
+namespace onnxruntime {
+namespace openvino_ep {
+
 class OpenVINOEpPluginFactory : public OrtEpFactory, public ApiPtrs {
  public:
   OpenVINOEpPluginFactory(const std::string& ep_name, ApiPtrs apis, const std::string& ov_device, std::shared_ptr<ov::Core> ov_core);
@@ -19,11 +22,17 @@ class OpenVINOEpPluginFactory : public OrtEpFactory, public ApiPtrs {
   OVEP_DISABLE_COPY_AND_MOVE(OpenVINOEpPluginFactory)
 
   static const std::vector<std::string>& GetOvDevices();
-  auto GetOvDevices(const std::string& device_type) {
-    return GetOvDevices() | std::views::filter([&](const std::string& device) {
-             return device.find(device_type) != std::string::npos;
-           });
+
+  std::vector<std::string> GetOvDevices(const std::string& device_type) {
+    std::vector<std::string> filtered_devices;
+    const auto& devices = GetOvDevices();
+    std::copy_if(devices.begin(), devices.end(), std::back_inserter(filtered_devices),
+                 [&device_type](const std::string& device) {
+                   return device.find(device_type) != std::string::npos;
+                 });
+    return filtered_devices;
   }
+
   static const std::vector<std::string>& GetOvMetaDevices();
 
   // Member functions
@@ -125,4 +134,11 @@ class OpenVINOEpPluginFactory : public OrtEpFactory, public ApiPtrs {
     auto* factory = static_cast<OpenVINOEpPluginFactory*>(this_ptr);
     return factory->CreateDataTransfer(data_transfer);
   }
+
+  static const char* ORT_API_CALL GetVersionImpl(const OrtEpFactory*) noexcept {
+    return OVEP_PLUGIN_VERSION;
+  }
 };
+
+}  // namespace openvino_ep
+}  // namespace onnxruntime
