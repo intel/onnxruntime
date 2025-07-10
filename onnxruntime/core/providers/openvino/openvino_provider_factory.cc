@@ -16,6 +16,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "nlohmann/json.hpp"
 #include "core/providers/openvino/openvino_parser_utils.h"
+#include "core/providers/openvino/plugin/ov_factory.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -431,6 +432,35 @@ struct OpenVINO_Provider : Provider {
     ParseProviderInfo(provider_options, config_options, pi);
 
     return std::make_shared<OpenVINOProviderFactory>(pi, SharedContext::Get());
+  }
+
+  Status CreateIExecutionProvider(const OrtHardwareDevice* const* devices,
+                                  const OrtKeyValuePairs* const* ep_metadata,
+                                  size_t num_devices,
+                                  ProviderOptions& provider_options,
+                                  const OrtSessionOptions& session_options,
+                                  const OrtLogger& logger,
+                                  std::unique_ptr<IExecutionProvider>& ep) override {
+    (void)devices;
+    ProviderInfo pi;
+    const auto& config_options = session_options.GetConfigOptions();
+    ParseProviderInfo(provider_options, &config_options, pi);
+
+    if (num_devices != 1) {
+      return Status(common::ONNXRUNTIME, ORT_EP_FAIL, "OpenVINO EP only supports one device.");
+    }
+
+    const auto& device_meta_data = ep_metadata[0];
+    auto it = device_meta_data->Entries().find(OpenVINOEpPluginFactory::ov_device_key_);
+    if (it == device_meta_data->Entries().end()) {
+      return Status(common::ONNXRUNTIME, ORT_INVALID_ARGUMENT, "OpenVINO EP device metadata not found.");
+    }
+
+    pi.device_type = it->second;
+    auto factory = std::make_unique<OpenVINOProviderFactory>(pi, SharedContext::Get());
+    ep = factory->CreateProvider(session_options, logger);
+
+    return Status::OK();
   }
 
   void Initialize() override {

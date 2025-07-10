@@ -483,6 +483,13 @@ if (onnxruntime_USE_RKNPU)
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_rknpu_src})
 endif()
 
+if (onnxruntime_USE_OPENVINO)
+  file(GLOB_RECURSE onnxruntime_test_providers_openvino_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/providers/openvino/*"
+    )
+  list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_openvino_src})
+endif()
+
 if (NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_EXTENDED_MINIMAL_BUILD)
   file(GLOB_RECURSE onnxruntime_test_providers_internal_testing_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/internal_testing/*"
