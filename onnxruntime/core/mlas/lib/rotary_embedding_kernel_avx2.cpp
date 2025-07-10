@@ -10,7 +10,7 @@ Module Name:
 
 Abstract:
 
-    This module implements the rotary embedding kernels for AVX2.
+    This module implements the rotary embedding kernels for AVX2 supported h/w.
 
 --*/
 
@@ -257,8 +257,16 @@ void rope_fp16_interleaved(const MLAS_FP16* input, const MLAS_FP16* sin_data,
 
 }  // anonymous namespace
 
-void RopeKernel_Avx2_fp32(const float* input, const float* sin_data, const float* cos_data,
-                           size_t dim, bool interleaved, float* output) {
+void
+RopeKernel_Avx2_fp32(
+    const float* input,
+    const float* sin_data,
+    const float* cos_data,
+    size_t dim,
+    bool interleaved,
+    float* output
+) {
+    // real part and imaginary part must be paired
     if (!input || !output || !sin_data || !cos_data || dim == 0 || dim % 2 != 0) {
         return;
     }
@@ -270,8 +278,17 @@ void RopeKernel_Avx2_fp32(const float* input, const float* sin_data, const float
     }
 }
 
-void RopeKernel_Avx2_fp16(const MLAS_FP16* input, const MLAS_FP16* sin_data, const MLAS_FP16* cos_data,
-                           size_t dim, bool interleaved, MLAS_FP16* output) {
+void
+RopeKernel_Avx2_fp16(
+    const MLAS_FP16* input,
+    const MLAS_FP16* sin_data,
+    const MLAS_FP16* cos_data,
+    size_t dim,
+    bool interleaved,
+    MLAS_FP16* output
+)
+{
+    // real part and imaginary part must be paired
     if (!input || !output || !sin_data || !cos_data || dim == 0 || dim % 2 != 0) {
         return;
     }
@@ -285,6 +302,9 @@ void RopeKernel_Avx2_fp16(const MLAS_FP16* input, const MLAS_FP16* sin_data, con
 
 }  // namespace rope_avx2
 
+//
+// Kernel dispatch structure definition.
+//
 const MLAS_ROPE_DISPATCH MlasRopeDispatchAvx2 = []() {
     MLAS_ROPE_DISPATCH d;
     d.SRope = rope_avx2::RopeKernel_Avx2_fp32;

@@ -153,10 +153,15 @@ T* ConcatStateChunk(const T* past,
 
 // GQA version of ConcatStateChunk
 template <typename T>
-T* ConcatStateChunkGQA(const T* past, const T* chunk, T* present,
-                       size_t present_buff_chunk_length, size_t past_buff_chunk_length,
-                       size_t past_chunk_length, size_t new_chunk_length,
-                       bool past_present_share_buffer, std::ptrdiff_t i) {
+T* ConcatStateChunkGQA(const T* past,
+                       const T* chunk,
+                       T* present,
+                       size_t present_buff_chunk_length,
+                       size_t past_buff_chunk_length,
+                       size_t past_chunk_length,
+                       size_t new_chunk_length,
+                       bool past_present_share_buffer,
+                       std::ptrdiff_t i) {
 
   if (present == nullptr || chunk == nullptr) {
     return nullptr;
