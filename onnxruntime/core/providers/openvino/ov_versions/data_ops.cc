@@ -617,6 +617,9 @@ bool DataOps::type_is_supported(const NodeArg* node_arg, bool is_initializer) {
         // experimentally for GPU and qdq stripping mode allow int16 types
         if (npu_qdq_optimizer_enabled_ && (dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16 || dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16))
           return true;
+        // Enable bfloat16 -> float16 on-the-fly conversion
+        if (bfloat16_optimizer_enabled_ && dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BFLOAT16)
+          return true;
       }
 #ifndef NDEBUG
       if (openvino_ep::backend_utils::IsDebugEnabled()) {
