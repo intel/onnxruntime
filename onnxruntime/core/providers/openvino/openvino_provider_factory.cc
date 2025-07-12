@@ -433,6 +433,35 @@ struct OpenVINO_Provider : Provider {
     return std::make_shared<OpenVINOProviderFactory>(pi, SharedContext::Get());
   }
 
+  Status CreateIExecutionProvider(const OrtHardwareDevice* const* devices,
+                                  const OrtKeyValuePairs* const* ep_metadata,
+                                  size_t num_devices,
+                                  ProviderOptions& provider_options,
+                                  const OrtSessionOptions& session_options,
+                                  const OrtLogger& logger,
+                                  std::unique_ptr<IExecutionProvider>& ep) override {
+    if (num_devices == 0) {
+      return Status(common::ONNXRUNTIME, ORT_EP_FAIL, "OpenVINO EP requires at least one device.");
+    }
+
+    const ConfigOptions* config_options = &session_options.GetConfigOptions();
+
+    std::array<const void*, 2> configs_array = {&provider_options, config_options};
+    const void* arg = reinterpret_cast<const void*>(&configs_array);
+
+    auto ep_factory = CreateExecutionProviderFactory(arg);
+    if (!ep_factory) {
+      return Status(common::ONNXRUNTIME, ORT_EP_FAIL, "Failed to create OpenVINO EP factory.");
+    }
+
+    ep = ep_factory->CreateProvider(session_options, logger);
+    if (!ep) {
+      return Status(common::ONNXRUNTIME, ORT_EP_FAIL, "Failed to create OpenVINO EP instance.");
+    }
+
+    return Status::OK();
+  }
+
   void Initialize() override {
   }
 
@@ -451,5 +480,136 @@ extern "C" {
 ORT_API(onnxruntime::Provider*, GetProvider) {
   static onnxruntime::openvino_ep::OpenVINO_Provider g_provider;
   return &g_provider;
+}
+}
+
+#include "core/framework/error_code_helper.h"
+
+// OrtEpApi infrastructure to be able to use the OpenVINO EP as an OrtEpFactory for auto EP selection.
+struct OpenVINOEpFactory : OrtEpFactory {
+  OpenVINOEpFactory(const OrtApi& ort_api_in,
+                    const char* ep_name,
+                    OrtHardwareDeviceType hw_type,
+                    const char* ov_device_type)
+      : ort_api{ort_api_in}, ep_name{ep_name}, ort_hw_device_type{hw_type}, ov_device_type{ov_device_type} {
+    GetName = GetNameImpl;
+    GetVendor = GetVendorImpl;
+    GetSupportedDevices = GetSupportedDevicesImpl;
+    CreateEp = CreateEpImpl;
+    ReleaseEp = ReleaseEpImpl;
+  }
+
+  // Returns the name for the EP. Each unique factory configuration must have a unique name.
+  // Ex: a factory that supports GPU should have a different name than a factory that supports CPU.
+  static const char* GetNameImpl(const OrtEpFactory* this_ptr) {
+    const auto* factory = static_cast<const OpenVINOEpFactory*>(this_ptr);
+    return factory->ep_name.c_str();
+  }
+
+  static const char* GetVendorImpl(const OrtEpFactory* this_ptr) {
+    const auto* factory = static_cast<const OpenVINOEpFactory*>(this_ptr);
+    return factory->vendor.c_str();
+  }
+
+  // Creates and returns OrtEpDevice instances for all OrtHardwareDevices that this factory supports.
+  // OpenVINO EP can support multiple device types (CPU, GPU, NPU, etc.) but each factory instance
+  // is configured for a specific device type to enable proper hardware matching.
+  static OrtStatus* GetSupportedDevicesImpl(OrtEpFactory* this_ptr,
+                                            const OrtHardwareDevice* const* devices,
+                                            size_t num_devices,
+                                            OrtEpDevice** ep_devices,
+                                            size_t max_ep_devices,
+                                            size_t* p_num_ep_devices) {
+    size_t& num_ep_devices = *p_num_ep_devices;
+    auto* factory = static_cast<OpenVINOEpFactory*>(this_ptr);
+
+    for (size_t i = 0; i < num_devices && num_ep_devices < max_ep_devices; ++i) {
+      const OrtHardwareDevice& device = *devices[i];
+      if (factory->ort_api.HardwareDevice_Type(&device) == factory->ort_hw_device_type &&
+          factory->ort_api.HardwareDevice_VendorId(&device) == factory->vendor_id) {
+        OrtKeyValuePairs* ep_options = nullptr;
+        factory->ort_api.CreateKeyValuePairs(&ep_options);
+        factory->ort_api.AddKeyValuePair(ep_options, "device_type", factory->ov_device_type.c_str());
+        ORT_API_RETURN_IF_ERROR(
+            factory->ort_api.GetEpApi()->CreateEpDevice(factory, &device, nullptr, ep_options,
+                                                        &ep_devices[num_ep_devices++]));
+      }
+    }
+
+    return nullptr;
+  }
+
+  static OrtStatus* CreateEpImpl(OrtEpFactory* /*this_ptr*/,
+                                 _In_reads_(num_devices) const OrtHardwareDevice* const* /*devices*/,
+                                 _In_reads_(num_devices) const OrtKeyValuePairs* const* /*ep_metadata*/,
+                                 _In_ size_t /*num_devices*/,
+                                 _In_ const OrtSessionOptions* /*session_options*/,
+                                 _In_ const OrtLogger* /*logger*/,
+                                 _Out_ OrtEp** /*ep*/) {
+    return onnxruntime::CreateStatus(ORT_INVALID_ARGUMENT, "OpenVINO EP factory does not support this method.");
+  }
+
+  static void ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, OrtEp* /*ep*/) {
+    // no-op as we never create an EP here.
+  }
+
+  const OrtApi& ort_api;
+  const std::string ep_name;              // EP name
+  const std::string vendor{"Microsoft"};  // EP vendor name
+
+  // Intel vendor ID. Refer to the ACPI ID registry (search Intel): https://uefi.org/ACPI_ID_List
+  const uint32_t vendor_id{0x8086}; // Intel vendor ID
+  const OrtHardwareDeviceType ort_hw_device_type;  // Supported OrtHardwareDevice
+  const std::string ov_device_type;                // OpenVINO device type (CPU, GPU, NPU, etc.)
+};
+
+extern "C" {
+//
+// Public symbols
+//
+OrtStatus* CreateEpFactories(const char* /*registration_name*/, const OrtApiBase* ort_api_base,
+                             OrtEpFactory** factories, size_t max_factories, size_t* num_factories) {
+  const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
+
+  // Create factories for different OpenVINO device types
+  std::vector<std::unique_ptr<OrtEpFactory>> created_factories;
+
+  // CPU factory - most common and always available
+  created_factories.push_back(
+      std::make_unique<OpenVINOEpFactory>(*ort_api,
+                                          onnxruntime::kOpenVINOExecutionProvider,
+                                          OrtHardwareDeviceType_CPU, "CPU"));
+
+  // GPU factory - for Intel integrated graphics
+  created_factories.push_back(
+      std::make_unique<OpenVINOEpFactory>(*ort_api,
+                                          onnxruntime::kOpenVINOExecutionProvider,
+                                          OrtHardwareDeviceType_GPU, "GPU"));
+
+  // NPU factory - for Intel Neural Processing Units
+  created_factories.push_back(
+      std::make_unique<OpenVINOEpFactory>(*ort_api,
+                                          onnxruntime::kOpenVINOExecutionProvider,
+                                          OrtHardwareDeviceType_NPU, "NPU"));
+
+  size_t factories_to_create = std::min(created_factories.size(), max_factories);
+
+  if (factories_to_create == 0) {
+    return ort_api->CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Not enough space to return EP factory. Need at least one.");
+  }
+
+  for (size_t i = 0; i < factories_to_create; ++i) {
+    factories[i] = created_factories[i].release();
+  }
+
+  *num_factories = factories_to_create;
+
+  return nullptr;
+}
+
+OrtStatus* ReleaseEpFactory(OrtEpFactory* factory) {
+  delete static_cast<OpenVINOEpFactory*>(factory);
+  return nullptr;
 }
 }
