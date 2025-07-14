@@ -88,9 +88,7 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
 #if defined(OPENVINO_DISABLE_NPU_FALLBACK)
     eligible_for_cpu_fallback = false;
 #endif
-    auto auto_unified_compile = ((hw_target.find("AUTO") == std::string::npos) ||
-                                 (session_context_.OpenVINO_Version.at(0) >= 2024 &&
-                                  session_context_.OpenVINO_Version.at(1) > 2));
+    auto auto_unified_compile = (hw_target.find("AUTO") == std::string::npos);
 
     // Unified compile is efficient with cahce_dir cached model loading that bypass Read Model
     // Does not support model with exteral weights, dynamic input shape, Epctx onnx cached model,
