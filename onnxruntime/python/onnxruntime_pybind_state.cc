@@ -1182,8 +1182,7 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
 #if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
     ProviderOptions OV_provider_options_map;
     const std::unordered_set<std::string> valid_provider_keys = {"device_type", "device_id", "device_luid", "cache_dir", "precision",
-                                                                 "load_config", "context", "num_of_threads", "model_priority", "num_streams", "enable_opencl_throttling", 
-                                                                 "enable_qdq_optimizer", "enable_bfloat16_optimizer",
+                                                                 "load_config", "context", "num_of_threads", "model_priority", "num_streams", "enable_opencl_throttling", "enable_qdq_optimizer",
                                                                  "enable_causallm", "disable_dynamic_shapes", "reshape_input"};
     auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {

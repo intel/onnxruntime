@@ -340,8 +340,6 @@ static void ParseProviderInfo(const ProviderOptions& provider_options,
 
     pi.enable_qdq_optimizer = ParseBooleanOption(provider_options, "enable_qdq_optimizer");
 
-    pi.enable_bfloat16_optimizer = ParseBooleanOption(provider_options, "enable_bfloat16_optimizer");
-
     pi.enable_causallm = ParseBooleanOption(provider_options, "enable_causallm");
 
     pi.disable_dynamic_shapes = ParseBooleanOption(provider_options, "disable_dynamic_shapes");

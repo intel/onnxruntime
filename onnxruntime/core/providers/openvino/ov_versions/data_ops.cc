@@ -562,7 +562,7 @@ bool DataOps::type_is_supported(const NodeArg* node_arg, bool is_initializer) {
 
   auto dtype = type_proto->tensor_type().elem_type();
   // Enable bfloat16 -> float16 on-the-fly conversion
-  if (bfloat16_optimizer_enabled_ && dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BFLOAT16)
+  if (dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BFLOAT16)
     return true;
   if (is_initializer) {
     for (auto const& var : supported_types_initializer_) {

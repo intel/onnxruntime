@@ -30,10 +30,9 @@ namespace openvino_ep {
 GetCapability::GetCapability(const EPCtxHandler& ep_ctx_handler,
                              const GraphViewer& graph_viewer_param,
                              const std::string device_type_param,
-                             const bool enable_qdq_optimizer,
-                             bool enable_bfloat16_optimizer) : ep_ctx_handler_(ep_ctx_handler),
-                                                               graph_viewer_(graph_viewer_param),
-                                                               device_type_(std::move(device_type_param)) {
+                             const bool enable_qdq_optimizer) : ep_ctx_handler_(ep_ctx_handler),
+                                                                graph_viewer_(graph_viewer_param),
+                                                                device_type_(std::move(device_type_param)) {
   bool npu_qdq_optimizer_enabled = false;
   if (device_type_.find("NPU") != std::string::npos) {
     device_type_ = "CPU";
@@ -43,15 +42,15 @@ GetCapability::GetCapability(const EPCtxHandler& ep_ctx_handler,
   }
 
 #if OPENVINO_VERSION_MAJOR == 2024 && OPENVINO_VERSION_MINOR == 5
-  data_ops_ = new DataOps(graph_viewer_, V_2024_5, device_type_, npu_qdq_optimizer_enabled, enable_bfloat16_optimizer);
+  data_ops_ = new DataOps(graph_viewer_, V_2024_5, device_type_, npu_qdq_optimizer_enabled);
 #elif OPENVINO_VERSION_MAJOR == 2024 && OPENVINO_VERSION_MINOR == 6
-  data_ops_ = new DataOps(graph_viewer_, V_2024_6, device_type_, npu_qdq_optimizer_enabled, enable_bfloat16_optimizer);
+  data_ops_ = new DataOps(graph_viewer_, V_2024_6, device_type_, npu_qdq_optimizer_enabled);
 #elif OPENVINO_VERSION_MAJOR == 2025 && OPENVINO_VERSION_MINOR == 0
-  data_ops_ = new DataOps(graph_viewer_, V_2025_0, device_type_, npu_qdq_optimizer_enabled, enable_bfloat16_optimizer);
+  data_ops_ = new DataOps(graph_viewer_, V_2025_0, device_type_, npu_qdq_optimizer_enabled);
 #elif OPENVINO_VERSION_MAJOR == 2025 && OPENVINO_VERSION_MINOR == 1
-  data_ops_ = new DataOps(graph_viewer_, V_2025_1, device_type_, npu_qdq_optimizer_enabled, enable_bfloat16_optimizer);
+  data_ops_ = new DataOps(graph_viewer_, V_2025_1, device_type_, npu_qdq_optimizer_enabled);
 #else
-  data_ops_ = new DataOps(graph_viewer_, V_2025_1, device_type_, npu_qdq_optimizer_enabled, enable_bfloat16_optimizer);
+  data_ops_ = new DataOps(graph_viewer_, V_2025_1, device_type_, npu_qdq_optimizer_enabled);
 #endif
 }
 
