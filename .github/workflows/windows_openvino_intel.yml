@@ -1,15 +1,8 @@
 name: Windows OpenVINO CI Pipeline Intel
 
 on:
-  push:
-    branches:
-      - main
-      - rel-*
   pull_request:
-    branches:
-      - main
-      - rel-*
-      - ovep-develop
+    branches: ['**' ]
   workflow_dispatch:
 
 concurrency:
