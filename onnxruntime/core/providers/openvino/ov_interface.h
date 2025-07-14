@@ -20,6 +20,8 @@
 #include "openvino/core/partial_shape.hpp"
 #include "common/weak_singleton.h"
 
+struct OrtGraph;
+
 namespace onnxruntime {
 namespace openvino_ep {
 class OVCore;
@@ -37,7 +39,8 @@ std::optional<bool> queryOVProperty(const std::string& property, const std::stri
 struct OVCore : WeakSingleton<OVCore> {
   ov::Core core;
 
-  // OV Interface For Reading Model
+  // OV Interfaces For Reading Model
+  std::shared_ptr<OVNetwork> ReadModel(const OrtGraph* graph);
   std::shared_ptr<OVNetwork> ReadModel(std::string&& model_stream, const std::string& model_path);
 
   OVExeNetwork StatefulCompileModel(std::shared_ptr<OVNetwork>& model,

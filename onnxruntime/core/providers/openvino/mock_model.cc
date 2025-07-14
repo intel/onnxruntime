@@ -5,107 +5,15 @@
 #include <numeric>
 #include <string_view>
 
-//#define ORT_RUNTIME_CLASS(X) \
-//  struct Ort##X;             \
-//  typedef struct Ort##X Ort##X
-//
-// typedef enum OrtErrorCode {
-//  ORT_OK,
-//  ORT_FAIL,
-//  ORT_INVALID_ARGUMENT,
-//  ORT_NO_SUCHFILE,
-//  ORT_NO_MODEL,
-//  ORT_ENGINE_ERROR,
-//  ORT_RUNTIME_EXCEPTION,
-//  ORT_INVALID_PROTOBUF,
-//  ORT_MODEL_LOADED,
-//  ORT_NOT_IMPLEMENTED,
-//  ORT_INVALID_GRAPH,
-//  ORT_EP_FAIL,
-//  ORT_MODEL_LOAD_CANCELED,
-//  ORT_MODEL_REQUIRES_COMPILATION,
-//} OrtErrorCode;
-//
-// struct OrtStatus {
-//  OrtErrorCode code;
-//  char msg[1];  // a null-terminated string
-//};
-//
-// #ifdef _MSC_VER
-// typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
-// #else
-// typedef OrtStatus* OrtStatusPtr;
-// #endif
-//
-// #define ORT_API_CALL _stdcall
-//
-// struct OrtKernelContext;
-//
-// #ifndef _Frees_ptr_opt_
-// #define _Frees_ptr_opt_ _SAL_L_Source_(_Frees_ptr_opt_, (), _Pre_maybenull_ _Post_ptr_invalid_ __drv_freesMem(Mem))
-// #endif
-//
-//// XXX: Unfortunately, SAL annotations are known to not work with function pointers
-// #d efine ORT_API2_STATUS(NAME, ...) \
-//  _Check_return_ _Ret_maybenull_ OrtStatusPtr(ORT_API_CALL* NAME)(__VA_ARGS__) NO_EXCEPTION ORT_MUST_USE_RESULT
-//
-// #ifndef __has_feature
-// #define __has_feature(x) 0
-// #endif
-//
-// #if ((__cplusplus >= 201103L) || (_MSC_VER >= 1900) || (defined(__has_feature) && __has_feature(cxx_noexcept)))
-// #define NO_EXCEPTION noexcept
-// #else
-// #define NO_EXCEPTION throw()
-// #endif
-//
-// #define ORT_MUST_USE_RESULT
-//
-// ORT_RUNTIME_CLASS(Graph);
-// ORT_RUNTIME_CLASS(Node);
-// ORT_RUNTIME_CLASS(HardwareDevice);
-// ORT_RUNTIME_CLASS(EpDevice);
-// ORT_RUNTIME_CLASS(KeyValuePairs);
-// ORT_RUNTIME_CLASS(SessionOptions);
-// ORT_RUNTIME_CLASS(Logger);
-//
-// #define ORT_CLASS_RELEASE(X) void(ORT_API_CALL * Release##X)(_Frees_ptr_opt_ Ort##X * input)
-//
-// #d efine ORT_API_T(RETURN_TYPE, NAME, ...) \
-//  RETURN_TYPE(ORT_API_CALL* NAME)(__VA_ARGS__) NO_EXCEPTION
-//
-// struct OrtApi;
-// typedef struct OrtApi OrtApi;
-//
-// struct OrtApiBase {
-//   /** \brief Get a pointer to the requested version of the ::OrtApi
-//    *
-//    * \param[in] version Must be ::ORT_API_VERSION
-//    * \return The ::OrtApi for the version requested, nullptr will be returned if this version is unsupported, for example when using a runtime
-//    *   older than the version created with this header file.
-//    *
-//    * One can call GetVersionString() to get the version of the Onnxruntime library for logging
-//    * and error reporting purposes.
-//    */
-//   const OrtApi*(ORT_API_CALL* GetApi)(uint32_t version)NO_EXCEPTION;
-//
-//   /** \brief Returns a null terminated string of the version of the Onnxruntime library (eg: "1.8.1")
-//    *
-//    *  \return UTF-8 encoded version string. Do not deallocate the returned buffer.
-//    */
-//   const char*(ORT_API_CALL* GetVersionString)(void)NO_EXCEPTION;
-// };
-//
-// typedef struct OrtApiBase OrtApiBase;
-//
-// #include "core/session/onnxruntime_ep_c_api.h"
-
-#include "core/session/onnxruntime_c_api.h"
 #include "core/graph/constants.h"
+#include "mock_model.h"
 #include <span>
 
 #define BREAK_ON_ERROR(ort_status) \
   if (ort_status) break;
+
+namespace onnxruntime {
+namespace openvino_ep {
 
 // Create OrtNode using the C API
 OrtNode* CreateNode(const OrtModelEditorApi& api,
@@ -136,12 +44,12 @@ OrtNode* CreateNode(const OrtModelEditorApi& api,
   return CreateNode(api, operator_name, node_name, inputs, outputs, attrs, domain_name);
 }
 
-OrtModel* build_model(bool use_constant_node, OrtApi& api, OrtModelEditorApi& model_editor_api) {
-  OrtModel* model = nullptr;
+mock_model build_model(const OrtApi& api, bool use_constant_node) {
+  OrtGraph* graph = nullptr;
 
   // return void so we can use assert_* in the lambda
   do {
-    OrtGraph* graph = nullptr;
+    auto& model_editor_api = *api.GetModelEditorApi();
     BREAK_ON_ERROR(model_editor_api.CreateGraph(&graph));
 
     //
@@ -220,9 +128,12 @@ OrtModel* build_model(bool use_constant_node, OrtApi& api, OrtModelEditorApi& mo
     std::vector<float> y_values(32);
     std::iota(y_values.begin(), y_values.end(), 1.0f);
 
+    OrtMemoryInfo* ort_meminfo{nullptr};
+    BREAK_ON_ERROR(api.CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &ort_meminfo));
+
     // create an initializer for the Y input. add to `weights` so the memory remains valid.
     OrtValue* y_tensor = nullptr;
-    BREAK_ON_ERROR(api.CreateTensorWithDataAsOrtValue(nullptr,
+    BREAK_ON_ERROR(api.CreateTensorWithDataAsOrtValue(ort_meminfo,
                                                       y_values.data(), y_values.size() * sizeof(y_values[0]),
                                                       y_dims.data(), y_dims.size(),
                                                       ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
@@ -254,13 +165,21 @@ OrtModel* build_model(bool use_constant_node, OrtApi& api, OrtModelEditorApi& mo
       node = nullptr;  // graph now owns node
     }
 
-    std::vector<const char*> domain_names = {onnxruntime::kOnnxDomain};
-    std::vector<int> opset_versions = {18};
-    BREAK_ON_ERROR(model_editor_api.CreateModel(domain_names.data(), opset_versions.data(), domain_names.size(),
-                                                &model));
-    BREAK_ON_ERROR(model_editor_api.AddGraphToModel(model, graph));
-    graph = nullptr;  // model now owns
+    //std::vector<const char*> domain_names = {onnxruntime::kOnnxDomain};
+    //std::vector<int> opset_versions = {18};
+    //OrtModel* model = nullptr;
+    //BREAK_ON_ERROR(model_editor_api.CreateModel(domain_names.data(), opset_versions.data(), domain_names.size(),
+    //                                            &model));
+    //BREAK_ON_ERROR(model_editor_api.AddGraphToModel(model, graph));
+    //graph = nullptr;  // model now owns
   } while (0);
 
-  return model;
+  return {api, graph};
 }
+
+mock_model::~mock_model() {
+  api.ReleaseGraph(graph);
+}
+
+}  // namespace openvino_ep
+}  // namespace onnxruntime
