@@ -455,6 +455,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     return model_proto;
   } 
   else if (session_context_.enable_bfloat16_optimizer) {
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] OVEP bfloat16->float16 optimization pass is enabled";
     std::unique_ptr<onnxruntime::Model> model;
     Status status = bfloat16_fix::Transform(subgraph, logger, model);
     auto model_proto = model->ToProto();
