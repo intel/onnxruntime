@@ -20,8 +20,6 @@ struct ApiPtrs {
   const OrtModelEditorApi& model_editor_api;
 };
 
-#define OVEP_PLUGIN_VERSION "0.0.0"
-
 #define OVEP_DISABLE_MOVE(class_name) \
   class_name(class_name&&) = delete;  \
   class_name& operator=(class_name&&) = delete;
@@ -143,7 +141,7 @@ class OpenVINOEpPluginFactory : public OrtEpFactory, public ApiPtrs {
   }
 
   static const char* ORT_API_CALL GetVersionImpl(const OrtEpFactory*) noexcept {
-    return OVEP_PLUGIN_VERSION;
+    return ORT_VERSION;
   }
 };
 
