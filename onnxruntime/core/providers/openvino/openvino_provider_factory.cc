@@ -444,24 +444,50 @@ struct OpenVINO_Provider : Provider {
       return Status(common::ONNXRUNTIME, ORT_EP_FAIL, "OpenVINO EP only supports one device.");
     }
 
-    ProviderInfo pi;
-    const auto& config_options = session_options.GetConfigOptions();
-    ParseProviderInfo(provider_options, &config_options, pi);
-
+    // Extract device type from EP metadata
     const auto& device_meta_data = ep_metadata[0];
+    // Print all keys and values from OrtKeyValuePairs
+    if (device_meta_data) {
+      const auto& entries = device_meta_data->Entries();
+      std::cout << "[OpenVINO EP] OrtKeyValuePairs all entries:" << std::endl;
+      for (const auto& kv : entries) {
+      std::cout << "  Key: " << kv.first << ", Value: " << kv.second << std::endl;
+      }
+    }
     auto it = device_meta_data->Entries().find("ov_device");
     if (it == device_meta_data->Entries().end()) {
       return Status(common::ONNXRUNTIME, ORT_INVALID_ARGUMENT, "OpenVINO EP device metadata not found.");
     }
-    pi.device_type = it->second;
 
-    /*
-    TODO: This is where we need to perform some checking / manupulation of the session_options before
-    they are passed into CreateProviders() below.
-    Note: pi.device_type is getting set above, but I *think* it will just get overridden by the
-          ParseConfigOptions() that will be done inside of CreateProvider();
-    */
+    auto print_kv_map = [](const auto& map, const std::string& name) {
+      std::cout << "[OpenVINO EP] " << name << " entries:" << std::endl;
+      for (const auto& kv : map) {
+      std::cout << "  " << kv.first << ": " << kv.second << std::endl;
+      }
+    };
 
+    // Print OrtKeyValuePairs entries
+    if (device_meta_data) {
+      const auto& entries = device_meta_data->Entries();
+      print_kv_map(entries, "OrtKeyValuePairs");
+    }
+
+    // Print provider_options entries
+    print_kv_map(provider_options, "ProviderOptions");
+    std::string metadata_device_type = it->second;
+
+    // If user didn't specify device_type, use the one from metadata
+    if (provider_options.find("device_type") == provider_options.end()) {
+      provider_options["device_type"] = metadata_device_type;
+    }
+
+    // Parse provider info with the device type
+    ProviderInfo pi;
+    const auto& config_options = session_options.GetConfigOptions();
+    ParseProviderInfo(provider_options, &config_options, pi);
+    ParseConfigOptions(pi);
+
+    // Create and return the execution provider
     auto factory = std::make_unique<OpenVINOProviderFactory>(pi, SharedContext::Get());
     ep = factory->CreateProvider(session_options, logger);
     return Status::OK();

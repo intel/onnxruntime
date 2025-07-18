@@ -836,7 +836,30 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
             " 'enable_causallm', 'model_priority'] \n");
       }
     }
-    session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
+
+    // Get ep devices with matching ov_device as device_type
+    auto device_type = ov_options.find("device_type")->second;
+    // ov_options.erase("device_type");
+
+    auto ep_devices = env.GetEpDevices();
+
+    std::unordered_map<std::string, std::vector<Ort::ConstEpDevice> > ep_device_map;
+    for (const auto& device : ep_devices) {
+      ep_device_map[device.EpName()].push_back(device);
+    }
+
+    std::vector<Ort::ConstEpDevice> ep_devices_found;
+
+    for (const auto& [ep_name, devices] : ep_device_map) {
+      for (const auto& device : devices) {
+        if (ep_name == "OpenVINOExecutionProvider" && device.EpMetadata().GetValue("ov_device") == device_type) {
+          ep_devices_found.emplace_back(device);
+        }
+      }
+    }
+
+    // session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
+    session_options.AppendExecutionProvider_V2(env, {ep_devices_found[0]}, ov_options);
 #else
     ORT_THROW("OpenVINO is not supported in this build\n");
 #endif
