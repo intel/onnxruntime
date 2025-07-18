@@ -444,6 +444,20 @@ struct OpenVINO_Provider : Provider {
       return Status(common::ONNXRUNTIME, ORT_EP_FAIL, "OpenVINO EP only supports one device.");
     }
 
+    // Block setting certain provider options via AppendExecutionProvider_V2
+    const std::unordered_set<std::string> blocked_provider_keys = {
+      "device_type", "device_id", "device_luid", "cache_dir", "precision",
+      "context", "num_of_threads", "model_priority", "num_streams",
+      "enable_opencl_throttling", "enable_qdq_optimizer", "disable_dynamic_shapes"
+    };
+
+    for (const auto& key : blocked_provider_keys) {
+      if (provider_options.find(key) != provider_options.end()) {
+      return Status(common::ONNXRUNTIME, ORT_INVALID_ARGUMENT,
+              "OpenVINO EP: Option '" + key + "' cannot be set explicitly when using AppendExecutionProvider_V2.");
+      }
+    }
+
     // Extract device type from EP metadata
     const auto& device_meta_data = ep_metadata[0];
     auto it = device_meta_data->Entries().find("ov_device");
