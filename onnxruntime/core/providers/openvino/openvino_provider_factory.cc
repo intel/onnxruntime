@@ -433,7 +433,7 @@ struct OpenVINO_Provider : Provider {
     return std::make_shared<OpenVINOProviderFactory>(pi, SharedContext::Get());
   }
 
-  Status CreateIExecutionProvider(const OrtHardwareDevice* const* devices,
+  Status CreateIExecutionProvider(const OrtHardwareDevice* const* /*devices*/,
                                   const OrtKeyValuePairs* const* ep_metadata,
                                   size_t num_devices,
                                   ProviderOptions& provider_options,
