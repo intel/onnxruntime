@@ -433,44 +433,84 @@ struct OpenVINO_Provider : Provider {
     return std::make_shared<OpenVINOProviderFactory>(pi, SharedContext::Get());
   }
 
-  Status CreateIExecutionProvider(const OrtHardwareDevice* const* /*devices*/,
+  Status CreateIExecutionProvider(const OrtHardwareDevice* const* devices,
                                   const OrtKeyValuePairs* const* ep_metadata,
                                   size_t num_devices,
                                   ProviderOptions& provider_options,
                                   const OrtSessionOptions& session_options,
                                   const OrtLogger& logger,
                                   std::unique_ptr<IExecutionProvider>& ep) override {
-    if (num_devices != 1) {
-      return Status(common::ONNXRUNTIME, ORT_EP_FAIL, "OpenVINO EP only supports one device.");
+    // Check if no devices are provided
+    if (num_devices == 0) {
+      return Status(common::ONNXRUNTIME, ORT_EP_FAIL, "No devices provided to CreateEp");
     }
 
     // Block setting certain provider options via AppendExecutionProvider_V2
+    // TODO: Expand this out and give better guidance for keys that should now flow through load_config.
     const std::unordered_set<std::string> blocked_provider_keys = {
       "device_type", "device_id", "device_luid", "cache_dir", "precision",
       "context", "num_of_threads", "model_priority", "num_streams",
-      "enable_opencl_throttling", "enable_qdq_optimizer", "disable_dynamic_shapes"
-    };
+      "enable_opencl_throttling", "enable_qdq_optimizer", "disable_dynamic_shapes"};
 
     for (const auto& key : blocked_provider_keys) {
       if (provider_options.find(key) != provider_options.end()) {
-      return Status(common::ONNXRUNTIME, ORT_INVALID_ARGUMENT,
-              "OpenVINO EP: Option '" + key + "' cannot be set explicitly when using AppendExecutionProvider_V2.");
+        return Status(common::ONNXRUNTIME, ORT_INVALID_ARGUMENT,
+                      "OpenVINO EP: Option '" + key + "' cannot be set explicitly when using AppendExecutionProvider_V2.");
       }
     }
 
-    // Extract device type from EP metadata
-    const auto& device_meta_data = ep_metadata[0];
-    auto it = device_meta_data->Entries().find("ov_device");
-    if (it == device_meta_data->Entries().end()) {
-      return Status(common::ONNXRUNTIME, ORT_INVALID_ARGUMENT, "OpenVINO EP device metadata not found.");
+    const char* ov_device_key = "ov_device";
+    const char* ov_meta_device_key = "ov_meta_device";
+
+    // Create a unique list of ov_devices that were passed in.
+    std::unordered_set<std::string_view> unique_ov_devices;
+    std::vector<std::string_view> ordered_unique_ov_devices;
+    for (size_t i = 0; i < num_devices; ++i) {
+      const auto& device_meta_data = ep_metadata[i];
+      auto ov_device_it = device_meta_data->Entries().find(ov_device_key);
+      if (ov_device_it == device_meta_data->Entries().end()) {
+        return Status(common::ONNXRUNTIME, ORT_INVALID_ARGUMENT, "OpenVINO EP device metadata not found.");
+      }
+      auto &ov_device = ov_device_it->second;
+
+      // Add to ordered_unique only if not already present
+      if (unique_ov_devices.insert(ov_device).second) {
+        ordered_unique_ov_devices.push_back(ov_device);
+      }
     }
 
-    std::string metadata_device_type = it->second;
-
-    // If user didn't specify device_type, use the one from metadata
-    if (provider_options.find("device_type") == provider_options.end()) {
-      provider_options["device_type"] = metadata_device_type;
+    std::string ov_meta_device_type = "NONE";
+    {
+      auto ov_meta_device_it = ep_metadata[0]->Entries().find(ov_meta_device_key);
+      if (ov_meta_device_it != ep_metadata[0]->Entries().end()) {
+        ov_meta_device_type = ov_meta_device_it->second;
+      }
     }
+
+    bool is_meta_device_factory = (ov_meta_device_type != "NONE");
+
+    if (ordered_unique_ov_devices.size() > 1 && !is_meta_device_factory) {
+      LOGS_DEFAULT(WARNING) << "[OpenVINO EP] Multiple devices were specified that are not OpenVINO meta devices. Using first ov_device only: " << ordered_unique_ov_devices.at(0);
+      ordered_unique_ov_devices.resize(1);  // Use only the first device if not a meta device factory
+    }
+
+    std::string ov_device_string;
+    if (is_meta_device_factory) {
+      // Build up a meta device string based on the devices that are passed in. E.g. AUTO:NPU,GPU.0,CPU
+      ov_device_string = ov_meta_device_type;
+      ov_device_string += ":";
+    }
+
+    bool prepend_comma = false;
+    for (const auto& ov_device : ordered_unique_ov_devices) {
+      if (prepend_comma) {
+        ov_device_string += ",";
+      }
+      ov_device_string += ov_device;
+      prepend_comma = true;
+    }
+
+    provider_options["device_type"] = ov_device_string;
 
     // Parse provider info with the device type
     ProviderInfo pi;
