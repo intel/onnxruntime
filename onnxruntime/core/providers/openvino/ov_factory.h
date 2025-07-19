@@ -141,6 +141,11 @@ class OpenVINOEpPluginFactory : public OrtEpFactory, public ApiPtrs {
     return ApiEntry([&]() { return factory->GetSupportedDevices(devices, num_devices, ep_devices, max_ep_devices, p_num_ep_devices); });
   }
 
+  static OrtStatus* ORT_API_CALL CreateDataTransferImpl(OrtEpFactory* this_ptr,
+                                                        OrtDataTransferImpl** data_transfer) noexcept {
+    return nullptr;
+  }
+
   static const char* ORT_API_CALL GetVersionImpl(const OrtEpFactory*) noexcept {
     return ORT_VERSION;
   }
