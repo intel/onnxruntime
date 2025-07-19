@@ -124,6 +124,10 @@ OrtStatus* OpenVINOEpPluginFactory::GetSupportedDevices(const OrtHardwareDevice*
     ort_api.CreateKeyValuePairs(&ep_metadata);
     ort_api.AddKeyValuePair(ep_metadata, ov_device_key_, matched_device->c_str());
 
+    if (IsMetaDeviceFactory()) {
+      ort_api.AddKeyValuePair(ep_metadata, ov_meta_device_key_, device_type_.c_str());
+    }
+
     // Create EP device
     auto* status = ort_api.GetEpApi()->CreateEpDevice(this, &device, ep_metadata, ep_options,
                                                       &ep_devices[num_ep_devices++]);

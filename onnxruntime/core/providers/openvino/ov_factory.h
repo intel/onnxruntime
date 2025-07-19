@@ -104,6 +104,7 @@ class OpenVINOEpPluginFactory : public OrtEpFactory, public ApiPtrs {
   static constexpr const char* vendor_ = "Intel";
   static constexpr uint32_t vendor_id_{0x8086};  // Intel's PCI vendor ID
   static constexpr const char* ov_device_key_ = "ov_device";
+  static constexpr const char* ov_meta_device_key_ = "ov_meta_device";
   static constexpr const char* provider_name_ = "OpenVINOExecutionProvider";
 
  private:
