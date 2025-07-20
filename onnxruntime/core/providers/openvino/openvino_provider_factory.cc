@@ -445,17 +445,35 @@ struct OpenVINO_Provider : Provider {
       return Status(common::ONNXRUNTIME, ORT_EP_FAIL, "No devices provided to CreateEp");
     }
 
-    // Block setting certain provider options via AppendExecutionProvider_V2
-    // TODO: Expand this out and give better guidance for keys that should now flow through load_config.
-    const std::unordered_set<std::string> blocked_provider_keys = {
-      "device_type", "device_id", "device_luid", "cache_dir", "precision",
-      "context", "num_of_threads", "model_priority", "num_streams",
-      "enable_opencl_throttling", "enable_qdq_optimizer", "disable_dynamic_shapes"};
+    // For provider options that we don't support anymore, give some guidance & examples
+    // about how to make use of the option through load_config.
+    const std::vector<std::pair<std::string, std::string>> block_and_advise_entries = {
+      {"cache_dir", "\"CACHE_DIR\": \"<filesystem_path>\""},
+      {"precision", "\"INFERENCE_PRECISION_HINT\": \"F32\""},
+      {"num_streams", "\"NUM_STREAMS\": \"1\""},
+      {"model_priority", "\"MODEL_PRIORITY\": \"LOW\""},
+      {"enable_opencl_throttling", "\"GPU\": {\"PLUGIN_THROTTLE\": \"1\"}"},
+      {"enable_qdq_optimizer", "\"NPU\": {\"NPU_QDQ_OPTIMIZATION\": \"YES\"}"}
+    };
+
+    for (auto& block_and_advise_entry : block_and_advise_entries) {
+      if (provider_options.find(block_and_advise_entry.first) != provider_options.end()) {
+        std::string message = "OpenVINO EP: Option '" + block_and_advise_entry.first +
+                              "' cannot be set when using AppendExecutionProvider_V2. " +
+                              "It can instead be enabled by a load_config key / value pair. For example: " +
+                              block_and_advise_entry.second;
+        return Status(common::ONNXRUNTIME, ORT_INVALID_ARGUMENT, message);
+      }
+    }
+
+    // For the rest of the disallowed provider options, give a generic error message.
+    const std::vector<std::string> blocked_provider_keys = {
+      "device_type", "device_id", "device_luid", "context", "num_of_threads", "disable_dynamic_shapes"};
 
     for (const auto& key : blocked_provider_keys) {
       if (provider_options.find(key) != provider_options.end()) {
         return Status(common::ONNXRUNTIME, ORT_INVALID_ARGUMENT,
-                      "OpenVINO EP: Option '" + key + "' cannot be set explicitly when using AppendExecutionProvider_V2.");
+                      "OpenVINO EP: Option '" + key + "' cannot be set when using AppendExecutionProvider_V2.");
       }
     }
 
