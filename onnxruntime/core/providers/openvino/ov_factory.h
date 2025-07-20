@@ -127,7 +127,7 @@ class OpenVINOEpPluginFactory : public OrtEpFactory, public ApiPtrs {
     return factory->GetVendor();
   }
 
-  static uint32_t ORT_API_CALL GetVendorIdImpl([[maybe_unused]] const OrtEpFactory* this_ptr) noexcept {
+  static uint32_t ORT_API_CALL GetVendorIdImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
     return OpenVINOEpPluginFactory::vendor_id_;
   }
 
@@ -141,8 +141,9 @@ class OpenVINOEpPluginFactory : public OrtEpFactory, public ApiPtrs {
     return ApiEntry([&]() { return factory->GetSupportedDevices(devices, num_devices, ep_devices, max_ep_devices, p_num_ep_devices); });
   }
 
-  static OrtStatus* ORT_API_CALL CreateDataTransferImpl(OrtEpFactory* this_ptr,
+  static OrtStatus* ORT_API_CALL CreateDataTransferImpl(OrtEpFactory* /*this_ptr*/,
                                                         OrtDataTransferImpl** data_transfer) noexcept {
+    *data_transfer = nullptr;  // return nullptr to indicate that this EP does not support data transfer.
     return nullptr;
   }
 
