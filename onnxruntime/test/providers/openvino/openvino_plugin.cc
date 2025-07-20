@@ -137,6 +137,22 @@ TEST_F(OrtEpLibraryOv, MetaDevicesAvailable) {
   }
 }
 
+TEST_F(OrtEpLibraryOv, RunSessionWithAllAUTODevices) {
+  auto ep_devices = ort_env->GetEpDevices();
+  std::vector<Ort::ConstEpDevice> matching_devices;
+
+  for (const auto& device : ep_devices) {
+    std::string ep_name = device.EpName();
+    if (ep_name.find(registration_name) != std::string::npos &&
+        (ep_name == registration_name + ".AUTO")) {
+      matching_devices.push_back(device);
+    }
+  }
+  Ort::SessionOptions session_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, matching_devices, std::unordered_map<std::string, std::string>{});
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), session_options);
+}
+
 TEST_F(OrtEpLibraryOv, PluginEp_AppendV2_MulInference) {
   auto plugin_ep_device = GetOvCpuEpDevice();
   ASSERT_NE(plugin_ep_device, nullptr);
@@ -175,6 +191,31 @@ TEST_F(OrtEpLibraryOv, PluginEp_AppendV2_cpu_epctx_variants) {
     session_options.AppendExecutionProvider_V2(*ort_env, std::vector<Ort::ConstEpDevice>{plugin_ep_device}, ep_options);
     Ort::Session session(*ort_env, test_case.ctx_filename, session_options);
     RunModelWithSession(session);
+  }
+}
+
+TEST_F(OrtEpLibraryOv, PluginEp_CheckV2DisallowedProviderOptions) {
+  auto plugin_ep_device = GetOvCpuEpDevice();
+  ASSERT_NE(plugin_ep_device, nullptr);
+  std::vector<std::unordered_map<std::string, std::string>> disallowed_provider_option_examples = {
+      {{"device_type", "CPU"}},
+      {{"device_id", "CPU"}},
+      {{"device_luid", "1234"}},
+      {{"cache_dir", "cache"}},
+      {{"precision", "F32"}},
+      {{"context", "4"}},
+      {{"num_of_threads", "1"}},
+      {{"model_priority", "DEFAULT"}},
+      {{"num_streams", "1"}},
+      {{"enable_opencl_throttling", "true"}},
+      {{"enable_qdq_optimizer", "true"}},
+      {{"disable_dynamic_shapes", "true"}},
+  };
+  for (auto& example : disallowed_provider_option_examples) {
+    EXPECT_THROW({
+    Ort::SessionOptions session_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, std::vector<Ort::ConstEpDevice>{plugin_ep_device}, example);
+    Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), session_options); }, Ort::Exception);
   }
 }
 
