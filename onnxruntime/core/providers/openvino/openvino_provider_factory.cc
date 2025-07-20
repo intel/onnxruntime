@@ -406,7 +406,7 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
   // This is called during session creation when AppendExecutionProvider_V2 is used.
   // This one is called because ParseProviderInfo / ParseConfigOptions, etc. are already
   // performed in CreateIExecutionProvider, and so provider_info_ has already been populated.
-  std::unique_ptr<IExecutionProvider> CreateProvider_V2(const OrtSessionOptions& session_options,
+  std::unique_ptr<IExecutionProvider> CreateProvider_V2(const OrtSessionOptions& /*session_options*/,
                                                         const OrtLogger& session_logger) {
     ProviderInfo provider_info = provider_info_;
     auto ov_ep = std::make_unique<OpenVINOExecutionProvider>(provider_info, shared_context_);
