@@ -10,6 +10,7 @@
 #include <set>
 #include <list>
 #include <type_traits>
+#include <memory>
 #include <core/session/onnxruntime_cxx_api.h>
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
@@ -39,6 +40,20 @@ extern const OrtApi* g_ort;
 
 namespace onnxruntime {
 namespace perftest {
+
+// Helper function to convert OrtHardwareDeviceType to human-readable string
+const char* GetDeviceTypeString(OrtHardwareDeviceType device_type) {
+  switch (device_type) {
+    case OrtHardwareDeviceType_CPU:
+      return "OrtHardwareDeviceType_CPU";
+    case OrtHardwareDeviceType_GPU:
+      return "OrtHardwareDeviceType_GPU";
+    case OrtHardwareDeviceType_NPU:
+      return "OrtHardwareDeviceType_NPU";
+    default:
+      return "OrtHardwareDeviceType_UNKNOWN";
+  }
+}
 
 std::chrono::duration<double> OnnxRuntimeTestSession::Run() {
   // Randomly pick one OrtValueArray from test_inputs_. (NOT ThreadSafe)
@@ -674,7 +689,9 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif
-    std::unordered_map<std::string, std::string> ov_options;
+    // Use smart pointer for automatic memory management
+    auto ov_options = std::make_unique<std::unordered_map<std::string, std::string>>();
+
     std::istringstream ss(ov_string);
     std::string token;
     while (ss >> token) {
@@ -700,15 +717,15 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
           ov_supported_device_types.emplace("GPU." + std::to_string(i));
         }
         if (ov_supported_device_types.find(value) != ov_supported_device_types.end()) {
-          ov_options[key] = value;
+          (*ov_options)[key] = value;
         } else if (deprecated_device_types.find(value) != deprecated_device_types.end()) {
-          ov_options[key] = value;
+          (*ov_options)[key] = value;
         } else if (value.find("HETERO") == 0) {
-          ov_options[key] = value;
+          (*ov_options)[key] = value;
         } else if (value.find("MULTI") == 0) {
-          ov_options[key] = value;
+          (*ov_options)[key] = value;
         } else if (value.find("AUTO") == 0) {
-          ov_options[key] = value;
+          (*ov_options)[key] = value;
         } else {
           ORT_THROW(
               "[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. "
@@ -717,18 +734,18 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         }
       } else if (key == "device_id") {
         if (value == "CPU" || value == "GPU" || value == "NPU") {
-          ov_options[key] = value;
+          (*ov_options)[key] = value;
         } else {
           ORT_THROW("[ERROR] [OpenVINO] Unsupported device_id is selected. Select from available options.");
         }
       } else if (key == "precision") {
-        auto device_type = ov_options["device_type"];
+        auto device_type = (*ov_options)["device_type"];
         if (device_type.find("GPU") != std::string::npos) {
           if (value == "") {
-            ov_options[key] = "FP16";
+            (*ov_options)[key] = "FP16";
             continue;
           } else if (value == "ACCURACY" || value == "FP16" || value == "FP32") {
-            ov_options[key] = value;
+            (*ov_options)[key] = value;
             continue;
           } else {
             ORT_THROW(
@@ -737,14 +754,14 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
           }
         } else if (device_type.find("NPU") != std::string::npos) {
           if (value == "" || value == "ACCURACY" || value == "FP16") {
-            ov_options[key] = "FP16";
+            (*ov_options)[key] = "FP16";
             continue;
           } else {
             ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. NPU only supported FP16. \n");
           }
         } else if (device_type.find("CPU") != std::string::npos) {
           if (value == "" || value == "ACCURACY" || value == "FP32") {
-            ov_options[key] = "FP32";
+            (*ov_options)[key] = "FP32";
             continue;
           } else {
             ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. CPU only supports FP32 . \n");
@@ -753,21 +770,21 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       } else if (key == "enable_opencl_throttling") {
         if (value == "true" || value == "True" ||
             value == "false" || value == "False") {
-          ov_options[key] = value;
+          (*ov_options)[key] = value;
         } else {
           ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_opencl_throttling' should be a boolean i.e. true or false. Default value is false.\n");
         }
       } else if (key == "enable_qdq_optimizer") {
         if (value == "true" || value == "True" ||
             value == "false" || value == "False") {
-          ov_options[key] = value;
+          (*ov_options)[key] = value;
         } else {
           ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_qdq_optimizer' should be a boolean i.e. true or false. Default value is false.\n");
         }
       } else if (key == "enable_causallm") {
         if (value == "true" || value == "True" ||
             value == "false" || value == "False") {
-          ov_options[key] = value;
+          (*ov_options)[key] = value;
         } else {
           ORT_THROW(
               "[ERROR] [OpenVINO] The value for the key 'enable_causallm' should be a boolean i.e. true or false."
@@ -776,7 +793,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       } else if (key == "disable_dynamic_shapes") {
         if (value == "true" || value == "True" ||
             value == "false" || value == "False") {
-          ov_options[key] = value;
+          (*ov_options)[key] = value;
         } else {
           ORT_THROW(
               "[ERROR] [OpenVINO] The value for the key 'enable_dynamic_shapes' "
@@ -786,7 +803,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         if (std::stoi(value) <= 0) {
           ORT_THROW("[ERROR] [OpenVINO] The value for the key 'num_of_threads' should be greater than 0\n");
         } else {
-          ov_options[key] = value;
+          (*ov_options)[key] = value;
         }
       } else if (key == "load_config") {
         auto load_json = [&](std::string filename) -> std::string {
@@ -809,25 +826,25 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
           }
           return json_config.dump();
         };
-        ov_options[key] = load_json(value);
+        (*ov_options)[key] = load_json(value);
       } else if (key == "model_priority") {
-        ov_options[key] = value;
+        (*ov_options)[key] = value;
       } else if (key == "cache_dir") {
-        ov_options[key] = value;
+        (*ov_options)[key] = value;
       } else if (key == "context") {
-        ov_options[key] = value;
+        (*ov_options)[key] = value;
       } else if (key == "num_streams") {
         if (std::stoi(value) <= 0 && std::stoi(value) > 8) {
           ORT_THROW("[ERROR] [OpenVINO] The value for the key 'num_streams' should be in the range of 1-8 \n");
         } else {
-          ov_options[key] = value;
+          (*ov_options)[key] = value;
         }
       } else if (key == "device_memory_name") {
         device_memory_name_ = std::move(value);
       } else if (key == "device_luid") {
-        ov_options[key] = value;
+        (*ov_options)[key] = value;
       } else if (key == "reshape_input") {
-        ov_options[key] = value;
+        (*ov_options)[key] = value;
       } else {
         ORT_THROW(
             "[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO."
@@ -836,7 +853,185 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
             " 'enable_causallm', 'model_priority'] \n");
       }
     }
-    session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
+
+    bool enable_abi = true; // Switch to enable AppendExecutionProvider_V2 ABI approach
+
+    if (enable_abi) {
+      // Use AppendExecutionProvider_V2 approach here
+      auto ep_devices = env.GetEpDevices();
+      Ort::ConstEpDevice selected_plugin_ep_device{};
+      std::cout << "Using AppendExecutionProvider_V2 ABI approach\n";
+      std::cout << "Total EP devices available: " << ep_devices.size() << std::endl;
+
+      // Debug: List all available EP devices with proper device type string conversion
+      for (size_t i = 0; i < ep_devices.size(); ++i) {
+        const auto& device = ep_devices[i];
+        std::cout << "Device " << i << ": EP Name = " << device.EpName()
+                  << ", Vendor = " << device.EpVendor()
+                  << ", Device Type = " << device.Device().Type()
+                  << " (" << GetDeviceTypeString(device.Device().Type()) << ")" << std::endl;
+      }
+
+      // Determine target device type from ov_options
+      std::string target_device_type = "";
+      if (ov_options->find("device_type") != ov_options->end()) {
+        target_device_type = (*ov_options)["device_type"];
+        ov_options->erase("device_type"); // Remove from EP options as it's handled separately
+      }
+
+      // Default to CPU if no device_type specified
+      if (target_device_type.empty()) {
+        target_device_type = "CPU";
+        (*ov_options)["device_type"] = "CPU";
+      }
+
+      std::cout << "Target device type: " << target_device_type << std::endl;
+
+      // Map OpenVINO device types to ORT hardware device types for filtering
+      OrtHardwareDeviceType target_hardware_type = OrtHardwareDeviceType_CPU;
+      bool supports_multiple_devices = false;
+
+      if (target_device_type.find("CPU") != std::string::npos) {
+        target_hardware_type = OrtHardwareDeviceType_CPU;
+      } else if (target_device_type.find("GPU") != std::string::npos) {
+        target_hardware_type = OrtHardwareDeviceType_GPU;
+      } else if (target_device_type.find("NPU") != std::string::npos) {
+        target_hardware_type = OrtHardwareDeviceType_NPU;
+      } else if (target_device_type.find("AUTO") != std::string::npos ||
+                 target_device_type.find("HETERO") != std::string::npos ||
+                 target_device_type.find("MULTI") != std::string::npos) {
+        // For meta devices, we'll search for any supported device type
+        supports_multiple_devices = true;
+      }
+
+      // Find appropriate OpenVINO EP device
+      const std::string registration_name = "OpenVINOExecutionProvider";
+
+      // Function to check if device matches our criteria
+      auto device_matches_criteria = [&](const Ort::ConstEpDevice& device) -> bool {
+        std::cout << "Checking device: " << device.EpName() << std::endl;
+
+        // Check if this is an OpenVINO EP device
+        if (std::string_view(device.EpName()).find(registration_name) == std::string::npos) {
+          std::cout << "Device doesn't match OpenVINO registration name" << std::endl;
+          return false;
+        }
+
+        // For meta devices, check if the EP name matches the meta device pattern
+        if (supports_multiple_devices) {
+          std::string device_ep_name = device.EpName();
+          
+          // Extract the meta device type from target_device_type (e.g., "AUTO" from "AUTO:GPU.0,CPU")
+          std::string meta_device_type = target_device_type;
+          if (auto colon_pos = meta_device_type.find(':'); colon_pos != std::string::npos) {
+            meta_device_type = meta_device_type.substr(0, colon_pos);
+          }
+          
+          std::string expected_ep_name = registration_name + "." + meta_device_type;
+          bool matches = device_ep_name == expected_ep_name;
+          std::cout << "Meta device check: expected=" << expected_ep_name 
+                    << ", actual=" << device_ep_name 
+                    << " -> " << (matches ? "MATCH" : "NO MATCH") << std::endl;
+          return matches;
+        }
+
+        // For regular devices, check hardware type and metadata
+        if (device.Device().Type() == target_hardware_type) {
+          const auto& meta_kv = device.EpMetadata().GetKeyValuePairs();
+          auto device_type_it = meta_kv.find("ov_device");
+          if (device_type_it != meta_kv.end()) {
+            // Extract base device type for comparison (e.g., "GPU.0" -> "GPU")
+            std::string ov_device = device_type_it->second;
+            std::string base_device_type = target_device_type;
+
+            // Handle device indices (e.g., GPU.0, GPU.1)
+            if (auto dot_pos = base_device_type.find('.'); dot_pos != std::string::npos) {
+              base_device_type = base_device_type.substr(0, dot_pos);
+            }
+            if (auto dot_pos = ov_device.find('.'); dot_pos != std::string::npos) {
+              ov_device = ov_device.substr(0, dot_pos);
+            }
+
+            bool matches = (ov_device == base_device_type || ov_device == target_device_type);
+            std::cout << "Regular device check: ov_device=" << ov_device
+                      << ", target=" << target_device_type
+                      << ", base=" << base_device_type
+                      << " -> " << (matches ? "MATCH" : "NO MATCH") << std::endl;
+            return matches;
+          } else {
+            std::cout << "No ov_device metadata found" << std::endl;
+          }
+        } else {
+          std::cout << "Hardware type mismatch: device=" << device.Device().Type()
+                    << ", target=" << target_hardware_type << std::endl;
+        }
+
+        return false;
+      };
+
+      // Search for matching device
+      for (const auto& device : ep_devices) {
+        if (device_matches_criteria(device)) {
+          selected_plugin_ep_device = device;
+          std::cout << "Found matching device: " << device.EpName() << std::endl;
+          break;
+        }
+      }
+
+      // If no specific device found and we're looking for meta devices, try any OpenVINO device
+      if (selected_plugin_ep_device == nullptr && supports_multiple_devices) {
+        std::cout << "No meta device found, searching for any OpenVINO device..." << std::endl;
+        for (const auto& device : ep_devices) {
+          if (std::string_view(device.EpName()).find(registration_name) != std::string::npos) {
+            selected_plugin_ep_device = device;
+            std::cout << "Found fallback OpenVINO device: " << device.EpName() << std::endl;
+            break;
+          }
+        }
+      }
+
+      // Final fallback: if still no device found, try to find any OpenVINO device
+      if (selected_plugin_ep_device == nullptr) {
+        std::cout << "No matching device found, trying any OpenVINO device as last resort..." << std::endl;
+        for (const auto& device : ep_devices) {
+          if (std::string_view(device.EpName()).find(registration_name) != std::string::npos) {
+            selected_plugin_ep_device = device;
+            std::cout << "Found last resort OpenVINO device: " << device.EpName() << std::endl;
+            break;
+          }
+        }
+      }
+
+      if (selected_plugin_ep_device != nullptr) {
+        std::cout << "Using AppendExecutionProvider_V2 approach with selected EP: "
+                  << selected_plugin_ep_device.EpName() << std::endl;
+
+        // Remove device_type from ov_options as it's handled by device selection
+        auto device_type_filtered_options = *ov_options;
+        device_type_filtered_options.erase("device_type");
+
+        std::cout << "Final provider options passed to AppendExecutionProvider_V2:" << std::endl;
+        for (const auto& [key, value] : device_type_filtered_options) {
+          std::cout << "  " << key << " = " << value << std::endl;
+        }
+
+        session_options.AppendExecutionProvider_V2(env, std::vector<Ort::ConstEpDevice>{selected_plugin_ep_device}, device_type_filtered_options);
+      } else {
+        std::cout << "ERROR: No OpenVINO EP device found! Falling back to legacy approach." << std::endl;
+        std::cout << "Available EP devices:" << std::endl;
+        for (const auto& device : ep_devices) {
+          std::cout << "  - " << device.EpName() << " (vendor: " << device.EpVendor() << ")" << std::endl;
+        }
+
+        // Fallback to the legacy approach
+        std::cout << "Using AppendExecutionProvider_OpenVINO_V2 Legacy fallback approach" << std::endl;
+        session_options.AppendExecutionProvider_OpenVINO_V2(*ov_options);
+      }
+    } else if (!enable_abi) {
+      std::cout << "Using AppendExecutionProvider_OpenVINO_V2 Legacy approach" << std::endl;
+      // Use AppendExecutionProvider_OpenVINO_V2 approach
+      session_options.AppendExecutionProvider_OpenVINO_V2(*ov_options);
+    }
 #else
     ORT_THROW("OpenVINO is not supported in this build\n");
 #endif

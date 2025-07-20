@@ -5,7 +5,7 @@
 #include <cctype>
 #include <map>
 #include <set>
-#include <sstream>
+#include <iostream>
 
 #include <utility>
 #include "core/providers/shared_library/provider_api.h"
@@ -411,7 +411,7 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
   std::unique_ptr<IExecutionProvider> CreateProvider_V2(const OrtSessionOptions& /*session_options*/,
                                                         const OrtLogger& session_logger) {
     ProviderInfo provider_info = provider_info_;
-    std::cout << "[OVEP] Current device type: " << provider_info.device_type << std::endl;
+    std::cout << "[OpenVINO EP] device_type passed to OVEP core (inside CreateProvider_V2): " << provider_info.device_type << std::endl;
     auto ov_ep = std::make_unique<OpenVINOExecutionProvider>(provider_info, shared_context_);
     ov_ep->SetLogger(reinterpret_cast<const logging::Logger*>(&session_logger));
     return ov_ep;
@@ -461,6 +461,16 @@ struct OpenVINO_Provider : Provider {
 
     // For provider options that we don't support directly but are still supported through load_config,
     // give some specific guidance & example about how to make use of the option through load_config.
+    std::cout << "[OpenVINO EP] CreateIExecutionProvider called with " << num_devices << " devices" << std::endl;
+
+    // Debug: Print initial provider options
+    std::cout << "[OpenVINO EP] Initial provider options:" << std::endl;
+    for (const auto& [key, value] : provider_options) {
+      std::cout << "  " << key << " = " << value << std::endl;
+    }
+
+    // For provider options that we don't support anymore, give some guidance & examples
+    // about how to make use of the option through load_config.
     const std::vector<std::pair<std::string, std::string>> block_and_advise_entries = {
         {"cache_dir", "\"CACHE_DIR\": \"<filesystem_path>\""},
         {"precision", "\"INFERENCE_PRECISION_HINT\": \"F32\""},
@@ -481,14 +491,23 @@ struct OpenVINO_Provider : Provider {
     }
 
     // For the rest of the disallowed provider options, give a generic error message.
+    // NOTE: We need to check for device_type in the input provider_options, but we'll set it later
     const std::vector<std::string> blocked_provider_keys = {
-        "device_type", "device_id", "device_luid", "context", "disable_dynamic_shapes"};
+      "device_id", "device_luid", "context", "num_of_threads", "disable_dynamic_shapes"};
 
     for (const auto& key : blocked_provider_keys) {
       if (provider_options.find(key) != provider_options.end()) {
+        std::cout << "[OpenVINO EP] Blocked provider key found: " << key << std::endl;
         return Status(common::ONNXRUNTIME, ORT_INVALID_ARGUMENT,
                       "OpenVINO EP: Option '" + key + "' cannot be set when using AppendExecutionProvider_V2.");
       }
+    }
+
+    // Check if device_type was passed by user (which is not allowed in AppendExecutionProvider_V2 API)
+    if (provider_options.find("device_type") != provider_options.end()) {
+      std::cout << "[OpenVINO EP] User-provided device_type found: " << provider_options["device_type"] << std::endl;
+      return Status(common::ONNXRUNTIME, ORT_INVALID_ARGUMENT,
+                    "OpenVINO EP: Option 'device_type' cannot be set when using AppendExecutionProvider_V2.");
     }
 
     const char* ov_device_key = "ov_device";
@@ -505,6 +524,8 @@ struct OpenVINO_Provider : Provider {
       }
       auto& ov_device = ov_device_it->second;
 
+      std::cout << "[OpenVINO EP] Device " << i << " ov_device: " << ov_device << std::endl;
+
       // Add to ordered_unique only if not already present
       if (unique_ov_devices.insert(ov_device).second) {
         ordered_unique_ov_devices.push_back(ov_device);
@@ -518,6 +539,8 @@ struct OpenVINO_Provider : Provider {
         ov_meta_device_type = ov_meta_device_it->second;
       }
     }
+
+    std::cout << "[OpenVINO EP] Meta device type: " << ov_meta_device_type << std::endl;
 
     bool is_meta_device_factory = (ov_meta_device_type != "NONE");
 
@@ -542,13 +565,23 @@ struct OpenVINO_Provider : Provider {
       prepend_comma = true;
     }
 
+    std::cout << "[OpenVINO EP] Final ov_device_string: " << ov_device_string << std::endl;
+
+    // Now we set the device_type based on the EP device selection mechanism, not user input
     provider_options["device_type"] = ov_device_string;
+
+    std::cout << "[OpenVINO EP] Provider options after device_type setting:" << std::endl;
+    for (const auto& [key, value] : provider_options) {
+      std::cout << "  " << key << " = " << value << std::endl;
+    }
 
     // Parse provider info with the device type
     ProviderInfo pi;
     const auto& config_options = session_options.GetConfigOptions();
     ParseProviderInfo(provider_options, &config_options, pi);
     ParseConfigOptions(pi);
+
+    std::cout << "[OpenVINO EP] ProviderInfo parsed successfully with device_type: " << pi.device_type << std::endl;
 
     // Create and return the execution provider
     auto factory = std::make_unique<OpenVINOProviderFactory>(pi, SharedContext::Get());

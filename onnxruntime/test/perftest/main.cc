@@ -16,6 +16,7 @@ int real_main(int argc, wchar_t* argv[]) {
 #else
 int real_main(int argc, char* argv[]) {
 #endif
+  auto registration_name = "OpenVINOExecutionProvider";
   g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   perftest::PerformanceTestConfig test_config;
   if (!perftest::CommandLineParser::ParseArguments(test_config, argc, argv)) {
@@ -30,6 +31,9 @@ int real_main(int argc, char* argv[]) {
                                           ? ORT_LOGGING_LEVEL_VERBOSE
                                           : ORT_LOGGING_LEVEL_WARNING;
       env = Ort::Env(logging_level, "Default");
+
+      const ORTCHAR_T* library_path = ORT_TSTR("onnxruntime_providers_openvino.dll");
+      env.RegisterExecutionProviderLibrary(registration_name, library_path);
     }
     ORT_CATCH(const Ort::Exception& e) {
       ORT_HANDLE_EXCEPTION([&]() {
@@ -38,8 +42,10 @@ int real_main(int argc, char* argv[]) {
       });
     }
 
-    if (failed)
+    if (failed) {
+      env.UnregisterExecutionProviderLibrary(registration_name);
       return -1;
+    }
   }
   std::random_device rd;
   perftest::PerformanceRunner perf_runner(env, test_config, rd);
@@ -47,16 +53,20 @@ int real_main(int argc, char* argv[]) {
   // Exit if user enabled -n option so that user can measure session creation time
   if (test_config.run_config.exit_after_session_creation) {
     perf_runner.LogSessionCreationTime();
+    env.UnregisterExecutionProviderLibrary(registration_name);
     return 0;
   }
 
   auto status = perf_runner.Run();
   if (!status.IsOK()) {
     printf("Run failed:%s\n", status.ErrorMessage().c_str());
+    env.UnregisterExecutionProviderLibrary(registration_name);
     return -1;
   }
 
   perf_runner.SerializeResult();
+
+  env.UnregisterExecutionProviderLibrary(registration_name);
 
   return 0;
 }
