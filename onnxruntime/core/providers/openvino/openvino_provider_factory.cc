@@ -549,6 +549,9 @@ struct OpenVINO_Provider : Provider {
     ParseProviderInfo(provider_options, &config_options, pi);
     ParseConfigOptions(pi);
 
+    // Force-disable the ability for NPU to fall back to CPU.
+    pi.so_disable_cpu_ep_fallback = true;
+
     // Create and return the execution provider
     auto factory = std::make_unique<OpenVINOProviderFactory>(pi, SharedContext::Get());
     ep = factory->CreateProvider_V2(session_options, logger);
