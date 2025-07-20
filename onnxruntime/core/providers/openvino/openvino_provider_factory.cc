@@ -454,14 +454,15 @@ struct OpenVINO_Provider : Provider {
                                   std::unique_ptr<IExecutionProvider>& ep) override {
     // Check if no devices are provided
     if (num_devices == 0) {
-      return Status(common::ONNXRUNTIME, ORT_EP_FAIL, "No devices provided to CreateEp");
+      return Status(common::ONNXRUNTIME, ORT_EP_FAIL, "No devices provided to CreateIExecutionProvider");
     }
 
-    // For provider options that we don't support anymore, give some guidance & examples
-    // about how to make use of the option through load_config.
+    // For provider options that we don't support directly but are still supported through load_config,
+    // give some specific guidance & example about how to make use of the option through load_config.
     const std::vector<std::pair<std::string, std::string>> block_and_advise_entries = {
       {"cache_dir", "\"CACHE_DIR\": \"<filesystem_path>\""},
       {"precision", "\"INFERENCE_PRECISION_HINT\": \"F32\""},
+      {"num_of_threads", "\"INFERENCE_NUM_THREADS\": \"1\""},
       {"num_streams", "\"NUM_STREAMS\": \"1\""},
       {"model_priority", "\"MODEL_PRIORITY\": \"LOW\""},
       {"enable_opencl_throttling", "\"GPU\": {\"PLUGIN_THROTTLE\": \"1\"}"},
@@ -480,7 +481,7 @@ struct OpenVINO_Provider : Provider {
 
     // For the rest of the disallowed provider options, give a generic error message.
     const std::vector<std::string> blocked_provider_keys = {
-      "device_type", "device_id", "device_luid", "context", "num_of_threads", "disable_dynamic_shapes"};
+      "device_type", "device_id", "device_luid", "context", "disable_dynamic_shapes"};
 
     for (const auto& key : blocked_provider_keys) {
       if (provider_options.find(key) != provider_options.end()) {
