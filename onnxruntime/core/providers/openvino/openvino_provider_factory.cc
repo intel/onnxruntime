@@ -503,12 +503,12 @@ struct OpenVINOEpFactory : OrtEpFactory {
 
   // Returns the name for the EP. Each unique factory configuration must have a unique name.
   // Ex: a factory that supports GPU should have a different name than a factory that supports CPU.
-  static const char* GetNameImpl(const OrtEpFactory* this_ptr) {
+  static const char* GetNameImpl(const OrtEpFactory* this_ptr) noexcept {
     const auto* factory = static_cast<const OpenVINOEpFactory*>(this_ptr);
     return factory->ep_name.c_str();
   }
 
-  static const char* GetVendorImpl(const OrtEpFactory* this_ptr) {
+  static const char* GetVendorImpl(const OrtEpFactory* this_ptr) noexcept {
     const auto* factory = static_cast<const OpenVINOEpFactory*>(this_ptr);
     return factory->vendor.c_str();
   }
@@ -525,7 +525,7 @@ struct OpenVINOEpFactory : OrtEpFactory {
                                             size_t num_devices,
                                             OrtEpDevice** ep_devices,
                                             size_t max_ep_devices,
-                                            size_t* p_num_ep_devices) {
+                                            size_t* p_num_ep_devices) noexcept {
     size_t& num_ep_devices = *p_num_ep_devices;
     auto* factory = static_cast<OpenVINOEpFactory*>(this_ptr);
 
@@ -551,16 +551,16 @@ struct OpenVINOEpFactory : OrtEpFactory {
                                  _In_ size_t /*num_devices*/,
                                  _In_ const OrtSessionOptions* /*session_options*/,
                                  _In_ const OrtLogger* /*logger*/,
-                                 _Out_ OrtEp** /*ep*/) {
+                                 _Out_ OrtEp** /*ep*/) noexcept {
     return onnxruntime::CreateStatus(ORT_INVALID_ARGUMENT, "OpenVINO EP factory does not support this method.");
   }
 
-  static void ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, OrtEp* /*ep*/) {
+  static void ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, OrtEp* /*ep*/) noexcept {
     // no-op as we never create an EP here.
   }
 
   const OrtApi& ort_api;
-  const std::string ep_name;              // EP name
+  const std::string ep_name;          // EP name
   const std::string vendor{"Intel"};  // EP vendor name
 
   // Intel vendor ID. Refer to the ACPI ID registry (search Intel): https://uefi.org/ACPI_ID_List
