@@ -79,184 +79,210 @@ std::set<std::string> ops_supported_as_function = {
     "Celu"};
 
 std::vector<SupportedOp> supported_op_mode = {
-    {"Abs", V_2020_4, {"CPU", "GPU"}},
-    {"Acos", V_2020_4, {"CPU"}},
-    {"Acos", V_2022_1, {"GPU"}},
-    {"Acosh", V_2020_4, {"CPU"}},
-    {"Acosh", V_2022_1, {"GPU"}},
-    {"Add", V_2020_4, {"CPU", "GPU"}},
-    {"And", V_2020_4, {"CPU", "GPU"}},
-    {"ArgMax", V_2020_4, {"CPU"}},
-    {"ArgMax", V_2021_1, {"GPU"}},
-    {"ArgMin", V_2020_4, {"CPU"}},
-    {"ArgMin", V_2022_1, {"GPU"}},
-    {"Asin", V_2020_4, {"CPU", "GPU"}},
-    {"Asinh", V_2020_4, {"CPU", "GPU"}},
-    {"Atan", V_2020_4, {"CPU", "GPU"}},
-    {"Atanh", V_2020_4, {"CPU"}},
-    {"Atanh", V_2022_1, {"GPU"}},
-    {"Attention", V_2023_0, {"CPU", "GPU"}},
-    {"AveragePool", V_2020_4, {"CPU", "GPU"}},
-    {"BatchNormalization", V_2020_4, {"CPU", "GPU"}},
-    {"BiasGelu", V_2023_0, {"CPU", "GPU"}},
-    {"BitShift", V_2022_1, {"CPU"}},
-    {"Cast", V_2020_4, {"CPU", "GPU"}},
-    {"CastLike", V_2023_1, {"CPU", "GPU"}},
-    {"Ceil", V_2020_4, {"GPU"}},
-    {"Ceil", V_2021_4, {"CPU"}},
-    {"Celu", V_2022_1, {"CPU", "GPU"}},
-    {"Clip", V_2020_4, {"CPU", "GPU"}},
-    {"Compress", V_2023_1, {"CPU", "GPU"}},
-    {"Concat", V_2020_4, {"CPU", "GPU"}},
-    {"Constant", V_2020_4, {"CPU", "GPU"}},
-    {"ConstantOfShape", V_2020_4, {"CPU", "GPU"}},
-    {"Conv", V_2020_4, {"CPU", "GPU"}},
-    {"ConvInteger", V_2022_1, {"CPU", "GPU"}},
-    {"ConvTranspose", V_2020_4, {"CPU", "GPU"}},
-    {"Cos", V_2020_4, {"CPU"}},
-    {"Cos", V_2022_1, {"GPU"}},
-    {"Cosh", V_2020_4, {"CPU"}},
-    {"Cosh", V_2022_1, {"GPU"}},
-    {"CumSum", V_2022_1, {"CPU", "GPU"}},
-    {"DepthToSpace", V_2020_4, {"CPU", "GPU"}},
-    {"DequantizeLinear", V_2021_4, {"CPU", "GPU"}},
-    {"DequantizeLinear", V_2024_4, {"NPU"}},
-    {"DynamicQuantizeMatMul", V_2025_0, {"CPU", "GPU"}},
-    {"Div", V_2020_4, {"CPU", "GPU"}},
-    {"Dropout", V_2020_4, {"CPU", "GPU"}},
-    {"Elu", V_2020_4, {"CPU", "GPU"}},
-    {"Einsum", V_2023_1, {"CPU", "GPU"}},
-    {"EmbedLayerNormalization", V_2024_5, {"CPU", "GPU"}},
-    {"EPContext", V_2024_0, {"CPU", "GPU", "NPU"}},
-    {"Equal", V_2020_4, {"CPU", "GPU"}},
-    {"Erf", V_2020_4, {"CPU", "GPU"}},
-    {"Exp", V_2020_4, {"CPU", "GPU"}},
-    {"Expand", V_2022_1, {"CPU", "GPU"}},
-    {"EyeLike", V_2022_1, {"CPU"}},
-    {"Flatten", V_2020_4, {"CPU", "GPU"}},
-    {"Floor", V_2020_4, {"CPU", "GPU"}},
-    {"FusedConv", V_2023_0, {"CPU", "GPU"}},
-    {"FusedGemm", V_2023_0, {"CPU", "GPU"}},
-    {"FusedMatMul", V_2025_0, {"CPU", "GPU"}},
-    {"Gather", V_2020_4, {"CPU", "GPU"}},
-    {"GatherElements", V_2022_2, {"CPU", "GPU"}},
-    {"GatherND", V_2021_4, {"CPU", "GPU"}},
-    {"Gelu", V_2023_1, {"CPU", "GPU"}},
-    {"Gemm", V_2020_4, {"CPU", "GPU"}},
-    {"GlobalAveragePool", V_2020_4, {"CPU", "GPU"}},
-    {"GlobalLpPool", V_2020_4, {"CPU", "GPU"}},
-    {"GlobalMaxPool", V_2022_1, {"CPU", "GPU"}},
-    {"Greater", V_2020_4, {"CPU", "GPU"}},
-    {"GreaterOrEqual", V_2022_1, {"CPU", "GPU"}},
-    {"GridSample", V_2022_3, {"CPU"}},
-    {"GridSample", V_2023_0, {"GPU"}},
-    {"GRU", V_2024_1, {"CPU", "GPU"}},
-    {"HardMax", V_2023_1, {"CPU", "GPU"}},
-    {"Identity", V_2020_4, {"CPU", "GPU"}},
-    {"If", V_2022_3, {"CPU", "GPU"}},
-    {"ImageScaler", V_2022_1, {"CPU", "GPU"}},
-    {"InstanceNormalization", V_2020_4, {"CPU", "GPU"}},
-    {"HardSigmoid", V_2020_4, {"CPU", "GPU"}},
-    {"HardMax", V_2022_1, {"CPU", "GPU"}},
-    {"HardSwish", V_2025_0, {"CPU", "GPU"}},
-    {"LayerNormalization", V_2023_0, {"CPU", "GPU"}},
-    {"LeakyRelu", V_2020_4, {"CPU", "GPU"}},
-    {"Less", V_2020_4, {"CPU", "GPU"}},
-    {"LessOrEqual", V_2022_1, {"CPU", "GPU"}},
-    {"Log", V_2020_4, {"CPU", "GPU"}},
-    {"LogSoftMax", V_2022_1, {"CPU", "GPU"}},
-    {"LogSoftmax", V_2024_1, {"CPU", "GPU"}},
-    {"Loop", V_2021_4, {"CPU", "GPU"}},
-    {"LpNormalization", V_2023_1, {"CPU", "GPU"}},
-    {"LRN", V_2020_4, {"CPU", "GPU"}},
-    {"LSTM", V_2020_4, {"CPU", "GPU"}},
-    {"MatMul", V_2020_4, {"CPU", "GPU"}},
-    {"MatMulInteger", V_2022_1, {"CPU"}},
-    {"MatMulNBits", V_2024_5, {"CPU", "GPU"}},
-    {"Max", V_2020_4, {"CPU", "GPU"}},
-    {"MaxPool", V_2020_4, {"CPU", "GPU"}},
-    {"Mean", V_2020_4, {"CPU", "GPU"}},
-    {"MeanVarianceNormalization", V_2022_1, {"CPU", "GPU"}},
-    {"Min", V_2020_4, {"CPU", "GPU"}},
-    {"Mod", V_2022_1, {"CPU", "GPU"}},
-    {"Mul", V_2020_4, {"CPU", "GPU"}},
-    {"Neg", V_2020_4, {"CPU", "GPU"}},
-    {"NonMaxSuppression", V_2021_1, {"CPU", "GPU"}},
-    {"NonZero", V_2021_1, {"CPU"}},
-    {"NonZero", V_2023_0, {"GPU"}},
-    {"Not", V_2021_1, {"CPU", "GPU"}},
-    {"Not", V_2020_4, {"CPU", "GPU"}},
-    {"OneHot", V_2020_4, {"CPU", "GPU"}},
-    {"Or", V_2022_1, {"CPU", "GPU"}},
-    {"Pad", V_2020_4, {"CPU", "GPU"}},
-    {"Pow", V_2020_4, {"CPU", "GPU"}},
-    {"PRelu", V_2020_4, {"CPU", "GPU"}},
-    {"QLinearMatMul", V_2022_3, {"CPU"}},
-    {"QuantizeLinear", V_2021_4, {"CPU", "GPU"}},
-    {"QuickGelu", V_2025_0, {"CPU", "GPU"}},
-    {"RNN", V_2023_1, {"CPU", "GPU"}},
-    {"RandomNormalLike", V_2023_0, {"CPU", "GPU"}},
-    {"RandomNormalLike", V_2023_0, {"CPU", "GPU"}},
-    {"RandomNormal", V_2023_0, {"CPU", "GPU"}},
-    {"Range", V_2022_1, {"CPU", "GPU"}},
-    {"Reciprocal", V_2020_4, {"CPU", "GPU"}},
-    {"ReduceL1", V_2022_1, {"CPU", "GPU"}},
-    {"ReduceL2", V_2022_1, {"CPU", "GPU"}},
-    {"ReduceLogSum", V_2020_4, {"CPU"}},
-    {"ReduceLogSum", V_2022_1, {"CPU", "GPU"}},
-    {"ReduceLogSumExp", V_2022_1, {"CPU", "GPU"}},
-    {"ReduceMax", V_2020_4, {"CPU", "GPU"}},
-    {"ReduceMean", V_2020_4, {"CPU", "GPU"}},
-    {"ReduceMin", V_2020_4, {"CPU", "GPU"}},
-    {"ReduceProd", V_2020_4, {"CPU"}},
-    {"ReduceProd", V_2022_1, {"GPU"}},
-    {"ReduceSum", V_2020_4, {"CPU", "GPU"}},
-    {"ReduceSumSquare", V_2020_4, {"CPU"}},
-    {"ReduceSumSquare", V_2022_1, {"CPU", "GPU"}},
-    {"Relu", V_2020_4, {"CPU", "GPU"}},
-    {"Resize", V_2020_4, {"CPU"}},
-    {"Resize", V_2022_1, {"GPU"}},
-    {"Reshape", V_2020_4, {"CPU", "GPU"}},
-    {"ReverseSequence", V_2022_1, {"CPU", "GPU"}},
-    {"RoiAlign", V_2021_1, {"CPU", "GPU"}},
-    {"Round", V_2021_4, {"CPU", "GPU"}},
-    {"Scatter", V_2022_1, {"CPU", "GPU"}},
-    {"ScatterElements", V_2022_1, {"CPU", "GPU"}},
-    {"ScatterND", V_2022_1, {"CPU", "GPU"}},
-    {"Selu", V_2020_4, {"CPU", "GPU"}},
-    {"Shape", V_2020_4, {"CPU", "GPU"}},
-    {"Shrink", V_2022_1, {"CPU", "GPU"}},
-    {"Sigmoid", V_2020_4, {"CPU", "GPU"}},
-    {"Sign", V_2020_4, {"CPU"}},
-    {"Sign", V_2022_1, {"GPU"}},
-    {"SimplifiedLayerNormalization", V_2025_2, {"CPU", "GPU"}},
-    {"Sin", V_2022_1, {"CPU", "GPU"}},
-    {"Sinh", V_2020_4, {"CPU"}},
-    {"Size", V_2022_1, {"CPU", "GPU"}},
-    {"SkipLayerNormalization", V_2024_5, {"CPU", "GPU"}},
-    {"SkipSimplifiedLayerNormalization", V_2025_0, {"CPU", "GPU"}},
-    {"Slice", V_2020_4, {"CPU", "GPU"}},
-    {"Softmax", V_2020_4, {"CPU", "GPU"}},
-    {"Softplus", V_2022_1, {"CPU", "GPU"}},
-    {"Softsign", V_2022_1, {"CPU", "GPU"}},
-    {"SpaceToDepth", V_2020_4, {"CPU", "GPU"}},
-    {"Split", V_2020_4, {"CPU", "GPU"}},
-    {"Sqrt", V_2020_4, {"CPU", "GPU"}},
-    {"Squeeze", V_2020_4, {"CPU", "GPU"}},
-    {"Softsign", V_2020_4, {"CPU"}},
-    {"Sub", V_2020_4, {"CPU", "GPU"}},
-    {"Sum", V_2020_4, {"CPU", "GPU"}},
-    {"Tan", V_2020_4, {"CPU", "GPU"}},
-    {"Tanh", V_2020_4, {"CPU", "GPU"}},
-    {"ThresholdedRelu", V_2022_1, {"CPU", "GPU"}},
-    {"Tile", V_2021_3, {"CPU", "GPU"}},
-    {"Transpose", V_2020_4, {"CPU", "GPU"}},
-    {"Trilu", V_2023_0, {"CPU", "GPU"}},
-    {"TopK", V_2020_4, {"CPU", "GPU"}},
-    {"Upsample", V_2020_4, {"CPU", "GPU"}},
-    {"Unsqueeze", V_2020_4, {"CPU", "GPU"}},
-    {"Where", V_2022_1, {"CPU", "GPU"}},
-    {"Xor", V_2022_1, {"CPU", "GPU"}},
+{"Abs", V_2024_4, {"All"}},
+{"Acos", V_2024_4, {"All"}},
+{"Acosh", V_2024_4, {"All"}},
+{"AdaptiveAvgPool2d", V_2024_4, {"All"}},
+{"Add", V_2024_4, {"All"}},
+{"Affine", V_2024_4, {"All"}},
+{"And", V_2024_4, {"All"}},
+{"ArgMax", V_2024_4, {"All"}},
+{"ArgMin", V_2024_4, {"All"}},
+{"Asin", V_2024_4, {"All"}},
+{"Asinh", V_2024_4, {"All"}},
+{"Atan", V_2024_4, {"All"}},
+{"Atanh", V_2024_4, {"All"}},
+{"ATen", V_2024_4, {"All"}},
+{"AveragePool", V_2024_4, {"All"}},
+{"BatchNormalization", V_2024_4, {"All"}},
+{"BitShift", V_2024_4, {"All"}},
+{"BitwiseAnd", V_2024_4, {"All"}},
+{"BitwiseNot", V_2024_4, {"All"}},
+{"BitwiseOr", V_2024_4, {"All"}},
+{"BitwiseXor", V_2024_4, {"All"}},
+{"BlackmanWindow", V_2024_4, {"All"}},
+{"Cast", V_2024_4, {"All"}},
+{"CastLike", V_2024_4, {"All"}},
+{"Ceil", V_2024_4, {"All"}},
+{"Celu", V_2024_4, {"All"}},
+{"Clip", V_2024_4, {"All"}},
+{"Compress", V_2024_4, {"All"}},
+{"Concat", V_2024_4, {"All"}},
+{"Constant", V_2024_4, {"All"}},
+{"ConstantFill", V_2024_4, {"All"}},
+{"ConstantOfShape", V_2024_4, {"All"}},
+{"Conv", V_2024_4, {"All"}},
+{"ConvInteger", V_2024_4, {"All"}},
+{"ConvTranspose", V_2024_4, {"All"}},
+{"Cos", V_2024_4, {"All"}},
+{"Cosh", V_2024_4, {"All"}},
+{"Crop", V_2024_4, {"All"}},
+{"CumSum", V_2024_4, {"All"}},
+{"DepthToSpace", V_2024_4, {"All"}},
+{"DequantizeLinear", V_2024_4, {"All"}},
+{"DFT", V_2024_4, {"All"}},
+{"Div", V_2024_4, {"All"}},
+{"Dropout", V_2024_4, {"All"}},
+{"DynamicQuantizeLinear", V_2024_4, {"All"}},
+{"Einsum", V_2024_4, {"All"}},
+{"Elu", V_2024_4, {"All"}},
+{"Equal", V_2024_4, {"All"}},
+{"Erf", V_2024_4, {"All"}},
+{"Exp", V_2024_4, {"All"}},
+{"Expand", V_2024_4, {"All"}},
+{"EyeLike", V_2024_4, {"All"}},
+{"Flatten", V_2024_4, {"All"}},
+{"Floor", V_2024_4, {"All"}},
+{"Gather", V_2024_4, {"All"}},
+{"GatherElements", V_2024_4, {"All"}},
+{"GatherND", V_2024_4, {"All"}},
+{"Gelu", V_2024_4, {"All"}},
+{"Gemm", V_2024_4, {"All"}},
+{"GlobalAveragePool", V_2024_4, {"All"}},
+{"GlobalLpPool", V_2024_4, {"All"}},
+{"GlobalMaxPool", V_2024_4, {"All"}},
+{"Greater", V_2024_4, {"All"}},
+{"GreaterOrEqual", V_2024_4, {"All"}},
+{"GridSample", V_2024_4, {"All"}},
+{"GroupNormalization", V_2024_4, {"All"}},
+{"GRU", V_2024_4, {"All"}},
+{"HammingWindow", V_2024_4, {"All"}},
+{"HardSigmoid", V_2024_4, {"All"}},
+{"HardSwish", V_2024_4, {"All"}},
+{"Hardmax", V_2024_4, {"All"}},
+{"Identity", V_2024_4, {"All"}},
+{"If", V_2024_4, {"All"}},
+{"ImageScaler", V_2024_4, {"All"}},
+{"InstanceNormalization", V_2024_4, {"All"}},
+{"IsFinite", V_2024_4, {"All"}},
+{"IsInf", V_2024_4, {"All"}},
+{"IsNaN", V_2024_4, {"All"}},
+{"LayerNormalization", V_2024_4, {"All"}},
+{"LeakyRelu", V_2024_4, {"All"}},
+{"Less", V_2024_4, {"All"}},
+{"LessOrEqual", V_2024_4, {"All"}},
+{"Log", V_2024_4, {"All"}},
+{"LogSoftmax", V_2024_4, {"All"}},
+{"Loop", V_2024_4, {"All"}},
+{"LpNormalization", V_2024_4, {"All"}},
+{"LRN", V_2024_4, {"All"}},
+{"LSTM", V_2024_4, {"All"}},
+{"MatMul", V_2024_4, {"All"}},
+{"MatMulInteger", V_2024_4, {"All"}},
+{"Max", V_2024_4, {"All"}},
+{"MaxPool", V_2024_4, {"All"}},
+{"MaxRoiPool", V_2024_4, {"All"}},
+{"Mean", V_2024_4, {"All"}},
+{"MeanVarianceNormalization", V_2024_4, {"All"}},
+{"Min", V_2024_4, {"All"}},
+{"Mish", V_2024_4, {"All"}},
+{"MMCVRoIAlignRotated", V_2024_4, {"All"}},
+{"Mod", V_2024_4, {"All"}},
+{"Mul", V_2024_4, {"All"}},
+{"Multinomial", V_2024_4, {"All"}},
+{"Neg", V_2024_4, {"All"}},
+{"NMSRotated", V_2024_4, {"All"}},
+{"NonMaxSuppression", V_2024_4, {"All"}},
+{"NonZero", V_2024_4, {"All"}},
+{"Not", V_2024_4, {"All"}},
+{"OneHot", V_2024_4, {"All"}},
+{"Or", V_2024_4, {"All"}},
+{"Pad", V_2024_4, {"All"}},
+{"Pow", V_2024_4, {"All"}},
+{"PRelu", V_2024_4, {"All"}},
+{"QLinearConv", V_2024_4, {"All"}},
+{"QLinearMatMul", V_2024_4, {"All"}},
+{"QuantizeLinear", V_2024_4, {"All"}},
+{"RandomNormal", V_2024_4, {"All"}},
+{"RandomNormalLike", V_2024_4, {"All"}},
+{"RandomUniform", V_2024_4, {"All"}},
+{"RandomUniformLike", V_2024_4, {"All"}},
+{"Range", V_2024_4, {"All"}},
+{"Reciprocal", V_2024_4, {"All"}},
+{"ReduceLogSum", V_2024_4, {"All"}},
+{"ReduceLogSumExp", V_2024_4, {"All"}},
+{"ReduceL1", V_2024_4, {"All"}},
+{"ReduceL2", V_2024_4, {"All"}},
+{"ReduceMax", V_2024_4, {"All"}},
+{"ReduceMean", V_2024_4, {"All"}},
+{"ReduceMin", V_2024_4, {"All"}},
+{"ReduceProd", V_2024_4, {"All"}},
+{"ReduceSum", V_2024_4, {"All"}},
+{"ReduceSumSquare", V_2024_4, {"All"}},
+{"Relu", V_2024_4, {"All"}},
+{"Reshape", V_2024_4, {"All"}},
+{"Resize", V_2024_4, {"All"}},
+{"ReverseSequence", V_2024_4, {"All"}},
+{"RNN", V_2024_4, {"All"}},
+{"RoiAlign", V_2024_4, {"All"}},
+{"Round", V_2024_4, {"All"}},
+{"Scan", V_2024_4, {"All"}},
+{"ScatterElements", V_2024_4, {"All"}},
+{"ScatterND", V_2024_4, {"All"}},
+{"Selu", V_2024_4, {"All"}},
+{"Shape", V_2024_4, {"All"}},
+{"Shrink", V_2024_4, {"All"}},
+{"Sigmoid", V_2024_4, {"All"}},
+{"Sign", V_2024_4, {"All"}},
+{"Sin", V_2024_4, {"All"}},
+{"Sinh", V_2024_4, {"All"}},
+{"Size", V_2024_4, {"All"}},
+{"Slice", V_2024_4, {"All"}},
+{"Softmax", V_2024_4, {"All"}},
+{"Softplus", V_2024_4, {"All"}},
+{"Softsign", V_2024_4, {"All"}},
+{"SpaceToDepth", V_2024_4, {"All"}},
+{"Split", V_2024_4, {"All"}},
+{"Sqrt", V_2024_4, {"All"}},
+{"Squeeze", V_2024_4, {"All"}},
+{"STFT", V_2024_4, {"All"}},
+{"Sub", V_2024_4, {"All"}},
+{"Sum", V_2024_4, {"All"}},
+{"Tan", V_2024_4, {"All"}},
+{"Tanh", V_2024_4, {"All"}},
+{"ThresholdedRelu", V_2024_4, {"All"}},
+{"Tile", V_2024_4, {"All"}},
+{"TopK", V_2024_4, {"All"}},
+{"Transpose", V_2024_4, {"All"}},
+{"Trilu", V_2024_4, {"All"}},
+{"Unique", V_2024_4, {"All"}},
+{"Unsqueeze", V_2024_4, {"All"}},
+{"Upsample", V_2024_4, {"All"}},
+{"Where", V_2024_4, {"All"}},
+{"Xor", V_2024_4, {"All"}},
+{"Scatter", V_2024_4, {"All"}},
+{"DeformableConv2D", V_2024_4, {"All"}},
+{"DetectionOutput", V_2024_4, {"All"}},
+{"ExperimentalDetectronDetectionOutput", V_2024_4, {"All"}},
+{"ExperimentalDetectronGenerateProposalsSingleImage", V_2024_4, {"All"}},
+{"ExperimentalDetectronGroupNorm", V_2024_4, {"All"}},
+{"ExperimentalDetectronPriorGridGenerator", V_2024_4, {"All"}},
+{"ExperimentalDetectronROIFeatureExtractor", V_2024_4, {"All"}},
+{"ExperimentalDetectronTopKROIs", V_2024_4, {"All"}},
+{"FakeQuantize", V_2024_4, {"All"}},
+{"GroupNorm", V_2024_4, {"All"}},
+{"Normalize", V_2024_4, {"All"}},
+{"PriorBox", V_2024_4, {"All"}},
+{"PriorBoxClustered", V_2024_4, {"All"}},
+{"Swish", V_2024_4, {"All"}},
+{"Attention", V_2024_4, {"All"}},
+{"Bias_Add", V_2024_4, {"All"}},
+{"BiasGelu", V_2024_4, {"All"}},
+{"Dynamic_Quantize_MatMul", V_2024_4, {"All"}},
+{"EmbedLayerNormalization", V_2024_4, {"All"}},
+{"Fast_Gelu", V_2024_4, {"All"}},
+{"Fused_Conv", V_2024_4, {"All"}},
+{"FusedGemm", V_2024_4, {"All"}},
+{"FusedMatMul", V_2024_4, {"All"}},
+{"MatMulIntegerToFloat", V_2024_4, {"All"}},
+{"MatMulNBits", V_2024_4, {"All"}},
+{"QLinearActivation", V_2024_4, {"All"}},
+{"QLinearAdd", V_2024_4, {"All"}},
+{"QLinearMul", V_2024_4, {"All"}},
+{"QuickGelu", V_2024_4, {"All"}},
+{"SimplifiedLayerNormalization", V_2024_4, {"All"}},
+{"SkipLayerNormalization", V_2024_4, {"All"}},
+{"SkipSimplifiedLayerNormalization", V_2024_4, {"All"}}
 };
 
 void DataOps::populate_types_supported() {
@@ -728,111 +754,111 @@ bool DataOps::node_is_supported(const NodeIndex node_idx, bool& has_external_wei
   }
 
   // Check 1
-  bool are_types_supported = true;
+//   bool are_types_supported = true;
 
-  node->ForEachDef([this, &are_types_supported](const NodeArg& node_arg, bool is_input) {
-    bool is_initializer = false;
-    if (is_input) {
-      if (this->graph_viewer_.IsConstantInitializer(node_arg.Name(), true))
-        is_initializer = true;
-    }
-    bool is_supported = type_is_supported(&node_arg, is_initializer);
-    are_types_supported &= is_supported;
-  });
+//   node->ForEachDef([this, &are_types_supported](const NodeArg& node_arg, bool is_input) {
+//     bool is_initializer = false;
+//     if (is_input) {
+//       if (this->graph_viewer_.IsConstantInitializer(node_arg.Name(), true))
+//         is_initializer = true;
+//     }
+//     bool is_supported = type_is_supported(&node_arg, is_initializer);
+//     are_types_supported &= is_supported;
+//   });
 
-  if (!are_types_supported) {
-#ifndef NDEBUG
-    if (openvino_ep::backend_utils::IsDebugEnabled()) {
-      std::cout << "DType is not supported" << std::endl;
-    }
-#endif
-    return false;
-  }
+//   if (!are_types_supported) {
+// #ifndef NDEBUG
+//     if (openvino_ep::backend_utils::IsDebugEnabled()) {
+//       std::cout << "DType is not supported" << std::endl;
+//     }
+// #endif
+//     return false;
+//   }
 
-  // Check 2
+//   // Check 2
 
-  bool has_unsupported_dimension = false;
-  node->ForEachDef([&has_unsupported_dimension, this, &optype, &node](const NodeArg& node_arg, bool is_input) {
-    if (is_input) {
-      if (this->graph_viewer_.IsConstantInitializer(node_arg.Name(), true))
-        return;
-    }
-    auto shape = node_arg.Shape();
-    if (shape != nullptr) {
-      // Can't have no dimensions
-      if (shape->dim_size() == 0) {
-        if (op_is_supported(optype, no_dimension_supported_)) {
-          return;
-        }
-        // Special handling for the "Pad" operator
-        if (optype == "Pad") {
-          bool is_quantized = false;
-          // Detect a quantized model by checking for a DequantizeLinear input
-          for (Node::NodeConstIterator it_dq = node->InputNodesBegin(); it_dq != node->InputNodesEnd(); ++it_dq) {
-            const auto& DQ = &*it_dq;
-            if (DQ->OpType() == "DequantizeLinear") {
-              is_quantized = true;
-              break;
-            }
-          }
-          if (is_quantized) {
-            // For quantized Pad ops when the QDQ optimizer is disabled,
-            // bypass the unsupported dimension check to ensure 'pad_value' is constant
-            if (!npu_qdq_optimizer_enabled_) {
-#ifndef NDEBUG
-              if (openvino_ep::backend_utils::IsDebugEnabled()) {
-                // Pad Op with DQ inputs gets optimized in the downstream,
-                // so mark those no dim quantized Pad ops supported here
-                std::cout << "QDQ optimizer disabled; quantized Pad op detected (DequantizeLinear present), so marking those no dim quantized Pad ops as supported" << std::endl;
-              }
-#endif
-            }
-            return;
-          }
-        }
-        // For ops that haven't been handled above, mark as unsupported dim
-        has_unsupported_dimension = true;
-        return;
-      } else {
-        // Zero dimension check
-        for (const auto& dim : shape->dim()) {
-          if (utils::HasDimValue(dim) && dim.dim_value() == 0) {
-            if (((device_id_.find("CPU") != std::string::npos) || (device_id_.find("GPU") != std::string::npos)) &&
-                ((optype == "Expand") || (optype == "Equal") ||
-                 (optype == "Slice") || (optype == "Concat") ||
-                 (optype == "Shape") || (optype == "Cast") ||
-                 (optype == "Resize"))) {
-              return;
-            }
-            has_unsupported_dimension = true;
-            return;
-          }
-        }
-      }
-    }
-  });
-  if (has_unsupported_dimension) {
-#ifndef NDEBUG
-    if (openvino_ep::backend_utils::IsDebugEnabled()) {
-      std::cout << "Dimension check failed" << std::endl;
-    }
-#endif
+//   bool has_unsupported_dimension = false;
+//   node->ForEachDef([&has_unsupported_dimension, this, &optype, &node](const NodeArg& node_arg, bool is_input) {
+//     if (is_input) {
+//       if (this->graph_viewer_.IsConstantInitializer(node_arg.Name(), true))
+//         return;
+//     }
+//     auto shape = node_arg.Shape();
+//     if (shape != nullptr) {
+//       // Can't have no dimensions
+//       if (shape->dim_size() == 0) {
+//         if (op_is_supported(optype, no_dimension_supported_)) {
+//           return;
+//         }
+//         // Special handling for the "Pad" operator
+//         if (optype == "Pad") {
+//           bool is_quantized = false;
+//           // Detect a quantized model by checking for a DequantizeLinear input
+//           for (Node::NodeConstIterator it_dq = node->InputNodesBegin(); it_dq != node->InputNodesEnd(); ++it_dq) {
+//             const auto& DQ = &*it_dq;
+//             if (DQ->OpType() == "DequantizeLinear") {
+//               is_quantized = true;
+//               break;
+//             }
+//           }
+//           if (is_quantized) {
+//             // For quantized Pad ops when the QDQ optimizer is disabled,
+//             // bypass the unsupported dimension check to ensure 'pad_value' is constant
+//             if (!npu_qdq_optimizer_enabled_) {
+// #ifndef NDEBUG
+//               if (openvino_ep::backend_utils::IsDebugEnabled()) {
+//                 // Pad Op with DQ inputs gets optimized in the downstream,
+//                 // so mark those no dim quantized Pad ops supported here
+//                 std::cout << "QDQ optimizer disabled; quantized Pad op detected (DequantizeLinear present), so marking those no dim quantized Pad ops as supported" << std::endl;
+//               }
+// #endif
+//             }
+//             return;
+//           }
+//         }
+//         // For ops that haven't been handled above, mark as unsupported dim
+//         has_unsupported_dimension = true;
+//         return;
+//       } else {
+//         // Zero dimension check
+//         for (const auto& dim : shape->dim()) {
+//           if (utils::HasDimValue(dim) && dim.dim_value() == 0) {
+//             if (((device_id_.find("CPU") != std::string::npos) || (device_id_.find("GPU") != std::string::npos)) &&
+//                 ((optype == "Expand") || (optype == "Equal") ||
+//                  (optype == "Slice") || (optype == "Concat") ||
+//                  (optype == "Shape") || (optype == "Cast") ||
+//                  (optype == "Resize"))) {
+//               return;
+//             }
+//             has_unsupported_dimension = true;
+//             return;
+//           }
+//         }
+//       }
+//     }
+//   });
+//   if (has_unsupported_dimension) {
+// #ifndef NDEBUG
+//     if (openvino_ep::backend_utils::IsDebugEnabled()) {
+//       std::cout << "Dimension check failed" << std::endl;
+//     }
+// #endif
 
-    return false;
-  }
+//     return false;
+//   }
 
-  // Check 3a
-  if (domain == kOnnxDomain && unsupported_op_mode(node, has_external_weights_)) {
-    if (optype == "GatherElements") {
-      return true;
-    }
-#ifndef NDEBUG
-    if (openvino_ep::backend_utils::IsDebugEnabled()) {
-      std::cout << "Failed in unsupported op mode" << std::endl;
-    }
-#endif
-    return false;
-  }
+//   // Check 3a
+//   if (domain == kOnnxDomain && unsupported_op_mode(node, has_external_weights_)) {
+//     if (optype == "GatherElements") {
+//       return true;
+//     }
+// #ifndef NDEBUG
+//     if (openvino_ep::backend_utils::IsDebugEnabled()) {
+//       std::cout << "Failed in unsupported op mode" << std::endl;
+//     }
+// #endif
+//     return false;
+//   }
 
   return true;
 }
