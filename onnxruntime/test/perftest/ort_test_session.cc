@@ -872,162 +872,91 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
                   << " (" << GetDeviceTypeString(device.Device().Type()) << ")" << std::endl;
       }
 
-      // Determine target device type from ov_options
-      std::string target_device_type = "";
-      if (ov_options->find("device_type") != ov_options->end()) {
-        target_device_type = (*ov_options)["device_type"];
-        ov_options->erase("device_type"); // Remove from EP options as it's handled separately
-      }
+      // Extract device_type and remove it from options
+      auto device_type = ov_options->find("device_type")->second;
+      ov_options->erase("device_type");
 
-      // Default to CPU if no device_type specified
-      if (target_device_type.empty()) {
-        target_device_type = "CPU";
-        (*ov_options)["device_type"] = "CPU";
-      }
-
-      std::cout << "Target device type: " << target_device_type << std::endl;
-
-      // Map OpenVINO device types to ORT hardware device types for filtering
-      OrtHardwareDeviceType target_hardware_type = OrtHardwareDeviceType_CPU;
-      bool supports_multiple_devices = false;
-
-      if (target_device_type.find("CPU") != std::string::npos) {
-        target_hardware_type = OrtHardwareDeviceType_CPU;
-      } else if (target_device_type.find("GPU") != std::string::npos) {
-        target_hardware_type = OrtHardwareDeviceType_GPU;
-      } else if (target_device_type.find("NPU") != std::string::npos) {
-        target_hardware_type = OrtHardwareDeviceType_NPU;
-      } else if (target_device_type.find("AUTO") != std::string::npos ||
-                 target_device_type.find("HETERO") != std::string::npos ||
-                 target_device_type.find("MULTI") != std::string::npos) {
-        // For meta devices, we'll search for any supported device type
-        supports_multiple_devices = true;
-      }
-
-      // Find appropriate OpenVINO EP device
-      const std::string registration_name = "OpenVINOExecutionProvider";
-
-      // Function to check if device matches our criteria
-      auto device_matches_criteria = [&](const Ort::ConstEpDevice& device) -> bool {
-        std::cout << "Checking device: " << device.EpName() << std::endl;
-
-        // Check if this is an OpenVINO EP device
-        if (std::string_view(device.EpName()).find(registration_name) == std::string::npos) {
-          std::cout << "Device doesn't match OpenVINO registration name" << std::endl;
-          return false;
-        }
-
-        // For meta devices, check if the EP name matches the meta device pattern
-        if (supports_multiple_devices) {
-          std::string device_ep_name = device.EpName();
-          
-          // Extract the meta device type from target_device_type (e.g., "AUTO" from "AUTO:GPU.0,CPU")
-          std::string meta_device_type = target_device_type;
-          if (auto colon_pos = meta_device_type.find(':'); colon_pos != std::string::npos) {
-            meta_device_type = meta_device_type.substr(0, colon_pos);
-          }
-          
-          std::string expected_ep_name = registration_name + "." + meta_device_type;
-          bool matches = device_ep_name == expected_ep_name;
-          std::cout << "Meta device check: expected=" << expected_ep_name 
-                    << ", actual=" << device_ep_name 
-                    << " -> " << (matches ? "MATCH" : "NO MATCH") << std::endl;
-          return matches;
-        }
-
-        // For regular devices, check hardware type and metadata
-        if (device.Device().Type() == target_hardware_type) {
-          const auto& meta_kv = device.EpMetadata().GetKeyValuePairs();
-          auto device_type_it = meta_kv.find("ov_device");
-          if (device_type_it != meta_kv.end()) {
-            // Extract base device type for comparison (e.g., "GPU.0" -> "GPU")
-            std::string ov_device = device_type_it->second;
-            std::string base_device_type = target_device_type;
-
-            // Handle device indices (e.g., GPU.0, GPU.1)
-            if (auto dot_pos = base_device_type.find('.'); dot_pos != std::string::npos) {
-              base_device_type = base_device_type.substr(0, dot_pos);
-            }
-            if (auto dot_pos = ov_device.find('.'); dot_pos != std::string::npos) {
-              ov_device = ov_device.substr(0, dot_pos);
-            }
-
-            bool matches = (ov_device == base_device_type || ov_device == target_device_type);
-            std::cout << "Regular device check: ov_device=" << ov_device
-                      << ", target=" << target_device_type
-                      << ", base=" << base_device_type
-                      << " -> " << (matches ? "MATCH" : "NO MATCH") << std::endl;
-            return matches;
-          } else {
-            std::cout << "No ov_device metadata found" << std::endl;
-          }
+      // Parse device_type into meta_prefix and ov_device_types
+      std::optional<std::string> meta_prefix;
+      std::vector<std::string> ov_device_types;
+      {
+        std::string remainder;
+        size_t colon_pos = device_type.find(':');
+        if (colon_pos != std::string::npos) {
+          meta_prefix = device_type.substr(0, colon_pos);
+          remainder = device_type.substr(colon_pos + 1);
         } else {
-          std::cout << "Hardware type mismatch: device=" << device.Device().Type()
-                    << ", target=" << target_hardware_type << std::endl;
+          remainder = device_type;
         }
 
-        return false;
+        size_t start = 0;
+        while (start < remainder.size()) {
+          size_t end = remainder.find(',', start);
+          if (end == std::string::npos) end = remainder.size();
+          if (end > start) {
+            ov_device_types.emplace_back(remainder.substr(start, end - start));
+          }
+          start = end + 1;
+        }
+      }
+
+      if (meta_prefix) {
+        std::cout << "meta_prefix = " << *meta_prefix << std::endl;
+      }
+
+      std::cout << "device_types = " << std::endl;
+      for (const auto& d : ov_device_types) {
+        std::cout << "  " << d << std::endl;
+      }
+
+      // Helper function to find matching EP device
+      const auto get_ep_device = [&ep_devices](const std::string& ep_name, std::string ov_device) -> Ort::ConstEpDevice {
+        Ort::ConstEpDevice plugin_ep_device{};
+        for (const auto& device : ep_devices) {
+          if (std::string_view(device.EpName()).find(ep_name) != std::string::npos) {
+            const auto& meta_kv = device.EpMetadata().GetKeyValuePairs();
+            auto device_type_it = meta_kv.find("ov_device");
+            if (device_type_it != meta_kv.end() && device_type_it->second == ov_device) {
+              plugin_ep_device = device;
+              break;
+            }
+          }
+        }
+        return plugin_ep_device;
       };
 
-      // Search for matching device
-      for (const auto& device : ep_devices) {
-        if (device_matches_criteria(device)) {
-          selected_plugin_ep_device = device;
-          std::cout << "Found matching device: " << device.EpName() << std::endl;
-          break;
-        }
+      // Construct EP name with optional meta_prefix
+      std::string ep_name = "OpenVINOExecutionProvider";
+      if (meta_prefix) {
+        ep_name += "." + *meta_prefix;
       }
 
-      // If no specific device found and we're looking for meta devices, try any OpenVINO device
-      if (selected_plugin_ep_device == nullptr && supports_multiple_devices) {
-        std::cout << "No meta device found, searching for any OpenVINO device..." << std::endl;
-        for (const auto& device : ep_devices) {
-          if (std::string_view(device.EpName()).find(registration_name) != std::string::npos) {
-            selected_plugin_ep_device = device;
-            std::cout << "Found fallback OpenVINO device: " << device.EpName() << std::endl;
-            break;
+      // Populate session_ep_devices from ov_device_types
+      std::vector<Ort::ConstEpDevice> session_ep_devices;
+      for (auto& ov_device : ov_device_types) {
+        auto plugin_ep_device = get_ep_device(ep_name, ov_device);
+        if (!plugin_ep_device) {
+          size_t dot_pos = ov_device.find('.');
+          if (dot_pos != std::string::npos) {
+            ov_device.erase(dot_pos);
+          }
+          plugin_ep_device = get_ep_device(ep_name, ov_device);
+          if (!plugin_ep_device) {
+            ORT_THROW("Did not find an EP device with ep_name = " + ep_name + " & ov_device = " + ov_device);
           }
         }
+        session_ep_devices.push_back(plugin_ep_device);
       }
 
-      // Final fallback: if still no device found, try to find any OpenVINO device
-      if (selected_plugin_ep_device == nullptr) {
-        std::cout << "No matching device found, trying any OpenVINO device as last resort..." << std::endl;
-        for (const auto& device : ep_devices) {
-          if (std::string_view(device.EpName()).find(registration_name) != std::string::npos) {
-            selected_plugin_ep_device = device;
-            std::cout << "Found last resort OpenVINO device: " << device.EpName() << std::endl;
-            break;
-          }
-        }
+      // Append execution provider
+      std::unordered_map<std::string, std::string> provider_options;
+      for (const auto& [key, value] : *ov_options) {
+        provider_options[key] = value;
       }
 
-      if (selected_plugin_ep_device != nullptr) {
-        std::cout << "Using AppendExecutionProvider_V2 approach with selected EP: "
-                  << selected_plugin_ep_device.EpName() << std::endl;
-
-        // Remove device_type from ov_options as it's handled by device selection
-        auto device_type_filtered_options = *ov_options;
-        device_type_filtered_options.erase("device_type");
-
-        std::cout << "Final provider options passed to AppendExecutionProvider_V2:" << std::endl;
-        for (const auto& [key, value] : device_type_filtered_options) {
-          std::cout << "  " << key << " = " << value << std::endl;
-        }
-
-        session_options.AppendExecutionProvider_V2(env, std::vector<Ort::ConstEpDevice>{selected_plugin_ep_device}, device_type_filtered_options);
-      } else {
-        std::cout << "ERROR: No OpenVINO EP device found! Falling back to legacy approach." << std::endl;
-        std::cout << "Available EP devices:" << std::endl;
-        for (const auto& device : ep_devices) {
-          std::cout << "  - " << device.EpName() << " (vendor: " << device.EpVendor() << ")" << std::endl;
-        }
-
-        // Fallback to the legacy approach
-        std::cout << "Using AppendExecutionProvider_OpenVINO_V2 Legacy fallback approach" << std::endl;
-        session_options.AppendExecutionProvider_OpenVINO_V2(*ov_options);
-      }
-    } else if (!enable_abi) {
+      session_options.AppendExecutionProvider_V2(env, session_ep_devices, provider_options);
+    }
+    else if (!enable_abi) {
       std::cout << "Using AppendExecutionProvider_OpenVINO_V2 Legacy approach" << std::endl;
       // Use AppendExecutionProvider_OpenVINO_V2 approach
       session_options.AppendExecutionProvider_OpenVINO_V2(*ov_options);
