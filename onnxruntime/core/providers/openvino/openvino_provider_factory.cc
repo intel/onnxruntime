@@ -561,7 +561,7 @@ struct OpenVINOEpFactory : OrtEpFactory {
 
   const OrtApi& ort_api;
   const std::string ep_name;              // EP name
-  const std::string vendor{"Microsoft"};  // EP vendor name
+  const std::string vendor{"Intel"};  // EP vendor name
 
   // Intel vendor ID. Refer to the ACPI ID registry (search Intel): https://uefi.org/ACPI_ID_List
   const uint32_t vendor_id{0x8086}; // Intel vendor ID
