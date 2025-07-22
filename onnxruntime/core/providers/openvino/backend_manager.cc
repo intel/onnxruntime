@@ -455,10 +455,11 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     return model_proto;
   } else {
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] OVEP QDQ optimization pass is disabled";
-    auto model = subgraph.CreateModel(logger);
+    std::unique_ptr<onnxruntime::Model> model;
+    Status status = qdq_scales_fix::Transform(subgraph, logger, model);
+    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     auto model_proto = model->ToProto();
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-    subgraph.ToProto(*model_proto->mutable_graph(), true, true);
     print_model_proto_duration();
     DumpOpenVINOEPModel(onnx_model_path_name, model_proto.get(), fused_node);
     return model_proto;
