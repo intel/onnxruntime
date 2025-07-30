@@ -17,6 +17,10 @@ Abstract:
 
 #include "mlasi.h"
 
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+#include "kleidiai/mlasi_kleidiai.h"
+#endif
+
 #include <thread>
 #include <mutex>
 
@@ -285,6 +289,8 @@ Return Value:
     this->QuantizeLinearU16Kernel = MlasQuantizeLinearU16Kernel;
     this->QuantizeLinearS4Kernel = MlasQuantizeLinearS4Kernel;
     this->QuantizeLinearU4Kernel = MlasQuantizeLinearU4Kernel;
+    this->DequantizeLinearS8Kernel = MlasDequantizeLinearS8Kernel;
+    this->DequantizeLinearU8Kernel = MlasDequantizeLinearU8Kernel;
 #ifndef __APPLE__
 #ifndef FORCE_GENERIC_ALGORITHMS
     this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelSse;
@@ -577,6 +583,15 @@ Return Value:
     }
 
     this->QNBitGemmDispatch = &GetMlasQNBitGemmDispatchNeon(HasDotProductInstructions);
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+    if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()){
+        this->MlasGemmBatchOverride = ArmKleidiAI::MlasGemmBatch;
+        this->MlasGemmPackBSizeOverride = ArmKleidiAI::MlasGemmPackBSize;
+        this->MlasGemmPackBOverride = ArmKleidiAI::MlasGemmPackB;
+        this->MlasConvPrepareOverride = ArmKleidiAI::MlasConvPrepare;
+        this->MlasConvOverride = ArmKleidiAI::MlasConv;
+    }
+#endif
 
 #if defined(__linux__)
     //

@@ -120,7 +120,7 @@ BackendManager::BackendManager(SessionContext& session_context,
          (session_context_.device_type.find("CPU") != std::string::npos ||
           session_context_.device_type.find("GPU") != std::string::npos ||
           (session_context_.device_type.find("NPU") != std::string::npos &&
-           session_context_.enable_causallm) )) ||
+           session_context_.enable_causallm))) ||
         (subgraph_context_.is_ep_ctx_graph)) {
       LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Starting backend initialization. "
                          << "Creating backend Dynamic Shapes";
@@ -183,9 +183,13 @@ BackendManager::BackendManager(SessionContext& session_context,
   }
   if (session_context_.so_context_enable &&
       (subgraph_context_.is_ep_ctx_ovir_encapsulated || !subgraph_context_.is_ep_ctx_graph)) {
-    auto status = onnxruntime::openvino_ep::BackendManager::ExportCompiledBlobAsEPCtxNode(subgraph);
-    if (!status.IsOK()) {
-      ORT_THROW(status);
+    if (concrete_backend_) {
+      auto status = onnxruntime::openvino_ep::BackendManager::ExportCompiledBlobAsEPCtxNode(subgraph);
+      if (!status.IsOK()) {
+        ORT_THROW(status);
+      }
+    } else {
+      ORT_THROW("[OpenVINO-EP] Cannot export compiled blob as EPCtx Node: Backend not initialized.");
     }
   }
 }
@@ -228,8 +232,7 @@ Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVie
     if (blob_filename.empty()) {
       blob_filename = session_context_.onnx_model_path_name;
     }
-    blob_filename = blob_filename.parent_path() / name;
-    blob_filename.replace_extension("blob");
+    blob_filename = blob_filename.parent_path() / (name + ".blob");
     std::ofstream blob_file(blob_filename,
                             std::ios::out | std::ios::trunc | std::ios::binary);
     if (!blob_file) {
@@ -455,7 +458,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     return model_proto;
   } else if ((session_context_.device_type.find("GPU") != std::string::npos) &&
-      enable_ovep_qdq_optimizer) {
+             enable_ovep_qdq_optimizer) {
     // Create a copy of the model
     std::unique_ptr<onnxruntime::Model> model;
     Status status = qdq_scales_fix::Transform(subgraph, logger, model);
@@ -682,6 +685,7 @@ void BackendManager::Compute(OrtKernelContext* context) {
 }
 
 void BackendManager::ShutdownBackendManager() {
+  std::unique_lock<std::mutex> lock(mutex_);
   backend_map_.clear();
   concrete_backend_.reset();
 }

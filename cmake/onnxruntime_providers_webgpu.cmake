@@ -135,20 +135,13 @@
     set(WGSL_TEMPLATES_DIR "${ONNXRUNTIME_ROOT}/core/providers/webgpu/wgsl_templates")
     set(WGSL_GENERATED_ROOT "${CMAKE_CURRENT_BINARY_DIR}/wgsl_generated")
 
-    # Find npm and node executables
-    find_program(NPM_EXECUTABLE "npm.cmd" "npm" REQUIRED)
-    if(NOT NPM_EXECUTABLE)
-      message(FATAL_ERROR "npm is required for WGSL template generation but was not found")
-    endif()
-    find_program(NODE_EXECUTABLE "node" REQUIRED)
-    if (NOT NODE_EXECUTABLE)
-      message(FATAL_ERROR "Node is required for WGSL template generation but was not found")
-    endif()
+    # Include the Node.js helper for finding and validating Node.js and NPM
+    include(node_helper.cmake)
 
     # Install npm dependencies
     add_custom_command(
       OUTPUT "${WGSL_TEMPLATES_DIR}/node_modules/.install_complete"
-      COMMAND ${NPM_EXECUTABLE} ci
+      COMMAND ${NPM_CLI} ci
       COMMAND ${CMAKE_COMMAND} -E touch "${WGSL_TEMPLATES_DIR}/node_modules/.install_complete"
       DEPENDS "${WGSL_TEMPLATES_DIR}/package.json" "${WGSL_TEMPLATES_DIR}/package-lock.json"
       WORKING_DIRECTORY ${WGSL_TEMPLATES_DIR}
@@ -172,10 +165,24 @@
     file(MAKE_DIRECTORY ${WGSL_GENERATED_DIR})
 
     # Find all WGSL template input files
-    file(GLOB_RECURSE WGSL_TEMPLATE_FILES "${ONNXRUNTIME_ROOT}/core/providers/webgpu/*.wgsl.template")
+    set(WGSL_SEARCH_PATHS "${ONNXRUNTIME_ROOT}/core/providers/webgpu/*.wgsl.template")
+    if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
+        list(APPEND WGSL_SEARCH_PATHS "${ONNXRUNTIME_ROOT}/contrib_ops/webgpu/*.wgsl.template")
+    endif()
+    file(GLOB_RECURSE WGSL_TEMPLATE_FILES ${WGSL_SEARCH_PATHS})
 
     # Set wgsl-gen command line options as a list
-    set(WGSL_GEN_OPTIONS "-i" "../" "--output" "${WGSL_GENERATED_DIR}" "-I" "wgsl_template_gen/" "--preserve-code-ref" "--verbose")
+    set(WGSL_GEN_OPTIONS
+        "--output" "${WGSL_GENERATED_DIR}"
+        "-I" "wgsl_template_gen/"
+        "--preserve-code-ref"
+        "--verbose"
+        "-i" "${ONNXRUNTIME_ROOT}/core/providers/webgpu"
+    )
+    if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
+        list(APPEND WGSL_GEN_OPTIONS "-i" "${ONNXRUNTIME_ROOT}/contrib_ops/webgpu")
+    endif()
+
     if (onnxruntime_WGSL_TEMPLATE STREQUAL "static")
       if (CMAKE_BUILD_TYPE STREQUAL "Debug")
         list(APPEND WGSL_GEN_OPTIONS "--generator" "static-cpp-literal")
@@ -189,7 +196,7 @@
     # Generate WGSL templates
     add_custom_command(
       OUTPUT ${WGSL_GENERATED_INDEX_H} ${WGSL_GENERATED_INDEX_IMPL_H} ${WGSL_GENERATED_TEMPLATES_JS}
-      COMMAND ${NPM_EXECUTABLE} run gen -- ${WGSL_GEN_OPTIONS}
+      COMMAND ${NPM_CLI} run gen -- ${WGSL_GEN_OPTIONS}
       DEPENDS "${WGSL_TEMPLATES_DIR}/node_modules/.install_complete" ${WGSL_TEMPLATE_FILES}
       WORKING_DIRECTORY ${WGSL_TEMPLATES_DIR}
       COMMENT "Generating WGSL templates from *.wgsl.template files"
@@ -207,10 +214,9 @@
       # Add the generated directory to include paths
       target_include_directories(onnxruntime_providers_webgpu PRIVATE ${WGSL_GENERATED_ROOT})
     elseif(onnxruntime_WGSL_TEMPLATE STREQUAL "dynamic")
-      add_library(duktape_static STATIC "${duktape_SOURCE_DIR}/src/duktape.c")
-      target_compile_features(duktape_static PRIVATE c_std_99)
       target_link_libraries(onnxruntime_providers_webgpu duktape_static)
-      target_include_directories(onnxruntime_providers_webgpu PRIVATE ${duktape_SOURCE_DIR}/src)
+      onnxruntime_add_include_to_target(onnxruntime_providers_webgpu duktape_static)
+
       # Define the path to the generated templates.js file
       target_compile_definitions(onnxruntime_providers_webgpu PRIVATE
         "ORT_WGSL_TEMPLATES_JS_PATH=\"${WGSL_GENERATED_TEMPLATES_JS}\"")

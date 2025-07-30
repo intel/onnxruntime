@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 #include "core/common/inlined_containers_fwd.h"
+#include "core/framework/tensor_external_data_info.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/graph/onnx_protobuf.h"
 
@@ -28,6 +29,9 @@ enum class OrtGraphIrApi {
   kModelEditorApi,
   kEpApi,
 };
+
+// Alias OrtExternalInitializerInfo to the internal type.
+struct OrtExternalInitializerInfo : onnxruntime::ExternalDataInfo {};
 
 /// <summary>
 /// Public type that represents an ONNX value info.
@@ -93,6 +97,17 @@ struct OrtValueInfo {
   ///                     an initializer.</param>
   /// <returns>A status indicating success or an error.</returns>
   virtual onnxruntime::Status GetInitializerValue(const OrtValue*& value) const = 0;
+
+  /// <summary>
+  /// Get information (file path, file offset, byte size) if this OrtValueInfo represents an initializer with
+  /// data in an external file.
+  /// </summary>
+  /// <param name="ext_info">Output parameter set to the external initializer info or NULL if this is not an external
+  /// initializer.</param>
+  /// <returns>A status indicating an error or success. Calling this function on an OrtValueInfo that does not represent
+  /// an external initializer is NOT an error.</returns>
+  virtual onnxruntime::Status GetExternalInitializerInfo(
+      std::unique_ptr<onnxruntime::ExternalDataInfo>& ext_info) const = 0;
 
   /// <summary>
   /// Determine if the value is a required graph input.
@@ -247,8 +262,11 @@ struct OrtNode {
   /// Gets the node's subgraphs (e.g., subgraphs contained by an If or Loop node).
   /// </summary>
   /// <param name="subgraphs">Buffer into which to copy the subgraphs.</param>
+  /// <param name="opt_attribute_names">Optional buffer into which to copy the attribute name for each subgraph.
+  /// If set, must point to a buffer with the same number of elements as `subgraphs`.</param>
   /// <returns>A status indicating success or an error.</returns>
-  virtual onnxruntime::Status GetSubgraphs(gsl::span<const OrtGraph*> subgraphs) const = 0;
+  virtual onnxruntime::Status GetSubgraphs(gsl::span<const OrtGraph*> subgraphs,
+                                           const char** opt_attribute_names) const = 0;
 
   /// <summary>
   /// Gets the node's parent graph, which is the graph that contains this node.
@@ -274,11 +292,34 @@ struct OrtGraph {
   virtual const std::string& GetName() const = 0;
 
   /// <summary>
+  /// Returns the model's path, which is empty if unknown.
+  /// </summary>
+  /// <returns>The model path.</returns>
+  virtual const ORTCHAR_T* GetModelPath() const = 0;
+
+  /// <summary>
   /// Returns the model's ONNX IR version. Important in checking for optional graph inputs
   /// (aka non-constant initializers), which were introduced in ONNX IR version 4.
   /// </summary>
   /// <returns>The model's ONNX IR version.</returns>
   virtual int64_t GetOnnxIRVersion() const = 0;
+
+  /// <summary>
+  /// Gets the number of operator sets (domain, opset version) the graph's model relies on.
+  /// </summary>
+  /// <param name="num_operator_sets">Output parameter set to the number of operator sets.</param>
+  /// <returns>A status indicating success or an error.</returns>
+  virtual onnxruntime::Status GetNumOperatorSets(size_t& num_operator_sets) const = 0;
+
+  /// <summary>
+  /// Gets the operator sets the graph's model relies on. An operator set is uniquely identified by a
+  /// (domain, opset version) pair.
+  /// </summary>
+  /// <param name="domains">Buffer into which to copy the domains.</param>
+  /// <param name="opset_versions">Buffer into which to copy the opset version for each domain.</param>
+  /// <returns>A status indicating success or an error.</returns>
+  virtual onnxruntime::Status GetOperatorSets(gsl::span<const char*> domains,
+                                              gsl::span<int64_t> opset_versions) const = 0;
 
   /// <summary>
   /// Returns the number of graph inputs, including initializers that appear in the list of graph inputs.

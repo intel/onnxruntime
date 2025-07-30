@@ -342,7 +342,7 @@ def add_webassembly_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for WebAssembly (WASM) platform builds."""
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly.")
     parser.add_argument("--build_wasm_static_lib", action="store_true", help="Build WebAssembly static library.")
-    parser.add_argument("--emsdk_version", default="4.0.8", help="Specify version of emsdk.")
+    parser.add_argument("--emsdk_version", default="4.0.11", help="Specify version of emsdk.")
     parser.add_argument("--enable_wasm_simd", action="store_true", help="Enable WebAssembly SIMD.")
     parser.add_argument("--enable_wasm_relaxed_simd", action="store_true", help="Enable WebAssembly Relaxed SIMD.")
     parser.add_argument("--enable_wasm_threads", action="store_true", help="Enable WebAssembly multi-threading.")
@@ -524,6 +524,15 @@ def add_size_reduction_args(parser: argparse.ArgumentParser) -> None:
         "--disable_exceptions",
         action="store_true",
         help="Disable exceptions (requires --minimal_build).",
+    )
+
+
+def add_client_package_args(parser: argparse.ArgumentParser) -> None:
+    """Adds arguments for client package build package."""
+    parser.add_argument(
+        "--client_package_build",
+        action="store_true",
+        help="Create ORT package with default settings more appropriate for client/on-device workloads.",
     )
 
 
@@ -764,9 +773,6 @@ def add_other_feature_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--enable_msinternal", action="store_true", help="[MS Internal] Enable Microsoft internal build features."
     )
-    parser.add_argument(
-        "--use_triton_kernel", action="store_true", help="Use Triton compiled kernels (requires Triton)."
-    )
     parser.add_argument("--use_lock_free_queue", action="store_true", help="Use lock-free task queue for threadpool.")
     parser.add_argument(
         "--enable_generic_interface",
@@ -833,6 +839,7 @@ def parse_arguments() -> argparse.Namespace:
     add_dependency_args(parser)
     add_extension_args(parser)
     add_size_reduction_args(parser)
+    add_client_package_args(parser)
 
     # Language Bindings
     add_python_binding_args(parser)
