@@ -973,8 +973,7 @@ void replace_bf16_with_fp16(qdq_scales_fix::CustomGraph& gen_graph) {
         for (int i = 0; i < tensor_proto->dims_size(); ++i)
           size *= tensor_proto->dims()[i];
         for (std::int64_t i = 0; i < size; ++i) {
-          std::uint32_t tmp = static_cast<std::uint32_t>(raw_data[i]) << 16;
-          raw_data[i] = onnxruntime::MLFloat16(*reinterpret_cast<float*>(&tmp)).val;
+          raw_data[i] = onnxruntime::MLFloat16(onnxruntime::BFloat16::FromBits(raw_data[i])).val;
         }
       }
     }
