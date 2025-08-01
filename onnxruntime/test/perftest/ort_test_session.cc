@@ -906,6 +906,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         ov_options[key] = value;
       } else if (key == "reshape_input") {
         ov_options[key] = value;
+      } else if (key == "layout") {
+        ov_options[key] = value;
       } else {
         ORT_THROW(
             "[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO."
