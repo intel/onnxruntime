@@ -48,25 +48,24 @@ int real_main(int argc, char* argv[]) {
     }
   }
   std::random_device rd;
-  perftest::PerformanceRunner perf_runner(env, test_config, rd);
+  {
+    perftest::PerformanceRunner perf_runner(env, test_config, rd);
 
-  // Exit if user enabled -n option so that user can measure session creation time
-  if (test_config.run_config.exit_after_session_creation) {
-    perf_runner.LogSessionCreationTime();
-    env.UnregisterExecutionProviderLibrary(registration_name);
-    return 0;
+    // Exit if user enabled -n option so that user can measure session creation time
+    if (test_config.run_config.exit_after_session_creation) {
+      perf_runner.LogSessionCreationTime();
+      // perf_runner destructor will be called when we exit this scope
+    } else {
+      auto status = perf_runner.Run();
+      if (!status.IsOK()) {
+        printf("Run failed:%s\n", status.ErrorMessage().c_str());
+        env.UnregisterExecutionProviderLibrary(registration_name);
+        return -1;
+      }
+      perf_runner.SerializeResult();
+    }
   }
-
-  auto status = perf_runner.Run();
-  if (!status.IsOK()) {
-    printf("Run failed:%s\n", status.ErrorMessage().c_str());
-    env.UnregisterExecutionProviderLibrary(registration_name);
-    return -1;
-  }
-
-  perf_runner.SerializeResult();
-
-  env.UnregisterExecutionProviderLibrary(registration_name);
+ env.UnregisterExecutionProviderLibrary(registration_name);
 
   return 0;
 }
