@@ -294,7 +294,7 @@ bool OpenVINOParserUtils::Check_Valid_Layout(const std::string& layout_str, cons
   std::unordered_set<char> seen_alphabets;
   for (char c : layout_str) {
     if (std::isalpha(c)) {
-      char upper_c = std::toupper(c);  // Convert to uppercase for case-insensitive comparison
+      char upper_c = static_cast<char>(std::toupper(c));  // Convert to uppercase for case-insensitive comparison
       if (seen_alphabets.find(upper_c) != seen_alphabets.end()) {
         ORT_THROW("Repeated Dim '" + std::string(1, c) +
                   "' found in layout dimensions for tensor '" + tensor_name + "'");
