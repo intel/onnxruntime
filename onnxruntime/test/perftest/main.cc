@@ -53,7 +53,7 @@ int real_main(int argc, char* argv[]) {
   // Exit if user enabled -n option so that user can measure session creation time
   if (test_config.run_config.exit_after_session_creation) {
     perf_runner.LogSessionCreationTime();
-    env.UnregisterExecutionProviderLibrary(registration_name);
+   // env.UnregisterExecutionProviderLibrary(registration_name);
     return 0;
   }
 
@@ -66,7 +66,7 @@ int real_main(int argc, char* argv[]) {
 
   perf_runner.SerializeResult();
 
-  env.UnregisterExecutionProviderLibrary(registration_name);
+  //env.UnregisterExecutionProviderLibrary(registration_name);
 
   return 0;
 }
