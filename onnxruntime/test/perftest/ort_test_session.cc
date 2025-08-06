@@ -913,7 +913,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
             "[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO."
             " ['device_type', 'device_id', 'num_of_threads', 'load_config', 'cache_dir', 'num_streams', "
             "'enable_opencl_throttling', 'disable_dynamic_shapes', 'enable_qdq_optimizer',"
-            " 'enable_causallm', 'model_priority'] \n");
+            " 'enable_causallm', 'reshape_input', 'layout', 'model_priority'] \n");
       }
     }
     session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
