@@ -313,13 +313,28 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
   }
 }
 
-void BasicBackend::EnableCaching() {
+void BasicBackend::EnableCaching(ov::AnyMap& device_config) {
   // cache_dir argument has no effect when working with an embed-mode EPContext Graph
   if (subgraph_context_.is_ep_ctx_graph) return;
 
   if (!session_context_.cache_dir.empty() && !session_context_.so_context_enable) {
     LOGS_DEFAULT(INFO) << log_tag << "Enables Caching";
+    
     OVCore::Get()->SetCache(session_context_.cache_dir.string());
+    config_t& load_config = session_context_.load_config;
+    
+    if (session_context_.device_type.find("GPU") != std::string::npos) {
+      if (const auto& gpu_config = load_config.find("GPU"); gpu_config != load_config.end()) {
+        if (const auto& it = gpu_config->second.find("CACHE_MODE"); it != gpu_config->second.end()) {
+          if (it->second.is<std::string>()) {
+            if (it->second.as<std::string>() == "OPTIMIZE_SIZE")
+              device_config["CACHE_MODE"] = ov::CacheMode::OPTIMIZE_SIZE;
+            else if (it->second.as<std::string>() == "OPTIMIZE_SPEED")
+              device_config["CACHE_MODE"] = ov::CacheMode::OPTIMIZE_SPEED;
+          }
+        }
+      }
+    }
   }
 }
 
@@ -364,7 +379,7 @@ void BasicBackend::SetOVDeviceConfiguration(ov::AnyMap& device_config) {
   PopulateConfigValue(device_config);
 
   // Enable caching
-  EnableCaching();
+  EnableCaching(device_config);
 
   // Setting OpenCL queue throttling for GPU
   EnableGPUThrottling(device_config);
