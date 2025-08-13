@@ -102,7 +102,7 @@ common::Status OpenVINOExecutionProvider::Compile(
     session_context_.onnx_opset_version =
         graph_body_viewer_0.DomainToVersionMap().at(kOnnxDomain);
 
-    // OVIR wrapped in epctx should be trated as source but this code does not
+    // OVIR wrapped in epctx should be treated as source but this code does not
     // This corner case is not in use and will be addressed in a future commit
     is_epctx_model = ep_ctx_handle_.CheckForOVEPCtxNodeInGraph(graph_body_viewer_0);
   }
