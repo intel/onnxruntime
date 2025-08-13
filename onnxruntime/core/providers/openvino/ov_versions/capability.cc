@@ -84,8 +84,8 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
 
   // This is a list of initializers that nGraph considers as constants. Example weights, reshape shape etc.
   std::unordered_set<std::string> ng_required_initializers;
-
-  const auto unsupported_nodes = data_ops_->GetUnsupportedNodeIndices(ng_required_initializers, has_external_weights_);
+  std::vector<NodeIndex> unsupported_nodes = {};
+  // const auto unsupported_nodes = data_ops_->GetUnsupportedNodeIndices(ng_required_initializers, has_external_weights_);
 #ifndef NDEBUG
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
     std::cout << "No of unsupported nodes " << unsupported_nodes.size() << std::endl;
@@ -109,23 +109,23 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
       return result;
     }
 
-    const Node* node = graph_viewer_.GetNode(nodes[0]);
+    // const Node* node = graph_viewer_.GetNode(nodes[0]);
 
-    // Handle cases where lone, reoccuring Ops in smaller models cannot be supported in OpenVINO
-    // If only a node of the same lone,unsupported type is present, then do not proceed with the subgraph
-    if (nodes.size() <= 3) {
-      if (data_ops_->IsOpSupportedOnlyInModel(node->OpType())) {
-        return result;
-      }
-    }
+    // // Handle cases where lone, reoccuring Ops in smaller models cannot be supported in OpenVINO
+    // // If only a node of the same lone,unsupported type is present, then do not proceed with the subgraph
+    // if (nodes.size() <= 3) {
+    //   if (data_ops_->IsOpSupportedOnlyInModel(node->OpType())) {
+    //     return result;
+    //   }
+    // }
 
-    // Nodes that work well in models but not as a single node
-    if (nodes.size() == 1) {
-      // If reshape is not an intermediate node, shape needs to be an initializer
-      if (data_ops_->SpecialConditionForClusterSizeOne(ng_required_initializers, node)) {
-        return result;
-      }
-    }
+    // // Nodes that work well in models but not as a single node
+    // if (nodes.size() == 1) {
+    //   // If reshape is not an intermediate node, shape needs to be an initializer
+    //   if (data_ops_->SpecialConditionForClusterSizeOne(ng_required_initializers, node)) {
+    //     return result;
+    //   }
+    // }
 
     // Fill outputs with names
     Iterable2String(outputs, graph_viewer_.GetOutputs());
@@ -135,9 +135,9 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
 
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model is fully supported by OpenVINO";
     // Enable CI Logs
-    if (backend_utils::IsCILogEnabled()) {
-      std::cout << "Model is fully supported on OpenVINO" << std::endl;
-    }
+    // if (backend_utils::IsCILogEnabled()) {
+    std::cout << "Model is fully supported on OpenVINO" << std::endl;
+    // }
     is_wholly_supported_graph_ = true;
 
   } else {                                     // unsupported_nodes_idx.empty()
