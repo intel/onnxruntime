@@ -4,6 +4,8 @@
 #include "core/providers/openvino/ov_interface.h"
 
 #include <format>
+#include <windows.h>
+#include <psapi.h>
 
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
@@ -14,6 +16,12 @@
 
 namespace onnxruntime {
 namespace openvino_ep {
+
+size_t getPeakRSS() {
+    PROCESS_MEMORY_COUNTERS info;
+    GetProcessMemoryInfo(GetCurrentProcess(), &info, sizeof(info));
+    return (size_t)info.PeakWorkingSetSize; // in bytes
+}
 
 template <typename Func, typename... Args>
 inline auto OvExceptionBoundary(Func&& func, std::format_string<Args...>&& fmt, Args&&... args) {
@@ -26,9 +34,9 @@ inline auto OvExceptionBoundary(Func&& func, std::format_string<Args...>&& fmt, 
   }
 }
 
-#ifndef NDEBUG
+// #ifndef NDEBUG
 void printDebugInfo(const ov::CompiledModel& obj) {
-  if (onnxruntime::openvino_ep::backend_utils::IsDebugEnabled()) {
+  // if (onnxruntime::openvino_ep::backend_utils::IsDebugEnabled()) {
     // output of the actual settings that the device selected
     auto supported_properties = obj.get_property(ov::supported_properties);
     std::cout << "Model:" << std::endl;
@@ -53,9 +61,9 @@ void printDebugInfo(const ov::CompiledModel& obj) {
         std::cout << "  " << cfg << ": " << prop.as<std::string>() << std::endl;
       }
     }
-  }
+  // }
 }
-#endif
+// #endif
 
 // Function to check if a given OV property is enabled
 std::optional<bool> queryOVProperty(const std::string& property, const std::string& device_type) {
@@ -150,6 +158,45 @@ OVExeNetwork OVCore::StatefulCompileModel(std::shared_ptr<OVNetwork>& model,
   return exe;
 }
 
+// New: Query Model for Supported / Unsupported Ops
+std::vector<std::string> OVCore::QueryModel(std::shared_ptr<const OVNetwork>& model,
+                                    const std::string& device,
+                                    const ov::AnyMap& device_config) {
+
+  // Ask OpenVINO which ops are supported on this device
+  std::cout << "Peak memory before query_model : " << getPeakRSS() / (1024.0 * 1024.0) << " MB\n";
+  auto supported_ops_map = core.query_model(model, device, device_config);
+
+  std::vector<std::string> supported_nodes;
+  std::vector<std::string> unsupported_nodes;
+
+  for (const auto& node : model->get_ops()) {
+    std::string node_name = node->get_friendly_name();
+    std::string op_type   = node->get_type_name();
+
+    if (supported_ops_map.find(node_name) != supported_ops_map.end()) {
+      supported_nodes.push_back(node_name + " (" + op_type + ")");
+    } else {
+      unsupported_nodes.push_back(node_name + " (" + op_type + ")");
+      std::cout << " Unsupported nodes = " << node_name << " (" << op_type << ")" << std::endl;
+    }
+  }
+  if (unsupported_nodes.empty()) {
+    std::cout << "All nodes are supported on device: " << device << std::endl;
+    LOGS_DEFAULT(INFO) << log_tag << "All nodes are supported on device: " << device;
+  } else {
+    LOGS_DEFAULT(WARNING) << log_tag << "Unsupported nodes on device: " << device;
+    for (const auto& node : unsupported_nodes) {
+      LOGS_DEFAULT(WARNING) << " Unsupported node: " << node;
+    }
+  }
+  supported_nodes.clear();
+  unsupported_nodes.clear();
+  std::cout << "Peak memory after query_model: " << getPeakRSS() / (1024.0 * 1024.0) << " MB\n";
+
+  return supported_nodes;
+}
+
 OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_network,
                                   std::string& hw_target,
                                   ov::AnyMap& device_config,
@@ -165,9 +212,9 @@ OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_netwo
       exe = OVExeNetwork(obj, hw_target);
     }
 
-#ifndef NDEBUG
+// #ifndef NDEBUG
     printDebugInfo(exe.Get());
-#endif
+// #endif
 
     return exe;
   },
