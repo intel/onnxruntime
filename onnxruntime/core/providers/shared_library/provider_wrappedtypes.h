@@ -1448,6 +1448,7 @@ struct Tensor final {
   const OrtMemoryInfo& Location() const { return g_host->Tensor__Location(this); }
 
   int32_t GetElementType() const { return g_host->Tensor__GetElementType(this); }
+  void SetElementType(ONNX_NAMESPACE::TensorProto_DataType data_type) { g_host->Tensor__SetElementType(this, data_type); }
   MLDataType DataType() const { return g_host->Tensor__DataType(this); }
   bool IsDataTypeString() const { return g_host->Tensor__IsDataTypeString(this); }
 

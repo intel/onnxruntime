@@ -1651,6 +1651,7 @@ struct ProviderHostImpl : ProviderHost {
   ptrdiff_t Tensor__ByteOffset(const Tensor* p) override { return p->ByteOffset(); }
   size_t Tensor__SizeInBytes(const Tensor* p) override { return p->SizeInBytes(); }
   const OrtMemoryInfo& Tensor__Location(const Tensor* p) override { return p->Location(); }
+  void Tensor__SetElementType(Tensor* p, ONNX_NAMESPACE::TensorProto_DataType data_type) override { p->SetElementType(data_type); }
   int32_t Tensor__GetElementType(const Tensor* p) override { return p->GetElementType(); }
   MLDataType Tensor__DataType(const Tensor* p) override { return p->DataType(); }
 #ifdef ENABLE_STRIDED_TENSORS

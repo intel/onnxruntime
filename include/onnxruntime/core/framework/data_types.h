@@ -934,6 +934,10 @@ class PrimitiveDataTypeBase : public DataTypeImpl {
     return nullptr;
   }
 
+  void SetDataType(ONNX_NAMESPACE::TensorProto_DataType data_type) {
+    *const_cast<int32_t*>(&data_type_) = data_type;
+  }
+
   int32_t GetDataType() const {
     return data_type_;
   }

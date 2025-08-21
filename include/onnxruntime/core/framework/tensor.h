@@ -162,6 +162,13 @@ class Tensor final {
   MLDataType DataType() const { return dtype_; }
 
   /**
+     Sets the data type to an enum constant
+  */
+  void SetElementType(ONNX_NAMESPACE::TensorProto_DataType data_type) {
+    const_cast<PrimitiveDataTypeBase*>(dtype_)->SetDataType(data_type);
+  }
+
+  /**
      Returns the data type enum constant
      @remarks Use utils::ToTensorProtoElementType<T> for comparison.
   */
