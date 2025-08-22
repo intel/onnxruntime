@@ -170,13 +170,13 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
     for (auto this_cluster : connected_clusters) {
       bool omit_subgraph = false;
 
-      auto id = this_cluster.at(0);
+      //auto id = this_cluster.at(0);
       if (this_cluster.size() == 1) {
           //check next cluster
           auto index = this_cluster.at(0);
           if (graph_viewer_.GetNode(index)->OpType() == "EPContext") {
               omit_subgraph=false;
-          } else if(cluster_index < this_cluster.size()-1) {
+          } else if(cluster_index < connected_clusters.size()-1) {
               bool append_node = AddTrivialClusterToNextClusterIfConnected(graph_viewer_, index, connected_clusters[cluster_index+1]);
               if(append_node) {
                 connected_clusters[cluster_index+1].emplace_back(index);
