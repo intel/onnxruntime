@@ -389,8 +389,6 @@ static bool IsModelBF16(const onnxruntime::GraphViewer& graph_viewer) {
 
 static bool Is16BitTensor(const onnxruntime::NodeArg* node_arg) {
   const auto* type_proto = node_arg ? node_arg->TypeAsProto() : nullptr;
-  [[maybe_unused]] volatile auto name = node_arg->Name();
-  [[maybe_unused]] volatile auto a = type_proto->tensor_type().elem_type();
   return type_proto && type_proto->has_tensor_type() &&
          (type_proto->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT16 ||
           type_proto->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_INT16);

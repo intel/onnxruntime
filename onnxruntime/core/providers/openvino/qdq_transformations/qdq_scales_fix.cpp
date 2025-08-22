@@ -906,8 +906,10 @@ Status copy_model(const GraphViewer& src_graph_viewer,
 
   for (auto& [name, tensor_proto] : src_graph.GetAllInitializedTensors()) {
     auto ort_value = OrtValue();
-    src_graph.GetOrtValueInitializer(name, ort_value);
-    ORT_RETURN_IF_ERROR(dst_graph.AddInitializedOrtValue(*tensor_proto, ort_value));
+    if (src_graph.GetOrtValueInitializer(name, ort_value))
+      ORT_RETURN_IF_ERROR(dst_graph.AddInitializedOrtValue(*tensor_proto, ort_value));
+    else
+      dst_graph.AddInitializedTensor(*tensor_proto);
   }
 
   ORT_RETURN_IF_ERROR(dst_graph.Resolve());
