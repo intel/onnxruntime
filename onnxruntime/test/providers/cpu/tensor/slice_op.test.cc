@@ -540,6 +540,10 @@ TEST(SliceTest, Slice1D_ReverseAllAxes_1) {
     GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{4}] did not match run output shape [{0}] for output";
   }
 
+  if (DefaultOpenVINOExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: The input ends did not supported int max when step is negtive.";
+  }
+
   RunSliceTest<float>({4},
                       {1.0f, 2.0f, 3.0f, 4.0f},
                       {-1},
