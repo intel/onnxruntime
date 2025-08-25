@@ -166,7 +166,8 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
     auto connected_clusters = GetConnectedClusters(graph_viewer_, ng_clusters);
 
     int no_of_clusters = 0;
-    int cluster_index = 0;
+    size_t  cluster_index = 0;
+    size_t  total_clusters = connected_clusters.size();
     for (auto this_cluster : connected_clusters) {
       bool omit_subgraph = false;
 
@@ -176,7 +177,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
           auto index = this_cluster.at(0);
           if (graph_viewer_.GetNode(index)->OpType() == "EPContext") {
               omit_subgraph=false;
-          } else if(cluster_index < connected_clusters.size()-1) {
+          } else if(cluster_index < total_clusters-1) {
               bool append_node = AddTrivialClusterToNextClusterIfConnected(graph_viewer_, index, connected_clusters[cluster_index+1]);
               if(append_node) {
                 connected_clusters[cluster_index+1].emplace_back(index);
