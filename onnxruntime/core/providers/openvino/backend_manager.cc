@@ -241,7 +241,9 @@ Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVie
     std::ofstream blob_file(blob_filename,
                             std::ios::out | std::ios::trunc | std::ios::binary);
     if (!blob_file) {
-      ORT_THROW("Unable to open file for epctx model dump.", blob_filename);
+      std::ostringstream err_msg;
+      err_msg << "Unable to open file for epctx model dump: " << blob_filename;
+      ORT_THROW(err_msg.str());
     }
     compiled_model.export_model(blob_file);
     model_blob_str = blob_filename.filename().string();
