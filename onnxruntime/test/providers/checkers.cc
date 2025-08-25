@@ -190,7 +190,7 @@ struct TensorCheck<Int4x2> {
     const auto size = actual.Shape().Size();
     cur_expected = expected.Data<Int4x2>();
     cur_actual = actual.Data<Int4x2>();
-    double threshold;
+    double threshold = 0.0f;
     if (has_abs_err) {
       threshold = *(params.absolute_error);
     }
@@ -221,7 +221,7 @@ struct TensorCheck<UInt4x2> {
     cur_expected = expected.Data<UInt4x2>();
     cur_actual = actual.Data<UInt4x2>();
 
-    double threshold;
+    double threshold = 0.0f;
     if (has_abs_err) {
       threshold = *(params.absolute_error);
     }
