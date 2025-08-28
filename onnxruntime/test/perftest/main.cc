@@ -11,13 +11,15 @@
 #include <google/protobuf/stubs/common.h>
 
 using namespace onnxruntime;
-const OrtApi* g_ort = NULL;
+
+const OrtApi* g_ort = nullptr;
 
 #ifdef _WIN32
 int real_main(int argc, wchar_t* argv[]) {
 #else
 int real_main(int argc, char* argv[]) {
 #endif
+  auto registration_name = "OpenVINOExecutionProvider";
   g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   perftest::PerformanceTestConfig test_config;
   if (!perftest::CommandLineParser::ParseArguments(test_config, argc, argv)) {
@@ -32,57 +34,41 @@ int real_main(int argc, char* argv[]) {
                                           ? ORT_LOGGING_LEVEL_VERBOSE
                                           : ORT_LOGGING_LEVEL_WARNING;
       env = Ort::Env(logging_level, "Default");
+
+      const ORTCHAR_T* library_path = ORT_TSTR("onnxruntime_providers_openvino.dll");
+      env.RegisterExecutionProviderLibrary(registration_name, library_path);
     }
     ORT_CATCH(const Ort::Exception& e) {
       ORT_HANDLE_EXCEPTION([&]() {
-        std::cerr << "Error creating environment: " << e.what() << std::endl;
+        fprintf(stderr, "Error creating environment: %s \n", e.what());
         failed = true;
       });
     }
 
-    if (failed)
+    if (failed) {
+      env.UnregisterExecutionProviderLibrary(registration_name);
       return -1;
-  }
-
-  if (!test_config.plugin_ep_names_and_libs.empty()) {
-    perftest::utils::RegisterExecutionProviderLibrary(env, test_config);
-  }
-
-  // Unregister all registered plugin EP libraries before program exits.
-  // This is necessary because unregistering the plugin EP also unregisters any associated shared allocators.
-  // If we don't do this and program returns, the factories stored inside the environment will be destroyed when the environment goes out of scope.
-  // Later, when the shared allocator's deleter runs, it may cause a segmentation fault because it attempts to use the already-destroyed factory to call ReleaseAllocator.
-  // See "ep_device.ep_factory->ReleaseAllocator" in Environment::CreateSharedAllocatorImpl.
-  auto unregister_plugin_eps_at_scope_exit = gsl::finally([&]() {
-    if (!test_config.registered_plugin_eps.empty()) {
-      perftest::utils::UnregisterExecutionProviderLibrary(env, test_config);  // this won't throw
     }
-  });
-
-  if (test_config.list_available_ep_devices) {
-    perftest::utils::ListEpDevices(env);
-    if (test_config.registered_plugin_eps.empty()) {
-      fprintf(stdout, "No plugin execution provider libraries are registered. Please specify them using \"--plugin_ep_libs\"; otherwise, only CPU may be available.\n");
-    }
-    return 0;
   }
-
   std::random_device rd;
-  perftest::PerformanceRunner perf_runner(env, test_config, rd);
+  {
+    perftest::PerformanceRunner perf_runner(env, test_config, rd);
 
-  // Exit if user enabled -n option so that user can measure session creation time
-  if (test_config.run_config.exit_after_session_creation) {
-    perf_runner.LogSessionCreationTime();
-    return 0;
+    // Exit if user enabled -n option so that user can measure session creation time
+    if (test_config.run_config.exit_after_session_creation) {
+      perf_runner.LogSessionCreationTime();
+      // perf_runner destructor will be called when we exit this scope
+    } else {
+      auto status = perf_runner.Run();
+      if (!status.IsOK()) {
+        printf("Run failed:%s\n", status.ErrorMessage().c_str());
+        env.UnregisterExecutionProviderLibrary(registration_name);
+        return -1;
+      }
+      perf_runner.SerializeResult();
+    }
   }
-
-  auto status = perf_runner.Run();
-  if (!status.IsOK()) {
-    printf("Run failed:%s\n", status.ErrorMessage().c_str());
-    return -1;
-  }
-
-  perf_runner.SerializeResult();
+ env.UnregisterExecutionProviderLibrary(registration_name);
 
   return 0;
 }
@@ -98,7 +84,7 @@ int main(int argc, char* argv[]) {
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
-      std::cerr << ex.what() << std::endl;
+      fprintf(stderr, "%s\n", ex.what());
       retval = -1;
     });
   }

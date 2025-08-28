@@ -873,7 +873,113 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
             " 'enable_causallm', 'reshape_input', 'layout', 'model_priority'] \n");
       }
     }
-    session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
+    std::string meta_prefix;
+    std::vector<std::string> ov_device_types;
+    {
+      // Get device type from ov_options.
+      auto device_type_it = ov_options.find("device_type");
+      auto device_type = device_type_it != ov_options.end() ? device_type_it->second : "CPU";
+      ov_options.erase("device_type");
+
+      // Given the device type, split it into a meta prefix, and list of devices.
+      // For example, AUTO: NPU,GPU,CPU will get split into:
+      // meta_prefix = "AUTO"
+      // ov_device_types = {"NPU", "GPU", "CPU"}
+      // (meta_prefix will be left empty if there is no meta prefix found)
+      std::string remainder;
+      size_t colon_pos = device_type.find(':');
+      if (colon_pos != std::string::npos) {
+        meta_prefix = device_type.substr(0, colon_pos);
+        remainder = device_type.substr(colon_pos + 1);
+      } else {
+        remainder = device_type;
+      }
+
+      size_t start = 0;
+      while (start < remainder.size()) {
+        size_t end = remainder.find(',', start);
+        if (end == std::string::npos) end = remainder.size();
+        if (end > start) {
+          ov_device_types.emplace_back(remainder.substr(start, end - start));
+        }
+        start = end + 1;
+      }
+    }
+    // basically ov_Devicetypes will have the device types like [CPU,GPU,NPU]
+
+    nlohmann::json load_config_json;
+    auto load_config = ov_options.find("load_config");
+    if (load_config != ov_options.end()) {
+      load_config_json = nlohmann::json::parse(load_config->second);
+      ov_options.erase("load_config");
+    }
+
+    // Reroute cache_dir via load_config
+    auto cache_dir = ov_options.find("cache_dir");
+    if (cache_dir != ov_options.end()) {
+      // set CACHE_DIR for each device.
+      for (const auto& device_type : ov_device_types) {
+        load_config_json[device_type]["CACHE_DIR"] = cache_dir->second;
+      }
+      ov_options.erase("cache_dir");
+    }
+
+    // Reroute enable_qdq_optimizer via load_config (only applicable for NPU)
+    auto enable_qdq_optimizer = ov_options.find("enable_qdq_optimizer");
+    if (enable_qdq_optimizer != ov_options.end()) {
+      load_config_json["NPU"]["NPU_QDQ_OPTIMIZATION"] = enable_qdq_optimizer->second == "True" ? "YES" : "NO";
+      ov_options.erase("enable_qdq_optimizer");
+    }
+
+    if (!load_config_json.empty()) {
+      ov_options["load_config"] = load_config_json.dump();
+    }
+
+    // Given an ep_name & ov_device meta, return the ep device (or nullptr)
+    auto ep_devices = env.GetEpDevices();
+    const auto get_ep_device = [&ep_devices](const std::string ep_name, const std::string &ov_device) -> Ort::ConstEpDevice {
+      for (Ort::ConstEpDevice& device : ep_devices) {
+        if (std::string_view(device.EpName()).find(ep_name) != std::string::npos) {
+          const auto& meta_kv = device.EpMetadata().GetKeyValuePairs();
+          auto device_type_it = meta_kv.find("ov_device");
+          if (device_type_it != meta_kv.end()) {
+            if (device_type_it->second == ov_device) {
+              return device;
+            }
+          }
+        }
+      }
+      return Ort::ConstEpDevice{};
+    };
+
+    // Define the ep name using (possible) meta prefix.
+    std::string ep_name = "OpenVINOExecutionProvider";
+    if (!meta_prefix.empty()) {
+      ep_name += "." + meta_prefix;
+    }
+
+    // From our ov_device_types, populate a list of ep devices.
+    std::vector<Ort::ConstEpDevice> session_ep_devices;
+    for (auto& ov_device : ov_device_types) {
+      Ort::ConstEpDevice plugin_ep_device{};
+      //First, try to find a ep device that has ov_device meta exactly matching.
+      plugin_ep_device = get_ep_device(ep_name, ov_device);
+      if (!plugin_ep_device) {
+        // device not found. Let's strip any '.X' from the string and try again.
+        // So for example, if "GPU.0" was not found, now we'll search for "GPU"
+        size_t dot_pos = ov_device.find('.');
+        if (dot_pos != std::string::npos) {
+          ov_device.erase(dot_pos);
+        }
+        plugin_ep_device = get_ep_device(ep_name, ov_device);
+        if (!plugin_ep_device) {
+          ORT_THROW("Did not find an EP device with ep_name = " + ep_name + " & ov_device = " + ov_device);
+        }
+      }
+      session_ep_devices.push_back(plugin_ep_device);
+    }
+
+    session_options.AppendExecutionProvider_V2(env, session_ep_devices, ov_options);
 #else
     ORT_THROW("OpenVINO is not supported in this build\n");
 #endif
