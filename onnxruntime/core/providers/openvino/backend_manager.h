@@ -19,6 +19,7 @@ namespace openvino_ep {
 // Singleton class that manages all the backends
 class BackendManager {
  public:
+
   BackendManager(SessionContext& session_context,
                  SharedContext& shared_context,
                  const onnxruntime::Node& fused_node,
