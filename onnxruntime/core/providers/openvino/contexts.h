@@ -49,18 +49,19 @@ class SharedContext : public WeakSingleton<SharedContext> {
       friend std::istream& operator>>(std::istream& right, Metadata::Map& metadata);
     };
 
-    struct WeightsFile {
-      ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WeightsFile);
-      WeightsFile() = delete;
-      explicit WeightsFile(std::filesystem::path filename);
+  struct WeightsFile {
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WeightsFile);
+  WeightsFile() = delete;
+  explicit WeightsFile(std::filesystem::path filename);
 
-      void load_weights(size_t file_offset, void* data, size_t size);
+  void load_weights(size_t file_offset, void* data, size_t size);
+  const std::filesystem::path& get_filename() const { return filename_; }
 
-     private:
-      std::ifstream file_;
-      size_t weights_size_;
-    };
-
+ private:
+  std::filesystem::path filename_;  // Add this member
+  std::ifstream file_;
+  size_t weights_size_;
+  };
     fs::path external_weight_filename;
     std::unique_ptr<WeightsFile> mapped_weights;
     Metadata::Map metadata;

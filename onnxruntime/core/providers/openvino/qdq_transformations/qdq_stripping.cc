@@ -643,6 +643,8 @@ static void AddInitializerAsInput(onnxruntime::Graph& dst_graph,
                                   InlinedVector<const NodeArg*>& accumulated_inputs,
                                   const onnxruntime::GraphViewer& src_graph,
                                   const std::string& initializer_name) {
+
+  std::cout<<"[WEIGHTS-DEBUG-QDQ stripping-line 647- adding initilaisers as input?]"<<std::endl;
   // Get the initializer from source graph
   const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
   if (!src_graph.GetInitializedTensor(initializer_name, tensor_proto)) {
@@ -827,6 +829,7 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
   auto& metadata = shared_weights.metadata;
 
   const auto& insert_metadata = [&metadata](const ONNX_NAMESPACE::TensorProto& proto) {
+    std::cout<<"WEIGHTS DEBUG- QDQ stipping-line 830-is this where its written (from pb)?"<<std::endl;
     sw::Metadata::Map::key_type key{proto.name()};
     sw::Metadata::Map::mapped_type value{};
 
