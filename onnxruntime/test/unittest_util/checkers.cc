@@ -254,7 +254,6 @@ template <>
 struct TensorCheck<UInt4x2> {
   void operator()(const Tensor& expected, const Tensor& actual, const ValidateOutputParams& params,
                   const std::string& /*provider_type*/) const {
-    ORT_UNUSED_PARAMETER(params);
     const bool has_abs_err = params.absolute_error.has_value();
     Tensor expected_sorted, actual_sorted;
     const UInt4x2* cur_expected;

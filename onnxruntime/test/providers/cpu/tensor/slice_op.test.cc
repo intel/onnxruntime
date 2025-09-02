@@ -541,7 +541,7 @@ TEST(SliceTest, Slice1D_ReverseAllAxes_1) {
   }
 
   if (DefaultOpenVINOExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: The input ends did not supported int max when step is negtive.";
+    GTEST_SKIP() << "Skipping because of the following error: The input ends do not support int max when step is negative.";
   }
 
   RunSliceTest<float>({4},
