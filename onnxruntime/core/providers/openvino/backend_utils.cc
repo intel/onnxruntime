@@ -20,25 +20,49 @@ using Exception = ov::Exception;
 namespace onnxruntime {
 namespace openvino_ep {
 
-SharedContext::SharedWeights::WeightsFile::WeightsFile(std::filesystem::path filename) : file_(filename, std::ios::in | std::ios::binary) {
+SharedContext::SharedWeights::WeightsFile::WeightsFile(std::filesystem::path filename)
+    : filename_(filename), file_(filename, std::ios::in | std::ios::binary) {
   try {
     file_.exceptions(std::ifstream::failbit | std::ifstream::badbit);
     weights_size_ = file_.seekg(0, std::ios::end).tellg();
+    std::cout << "[WEIGHTS-DEBUG- backend_utils-line 29] WeightsFile opened: " << filename_.string()
+              << " size=" << weights_size_ << std::endl;
+    file_.seekg(0);
   } catch (std::ifstream::failure& e) {
-    ORT_THROW("Error: Failed to open weight file at ", filename.string(), " ", e.what());
+    std::cerr << "[WEIGHTS-ERROR] Failed to open weight file: " << filename_.string()
+              << " reason: " << e.what() << std::endl;
+    ORT_THROW("Error: Failed to open weight file at ", filename_.string(), " ", e.what());
   }
 }
 
+
 void SharedContext::SharedWeights::WeightsFile::load_weights(size_t file_offset, void* data, size_t size) {
-  ORT_ENFORCE(file_offset < weights_size_ && size <= weights_size_ && (file_offset <= weights_size_ - size), "Error: File offset is out of bounds.");
+  // Log attempt
+  std::cout << "[WEIGHTS-DEBUG] Reading from file: " << filename_.string() << std::endl;
+  std::cout << "[WEIGHTS-DEBUG- backend_utils- line 41-load weights] load_weights called: offset=" << file_offset
+            << " size=" << size << " file_size=" << weights_size_ << std::endl;
+
+  // Existing bounds enforcement — but give enriched message
+  ORT_ENFORCE(file_offset < weights_size_ && size <= weights_size_ && (file_offset <= weights_size_ - size),
+              "Error: File offset is out of bounds. requested_offset=", file_offset,
+              " requested_size=", size, " file_size=", weights_size_);
+
   file_.seekg(file_offset);
   file_.read(reinterpret_cast<char*>(data), size);
+
+  // Optional: verify read state and log
+  if (!file_) {
+    std::cerr << "[WEIGHTS-ERROR] Failed read at offset=" << file_offset << " size=" << size << std::endl;
+  } else {
+    std::cout << "[WEIGHTS-DEBUG] Successfully read " << size << " bytes at offset=" << file_offset << std::endl;
+  }
 }
+
 
 std::ostream& operator<<(std::ostream& stream, const SharedContext::SharedWeights::Metadata::Map& metadata) {
   try {
     stream << metadata.size();
-
+    std::cout << "[WEIGHTS-DEBUG- backend_utils-line 64- i think here is writing] Successfully read " << std::endl;
     // Write each key-value pair
     // Put elements in separate lines to facilitate reading
     for (const auto& [key, value] : metadata) {
@@ -71,6 +95,7 @@ std::ostream& operator<<(std::ostream& stream, const SharedContext::SharedWeight
 
 std::istream& operator>>(std::istream& stream, SharedContext::SharedWeights::Metadata::Map& metadata) {
   size_t map_size{0};
+  std::cout << "[WEIGHTS-DEBUG- backend_utils-line 97- is here reading?]" << std::endl;
   try {
     stream >> map_size;
 
@@ -401,35 +426,53 @@ ov::element::Type GetOpenVINOElementType(ONNX_NAMESPACE::TensorProto_DataType dt
   }
 }
 
-// Function to handle tensor creation from external data
 void CreateOVTensors(const std::string& device_name,
                      SharedContext::SharedWeights::Metadata::Map& metadata_map,
                      SharedContext::SharedWeights::WeightsFile& weights) {
   for (auto& [key, value] : metadata_map) {
-    if (value.tensor) continue;
+    if (value.tensor) {
+      std::cout << "[WEIGHTS-DEBUG- backend utils -line 433- createovtensor] skipping already-built tensor: " << key.name << std::endl;
+      continue;
+    }
+
+    std::cout << "[WEIGHTS-DEBUG] CreateOVTensors building: name=" << key.name
+              << " location=" << value.location
+              << " data_offset=" << value.data_offset
+              << " size=" << value.size << std::endl;
+
+    // Sanity: print whether the metadata location matches the single opened file's location
+    // (we can't easily read filename from 'weights' here unless you add a member; so optionally add a getter)
+    // For now, just warn if location differs from sw.external_weight_filename (call-site has logged chosen name)
 
     // Get element data type
     auto onnx_element_type = (ONNX_NAMESPACE::TensorProto_DataType)value.element_type;
+    ov::element::Type ov_elementType = GetOpenVINOElementType(onnx_element_type);
 
-    ov::element::Type ov_elementType = GetOpenVINOElementType(onnx_element_type);  // Map to OpenVINO data type
-
-    // Create OpenVINO Tensor
     if (device_name == "NPU") {
-      // Use remote tensors
-      auto npu_context = OVCore::Get()->core.get_default_context("NPU").as<ov::intel_npu::level_zero::ZeroContext>();
-      auto&& remote_tensor = npu_context.create_l0_host_tensor(ov_elementType, value.dimensions, ov::intel_npu::TensorType::INPUT);
+      try {
+        auto npu_context = OVCore::Get()->core.get_default_context("NPU").as<ov::intel_npu::level_zero::ZeroContext>();
+        auto&& remote_tensor = npu_context.create_l0_host_tensor(ov_elementType, value.dimensions, ov::intel_npu::TensorType::INPUT);
 
-      // Copy data to remote tensor
-      weights.load_weights(value.data_offset, remote_tensor.get(), value.size);
-      value.tensor = std::make_shared<ov::Tensor>(remote_tensor);
+        // Copy data to remote tensor
+        std::cout << "[WEIGHTS-DEBUG-line 456-backend utils] Loading into remote tensor for " << key.name << std::endl;
+        weights.load_weights(value.data_offset, remote_tensor.get(), value.size);
+        value.tensor = std::make_shared<ov::Tensor>(remote_tensor);
+        std::cout << "[WEIGHTS-DEBUG-line 459-backend utils] Remote tensor byte_size=" << value.tensor->get_byte_size() << " for " << key.name << std::endl;
+      } catch (const std::exception& e) {
+        std::cerr << "[WEIGHTS-ERROR] Failed to create/load remote tensor for " << key.name << " : " << e.what() << std::endl;
+        throw;
+      }
     } else {
-      // Use vanilla tensors
       value.tensor = std::make_shared<ov::Tensor>(ov_elementType, value.dimensions);
+      std::cout << "[WEIGHTS-DEBUG] Loading into CPU tensor for " << key.name << std::endl;
       weights.load_weights(value.data_offset, value.tensor->data(), value.size);
+      std::cout << "[WEIGHTS-DEBUG] CPU tensor byte_size=" << value.tensor->get_byte_size() << " for " << key.name << std::endl;
     }
     ORT_ENFORCE(value.tensor->get_byte_size() == value.size, "Unexpected tensor size mismatch");
   }
 }
+
+
 
 void DestroyOVTensors(SharedContext::SharedWeights::Metadata::Map& metadata_map) {
   for (auto& [key, value] : metadata_map) {

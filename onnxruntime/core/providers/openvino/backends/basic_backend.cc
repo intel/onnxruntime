@@ -138,6 +138,7 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
   }
   int num_infer_req = (session_context_.num_of_threads > 0) ? session_context_.num_of_threads : 1;
   std::function<void(OVInferRequestPtr)> initializer = [](OVInferRequestPtr) {};
+  std::cout<<"[WEIGHTS-DEBUG-basic backend-line 141] here in basic backend, to run number of sessions "<<std::endl;
   auto metadata = shared_context_.shared_weights.metadata;
   if (session_context_.so_share_ep_contexts) {
     initializer = [&metadata](OVInferRequestPtr ir_ptr) {

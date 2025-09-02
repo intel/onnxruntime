@@ -43,6 +43,10 @@ BackendManager::BackendManager(SessionContext& session_context,
                                EPCtxHandler& ep_ctx_handle) : ep_ctx_handle_(ep_ctx_handle),
                                                               session_context_(session_context),
                                                               shared_context_{shared_context} {
+
+  std::cout << "[BACKEND MANAGER IS OPENED ] " <<  std::endl;
+  //SO WE KNOW THAT BACKEND MANAGER IS OPENED ATLEAST ONCE PER MODEL
+
   subgraph_context_.is_ep_ctx_graph = ep_ctx_handle_.CheckForOVEPCtxNodeInGraph(subgraph);
   // If the graph contains a OVIR wrapped node, we check if it has matching xml file name attribute
   subgraph_context_.is_ep_ctx_ovir_encapsulated = ep_ctx_handle_.CheckEPCacheContextAttribute(subgraph,
@@ -101,22 +105,64 @@ BackendManager::BackendManager(SessionContext& session_context,
   }
   std::string device_type = session_context_.device_type;
 
-  auto& sw = shared_context_.shared_weights;
-  if (session_context_.so_share_ep_contexts && !sw.metadata.empty()) {
-    std::filesystem::path weight_filename = session_context_.onnx_model_path_name.parent_path();
+  // --- BEGIN INSTRUMENTATION: log metadata locations & open files ---
+auto& sw = shared_context_.shared_weights;
+if (session_context_.so_share_ep_contexts && !sw.metadata.empty()) {
+  std::filesystem::path base_dir = session_context_.onnx_model_path_name.parent_path();
+
+   std::vector<std::string> distinct_locations;
+  for (const auto &kv : sw.metadata) {
+    distinct_locations.push_back(kv.second.location);
+  }
+
+  std::cout << "[WEIGHTS-DEBUG-backend_manager-line 118] Metadata contains " << sw.metadata.size()
+            << " entries and " << distinct_locations.size()
+            << " distinct external locations." << std::endl;
+
+  std::string loc= distinct_locations.back();
+
+ if(!sw.external_weight_filename.empty() && loc!=sw.external_weight_filename){
+      sw.external_weight_filename=loc;
+    }
+
+
     if (sw.external_weight_filename.empty()) {
       // Reasonable assumption that all metadata entries have the same external file location
       sw.external_weight_filename = sw.metadata.begin()->second.location;
     }
-    weight_filename /= sw.external_weight_filename;
-    std::ifstream weight_file(weight_filename);
 
-    ORT_ENFORCE(weight_file, "Initializer file not found: ", weight_filename.string());
-    if (!sw.mapped_weights) {
-      sw.mapped_weights = std::make_unique<SharedContext::SharedWeights::WeightsFile>(weight_filename);
-    }
-    backend_utils::CreateOVTensors(session_context_.device_type, sw.metadata, *sw.mapped_weights);
+   std::cout << "[WEIGHTS-DEBUG--backend_manager-line 134] sw.external_weight_filename set to: "
+              << sw.external_weight_filename << std::endl;
+  //but once the external weight file is set to this, we dont come back here for every weight-> we dont have to
+  ///come back per weight, we need to come back per model
+  //so make this in a new function that gets called everytime we see a weight
+  //in this newly created function check whether the metadata ka location is same as the external weight file name
+  //if it is, then let it be as is
+  //if its not, then we create a new weights object-> like do sw.external_weight_filename= that location of metadata
+
+  //over here check the location of the
+
+  std::filesystem::path weight_filename = base_dir / sw.external_weight_filename;
+  std::cout << "[WEIGHTS-DEBUG] Attempting to open weight file at: " << weight_filename << std::endl;
+
+  std::ifstream weight_file(weight_filename, std::ios::binary);
+  if (!weight_file) {
+    std::cerr << "[WEIGHTS-ERROR] Initializer file not found: " << weight_filename << std::endl;
+  } else {
+    std::cout << "[WEIGHTS-DEBUG] Successfully opened weight file: " << weight_filename << std::endl;
   }
+
+  ORT_ENFORCE(weight_file, "Initializer file not found: ", weight_filename.string());
+  if (!sw.mapped_weights || sw.mapped_weights->get_filename() != weight_filename) {
+    sw.mapped_weights = std::make_unique<SharedContext::SharedWeights::WeightsFile>(weight_filename);
+}
+
+
+  std::cout << "[WEIGHTS-DEBUG] here in backend manager, opening createovtensor "<<std::endl;
+  backend_utils::CreateOVTensors(session_context_.device_type, sw.metadata, *sw.mapped_weights);
+}
+// --- END INSTRUMENTATION ---
+
 
   if (ModelHasSymbolicInputDims(subgraph)) {
     subgraph_context_.has_dynamic_input_shape = true;
