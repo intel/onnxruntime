@@ -135,7 +135,8 @@ Controls numerical precision during inference, balancing performance and accurac
 ### cache_dir
 Enables model caching to dramatically reduce subsequent load times. Supports CPU, NPU, GPU with kernel caching on iGPU/dGPU.
 
-**Benefits:** Saves compiled models and cl_cache files for dynamic shapes, eliminating recompilation overhead. Especially beneficial for complex models and frequent application restarts.
+**Benefits:** Saves compiled models and cl_cache files for dynamic shapes, eliminating recompilation overhead. Especially beneficial for complex models 
+and frequent application restarts.
 
 ### load_config
 Loads custom OpenVINO properties from JSON configuration file during runtime.
@@ -154,6 +155,7 @@ NPU-specific optimization for Quantize-Dequantize operations. Optimizes ORT quan
 
 ### disable_dynamic_shapes & reshape_input
 **Dynamic Shape Management** : Handles models with variable input dimensions. Option to convert dynamic to static shapes when beneficial for performance.
+
 **NPU Shape Bounds** : Use reshape_input to set dynamic shape bounds specifically for NPU devices (format: input_name[lower..upper] or input_name[fixed_shape]). 
 Required for optimal NPU memory management.
 
@@ -161,11 +163,15 @@ Required for optimal NPU memory management.
 Configures resource allocation priority for multi-model deployments:
 
 **HIGH**: Maximum resource allocation
+
 **MEDIUM**: Balanced resource sharing
+
 **LOW**: Minimal allocation, yields to higher priority
+
 **DEFAULT**: System-determined priority
 
 ### layout
+
 ***Tensor Layout Control:***: Provides explicit control over tensor memory layout for performance optimization. Helps OpenVINO optimize memory access patterns and tensor operations.
 
 ***Layout Characters:***: N (Batch), C (Channel), H (Height), W (Width), D (Depth), T (Time), ? (Unknown)
