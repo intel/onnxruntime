@@ -19,22 +19,20 @@ Accelerate ONNX models on Intel CPUs, GPUs, NPU with Intel OpenVINO™ Execution
 
 ## Install
 
-Pre-built packages and Docker images are published for OpenVINO™ Execution Provider for ONNX Runtime by Intel for each release.
-* OpenVINO™ Execution Provider for ONNX Runtime Release page: [Latest v5.6 Release](https://github.com/intel/onnxruntime/releases)
+Pre-built packages are published for OpenVINO™ Execution Provider for ONNX Runtime by Intel for each release.
+* OpenVINO™ Execution Provider for ONNX Runtime Release page: [Latest v5.8 Release](https://github.com/intel/onnxruntime/releases)
 * Python wheels Ubuntu/Windows: [onnxruntime-openvino](https://pypi.org/project/onnxruntime-openvino/)
-* Docker image: [openvino/onnxruntime_ep_ubuntu20](https://hub.docker.com/r/openvino/onnxruntime_ep_ubuntu20)
 
 ## Requirements
 
-ONNX Runtime OpenVINO™ Execution Provider is compatible with three lastest releases of OpenVINO™.
+
+ONNX Runtime OpenVINO™ Execution Provider is compatible with three latest releases of OpenVINO™.
 
 |ONNX Runtime|OpenVINO™|Notes|
 |---|---|---| 
+|1.23.0|2025.3|[Details - Placeholder]()|
+|1.22.0|2025.1|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.7)|
 |1.21.0|2025.0|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.6)|
-|1.20.0|2024.4|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.5)|
-|1.19.0|2024.3|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.4)|
-|1.18.0|2024.1|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.3)|
-|1.17.1|2023.3|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.2)|
 
 ## Build
 
@@ -42,228 +40,203 @@ For build instructions, please see the [BUILD page](../build/eps.md#openvino).
 
 ## Usage
 
-**Set OpenVINO™ Environment for Python**
+**Python Package Installation**
 
-Please download onnxruntime-openvino python packages from PyPi.org:
+For Python users, install the onnxruntime-openvino package:
 ```
 pip install onnxruntime-openvino
 ```
 
+**Set OpenVINO™ Environment Variables**
+
+To use OpenVINO™ Execution Provider with any programming language (Python, C++, C#), you must set up the OpenVINO™ Environment Variables using the full installer package of OpenVINO™.
+
 * **Windows**
-
-   To enable OpenVINO™ Execution Provider with ONNX Runtime on Windows it is must to set up the OpenVINO™ Environment Variables using the full installer package of OpenVINO™.
-   Initialize the OpenVINO™ environment by running the setupvars script as shown below. This is a required step:
-
-   ```
-      C:\ <openvino_install_directory>\setupvars.bat
-   ```
-
+```
+C:\ <openvino_install_directory>\setupvars.bat
+```
 * **Linux**
-
-   OpenVINO™ Execution Provider with Onnx Runtime on Linux, installed from PyPi.org comes with prebuilt OpenVINO™ libs and supports flag CXX11_ABI=0. So there is no need to install OpenVINO™ separately.
-
-   But if there is need to enable CX11_ABI=1 flag of OpenVINO, build Onnx Runtime python wheel packages from source. For build instructions, please see the [BUILD page](../build/eps.md#openvino).
-   OpenVINO™ Execution Provider wheels on Linux built from source will not have prebuilt  OpenVINO™ libs so we must set the OpenVINO™ Environment Variable using the full installer package of OpenVINO™:
-
-      ```
-      $ source <openvino_install_directory>/setupvars.sh
-      ```
-
-**Set OpenVINO™ Environment for C++**
-
-For Running C++/C# ORT Samples with the OpenVINO™ Execution Provider it is must to set up the OpenVINO™ Environment Variables using the full installer package of OpenVINO™.
-Initialize the OpenVINO™ environment by running the setupvars script as shown below. This is a required step:
-   * For Windows run:
-   ```
-      C:\ <openvino_install_directory>\setupvars.bat
-   ```
-   * For Linux run:
-   ```
-      $ source <openvino_install_directory>/setupvars.sh
-   ```
-   **Note:** If you are using a dockerfile to use OpenVINO™ Execution Provider, sourcing OpenVINO™ won't be possible within the dockerfile. You would have to explicitly set the LD_LIBRARY_PATH to point to OpenVINO™ libraries location. Refer our [dockerfile](https://github.com/microsoft/onnxruntime/blob/main/dockerfiles/Dockerfile.openvino).
+```
+$ source <openvino_install_directory>/setupvars.sh
+```
+**Note for Linux Python Users:** OpenVINO™ Execution Provider installed from PyPi.org comes with prebuilt OpenVINO™ libs and supports flag CXX11_ABI=0. So there is no need to install OpenVINO™ separately. However, if you need to enable CX11_ABI=1 flag, build ONNX Runtime python wheel packages from source. For build instructions, see the [BUILD page](../build/eps.md#openvino).
 
 
 **Set OpenVINO™ Environment for  C#**
 
-To use csharp api for openvino execution provider create a custom nuget package. Follow the instructions [here](../build/inferencing.md#build-nuget-packages) to install prerequisites for nuget creation. Once prerequisites are installed follow the instructions to [build openvino execution provider](../build/eps.md#openvino) and add an extra flag `--build_nuget` to create nuget packages. Two nuget packages will be created Microsoft.ML.OnnxRuntime.Managed and Microsoft.ML.OnnxRuntime.Openvino.
+To use csharp api for openvino execution provider create a custom nuget package. Follow the instructions [here](../build/inferencing.md#build-nuget-packages) to install prerequisites for nuget creation. Once prerequisites are installed follow the instructions to [build openvino execution provider](../build/eps.md#openvino) and add an extra flag `--build_nuget` to create nuget packages. Two nuget packages will be created Microsoft.ML.OnnxRuntime.Managed and Intel.ML.OnnxRuntime.Openvino.
 
-## Features
+# OpenVINO Execution Provider Configuration
 
-### OpenCL queue throttling for GPU devices
+## Table of Contents
+- [Configuration Options](#configuration-options)
+- [Configuration Descriptions](#configuration-descriptions)
+- [Examples](#examples)
 
-Enables [OpenCL queue throttling](https://docs.openvino.ai/2024/api/c_cpp_api/group__ov__runtime__ocl__gpu__prop__cpp__api.html) for GPU devices. Reduces CPU utilization when using GPUs with OpenVINO EP.
+## Configuration Options
 
-### Model caching
+Runtime parameters you set when initializing the OpenVINO Execution Provider to control how inference runs.
 
-OpenVINO™ supports [model caching](https://docs.openvino.ai/2024/openvino-workflow/running-inference/optimize-inference/optimizing-latency/model-caching-overview.html).
+**Click on any configuration key below to jump to its detailed description.**
 
-Model caching feature is supported on CPU, NPU, GPU along with kernel caching on iGPU, dGPU.
+| **Key** | **Type** | **Allowable Values** | **Value Type** | **Description** |
+|---------|----------|---------------------|----------------|-----------------|
+| [**device_type**](#device_type) | string | CPU, NPU, GPU, GPU.0, GPU.1, HETERO, MULTI, AUTO | string | Choose which hardware device to use for inference |
+| [**precision**](#precision) | string | FP32, FP16, ACCURACY | string | Set inference precision level |
+| [**num_of_threads**](#num_of_threads--num_streams) | string | Any positive integer > 0 | size_t | Control number of inference threads |
+| [**num_streams**](#num_of_threads--num_streams) | string | Any positive integer > 0 | size_t | Set parallel execution streams for throughput |
+| [**cache_dir**](#cache_dir) | string | Valid filesystem path | string | Enable model caching by setting cache directory |
+| [**load_config**](#load_config) | string | JSON file path | string | Load custom OpenVINO properties from JSON |
+| [**enable_qdq_optimizer**](#enable_qdq_optimizer) | string | True/False | boolean | Enable QDQ optimization for NPU |
+| [**disable_dynamic_shapes**](#disable_dynamic_shapes--reshape_input) | string | True/False | boolean | Convert dynamic models to static shapes |
+| [**model_priority**](#model_priority) | string | LOW, MEDIUM, HIGH, DEFAULT | string | Configure model resource allocation priority |
+| [**reshape_input**](#disable_dynamic_shapes--reshape_input) | string | input_name[shape_bounds] | string | Set dynamic shape bounds for NPU models |
+| [**layout**](#layout) | string | input_name[layout_format] | string | Specify input/output tensor layout format |
 
-This feature enables users to save and load the blob file directly on to the hardware device target and perform inference with improved Inference Latency.
+Refer to [Examples](#examples) for usage.
 
-Kernel Caching on iGPU and dGPU:
+---
 
-This feature also allows user to save kernel caching as cl_cache files for models with dynamic input shapes. These cl_cache files can be loaded directly onto the iGPU/dGPU hardware device target and inferencing can be performed.
+## Configuration Descriptions
 
-#### <b> Enabling Model Caching via Runtime options using c++/python API's.</b>
+### device_type
+Specifies the target hardware device for inference execution. Supports single devices (CPU, NPU, GPU, GPU.0, GPU.1) and multi-device configurations.
 
-This flow can be enabled by setting the runtime config option 'cache_dir' specifying the path to dump and load the blobs (CPU, NPU, iGPU, dGPU) or cl_cache(iGPU, dGPU) while using the c++/python API'S.
+**Valid Device Combinations:**  
+- `HETERO:<device1>,<device2>...` - Split execution across devices  
+- `MULTI:<device1>,<device2>...` - Parallel execution on devices  
+- `AUTO:<device1>,<device2>...` - Automatic device selection  
 
-Refer to [Configuration Options](#configuration-options) for more information about using these runtime options.
+Minimum two devices required. Example: `HETERO:GPU,CPU`, `AUTO:GPU,NPU,CPU`, `MULTI:GPU,CPU`
 
-### Support for INT8 Quantized models
+**Note:** Deprecated options `CPU_FP32`, `GPU_FP32`, `GPU_FP16`, `NPU_FP16` are no longer supported. Use `device_type` and `precision` separately.
 
-Int8 models are supported on CPU, GPU and NPU.
+**Auto Device Selection:** Use `AUTO` to automatically select optimal device based on model characteristics. AUTO internally recognizes CPU, integrated GPU, discrete Intel GPUs, and NPU, then assigns inference requests to the best-suited device.
 
-### Support for Weights saved in external files
+**Heterogeneous Execution:** Use `HETERO` to split network execution across multiple devices, utilizing accelerator power for heavy operations while falling back to CPU for unsupported layers.
 
-OpenVINO™ Execution Provider now  supports ONNX models that store weights in external files. It is especially useful for models larger than 2GB because of protobuf limitations.
+**Multi-Device Execution:** Use `MULTI` to run the same model on multiple devices in parallel, improving throughput and performance consistency through load distribution.
 
-See the [OpenVINO™ ONNX Support documentation](https://docs.openvino.ai/2024/openvino-workflow/model-preparation/convert-model-onnx.html).
+### precision
+Controls numerical precision during inference, balancing performance and accuracy.
 
-Converting and Saving an ONNX Model to External Data:
-Use the ONNX API's.[documentation](https://github.com/onnx/onnx/blob/master/docs/ExternalData.md#converting-and-saving-an-onnx-model-to-external-data).
+**Device Support:**  
+- CPU: FP32  
+- GPU: FP32, FP16, ACCURACY  
+- NPU: FP16  
 
-Example:
+**ACCURACY Mode:** Maintains original model precision without conversion, ensuring maximum accuracy. FP16 generally provides 2x better performance on GPU/NPU with minimal accuracy loss.
 
-```python
-import onnx
-onnx_model = onnx.load("model.onnx") # Your model in memory as ModelProto
-onnx.save_model(onnx_model, 'saved_model.onnx', save_as_external_data=True, all_tensors_to_one_file=True, location='data/weights_data', size_threshold=1024, convert_attribute=False)
-```
+### num_of_threads & num_streams
+**Multi-Threading:** Controls inference thread count for CPU execution (default: 8). OpenVINO EP provides thread-safe inference across all devices.
 
-Note:
-1. In the above script, model.onnx is loaded and then gets saved into a file called 'saved_model.onnx' which won't have the weights but this new onnx model now will have the relative path to where the weights file is located. The weights file 'weights_data' will now contain the weights of the model and the weights from the original model gets saved at /data/weights_data.
+**Multi-Stream Execution:** Manages parallel inference streams for throughput optimization (default: 1 for latency). Multiple streams improve throughput for batch processing while single stream minimizes latency for real-time applications.
 
-2. Now, you can use this 'saved_model.onnx' file to infer using your sample. But remember, the weights file location can't be changed. The weights have to be present at /data/weights_data
+### cache_dir
+Enables model caching to dramatically reduce subsequent load times. Supports CPU, NPU, GPU with kernel caching on iGPU/dGPU.
 
-3. Install the latest ONNX Python package using pip to run these ONNX Python API's successfully.
+**Benefits:** Saves compiled models and cl_cache files for dynamic shapes, eliminating recompilation overhead. Especially beneficial for complex models 
+and frequent application restarts.
 
-### Support for IO Buffer Optimization
+### load_config
+Loads custom OpenVINO properties from JSON configuration file during runtime.
 
-To enable IO Buffer Optimization we have to set OPENCL_LIBS, OPENCL_INCS environment variables before build. For IO Buffer Optimization, the model must be fully supported on OpenVINO™ and we must provide in the remote context cl_context void pointer as C++ Configuration Option. We can provide cl::Buffer address as Input using GPU Memory Allocator for input and output.
-
-Example:
-```bash
-//Set up a remote context
-cl::Context _context;
-.....
-// Set the context through openvino options
-std::unordered_map<std::string, std::string> ov_options;
-ov_options[context] = std::to_string((unsigned long long)(void *) _context.get());
-.....
-//Define the Memory area
-Ort::MemoryInfo info_gpu("OpenVINO_GPU", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault);
-//Create a shared buffer , fill in with data
-cl::Buffer shared_buffer(_context, CL_MEM_READ_WRITE, imgSize, NULL, &err);
-....
-//Cast it to void*, and wrap it as device pointer for Ort::Value
-void *shared_buffer_void = static_cast<void *>(&shared_buffer);
-Ort::Value inputTensors = Ort::Value::CreateTensor(
-        info_gpu, shared_buffer_void, imgSize, inputDims.data(),
-        inputDims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
-```
-
-### Multi-threading for OpenVINO™ Execution Provider
-
-OpenVINO™ Execution Provider for ONNX Runtime enables thread-safe deep learning inference
-
-### Multi streams for OpenVINO™ Execution Provider
-OpenVINO™ Execution Provider for ONNX Runtime allows multiple stream execution for difference performance requirements part of API 2.0
-
-### Auto-Device Execution for OpenVINO EP
-
-Use `AUTO:<device 1>,<device 2>..` as the device name to delegate selection of an actual accelerator to OpenVINO™. Auto-device internally recognizes and selects devices from CPU, integrated GPU, discrete Intel GPUs (when available) and NPU (when available) depending on the device capabilities and the characteristic of CNN models, for example, precisions. Then Auto-device assigns inference requests to the selected device.
-
-From the application point of view, this is just another device that handles all accelerators in full system.
-
-For more information on Auto-Device plugin of OpenVINO™, please refer to the
-[Intel OpenVINO™ Auto Device Plugin](https://docs.openvino.ai/2024/openvino-workflow/running-inference/inference-devices-and-modes/gpu-device.html#automatic-device-selection).
-
-### Heterogeneous Execution for OpenVINO™ Execution Provider
-
-The heterogeneous execution enables computing for inference on one network on several devices. Purposes to execute networks in heterogeneous mode:
-
-* To utilize accelerator's power and calculate the heaviest parts of the network on the accelerator and execute unsupported layers on fallback devices like the CPU to utilize all available hardware more efficiently during one inference.
-
-For more information on Heterogeneous plugin of OpenVINO™, please refer to the
-[Intel OpenVINO™ Heterogeneous Plugin](https://docs.openvino.ai/2024/openvino-workflow/running-inference/inference-devices-and-modes/hetero-execution.html).
-
-### Multi-Device Execution for OpenVINO EP
-
-Multi-Device plugin automatically assigns inference requests to available computational devices to execute the requests in parallel. Potential gains are as follows:
-
-* Improved throughput that multiple devices can deliver (compared to single-device execution)
-* More consistent performance, since the devices can now share the inference burden (so that if one device is becoming too busy, another device can take more of the load)
-
-For more information on Multi-Device plugin of OpenVINO™, please refer to the
-[Intel OpenVINO™ Multi Device Plugin](https://docs.openvino.ai/2024/openvino-workflow/running-inference/inference-devices-and-modes/gpu-device.html#multi-stream-execution).
-
-### Export OpenVINO Compiled Blob 
-Export the OpenVINO compiled blob as an ONNX model. Using this ONNX model for subsequent inferences avoids model recompilation and could have a positive impact on Session creation time. This feature is currently enabled for fully supported models only. It complies with the ORT session config keys
-```
-  Ort::SessionOptions session_options;
-
-      // Enable EP context feature to dump the partitioned graph which includes the EP context into Onnx file.
-      // "0": disable. (default)
-      // "1": enable.
-
-  session_options.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
-
-      // Flag to specify whether to dump the EP context into single Onnx model or pass bin path.
-      // "0": dump the EP context into separate file, keep the file name in the Onnx model.
-      // "1": dump the EP context into the Onnx model. (default).
-
-  session_options.AddConfigEntry(kOrtSessionOptionEpContextEmbedMode, "1");
-
-      // Specify the file path for the Onnx model which has EP context.
-      // Defaults to <actual_model_path>/original_file_name_ctx.onnx if not specified
-
-  session_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath, ".\ov_compiled_epctx.onnx");
-
-  sess = onnxruntime.InferenceSession(<path_to_model_file>, session_options)
-```
-Refer to [Session Options](https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h) for more information about session options.
-
-### Enable QDQ Optimizations Passes
-Optimizes ORT quantized models for the NPU device to only keep QDQs for supported ops and optimize for performance and accuracy.Generally this feature will give better performance/accuracy with ORT Optimizations disabled. 
-Refer to [Configuration Options](#configuration-options) for more information about using these runtime options.
-
-### Loading Custom JSON OV Config During Runtime
-This feature is developed to facilitate loading of OVEP parameters from a single JSON configuration file.
-The JSON input schema must be of format -
-```
+**JSON Format:**
+```json
 {
     "DEVICE_KEY": {"PROPERTY": "PROPERTY_VALUE"}
 }
 ```
-where "DEVICE_KEY" can be CPU, NPU or GPU , "PROPERTY" must be a valid entity defined in OV from its properties.hpp sections and "PROPERTY_VALUE" must be passed in as a string. If we pass any other type like int/bool we encounter errors from ORT like below -
+Validation: Invalid property keys are ignored with warnings. Invalid values cause execution exceptions. Immutable properties are skipped.
+Common Properties: PERFORMANCE_HINT, EXECUTION_MODE_HINT, LOG_LEVEL, CACHE_DIR, INFERENCE_PRECISION_HINT.  
 
-Exception during initialization: [json.exception.type_error.302] type must be string, but is a number.
+### enable_qdq_optimizer
+NPU-specific optimization for Quantize-Dequantize operations. Optimizes ORT quantized models by keeping QDQ operations only for supported ops, providing better performance and accuracy.
 
-While one can set the int/bool values like this "NPU_TILES": "2" which is valid.
-If someone passes incorrect keys, it will be skipped with a warning while incorrect values assigned to a valid key will result in an exception arising from OV framework.
- 
-The valid properties are of 2 types viz. MUTABLE (R/W) & IMMUTABLE (R ONLY) these are also governed while setting the same. If an IMMUTABLE property is being set, we skip setting the same with a similar warning.
+### disable_dynamic_shapes & reshape_input
+**Dynamic Shape Management** : Handles models with variable input dimensions. Option to convert dynamic to static shapes when beneficial for performance.
 
-### OpenVINO Execution Provider Supports EP-Weight Sharing across sessions
-The OpenVINO Execution Provider (OVEP) in ONNX Runtime supports EP-Weight Sharing, enabling models to efficiently share weights across multiple inference sessions. This feature enhances the execution of Large Language Models (LLMs) with prefill and KV cache, reducing memory consumption and improving performance when running multiple inferences.
+**NPU Shape Bounds** : Use reshape_input to set dynamic shape bounds specifically for NPU devices (format: input_name[lower..upper] or input_name[fixed_shape]). 
+Required for optimal NPU memory management.
 
-With EP-Weight Sharing, prefill and KV cache models can now reuse the same set of weights, minimizing redundancy and optimizing inference. Additionally, this ensures that EP Context nodes are still created even when the model undergoes subgraph partitioning. 
+### model_priority
+Configures resource allocation priority for multi-model deployments:
 
-These changes enable weight sharing between two models using the session context option: ep.share_ep_contexts.
-Refer to [Session Options](https://github.com/microsoft/onnxruntime/blob/5068ab9b190c549b546241aa7ffbe5007868f595/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h#L319) for more details on configuring this runtime option.
+**HIGH**: Maximum resource allocation
 
-### OVEP supports CreateSessionFromArray API 
-The OpenVINO Execution Provider (OVEP) in ONNX Runtime supports creating sessions from memory using the CreateSessionFromArray API. This allows loading models directly from memory buffers instead of file paths. The CreateSessionFromArray loads the model in memory then creates a session from the in-memory byte array.
- 
-Note:
-Use the -l argument when running the inference with perf_test using CreateSessionFromArray API.
+**MEDIUM**: Balanced resource sharing
 
-## Configuration Options
+**LOW**: Minimal allocation, yields to higher priority
 
-OpenVINO™ Execution Provider can be configured with certain options at runtime that control the behavior of the EP. These options can be set as key-value pairs as below:-
+**DEFAULT**: System-determined priority
+
+### layout
+
+***Tensor Layout Control:***: Provides explicit control over tensor memory layout for performance optimization. Helps OpenVINO optimize memory access patterns and tensor operations.
+
+***Layout Characters:***: N (Batch), C (Channel), H (Height), W (Width), D (Depth), T (Time), ? (Unknown)
+
+***Format:*** input_name[LAYOUT],output_name[LAYOUT]
+
+## Examples
+
+### [Example 1](#examples)
+
+```python
+import onnxruntime as ort
+
+# Multi-device with caching and threading optimization
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=['OpenVINOExecutionProvider'],
+    provider_options=[{
+        'device_type': 'AUTO:GPU,NPU,CPU',
+        'precision': 'FP16',
+        'num_of_threads': '8',
+        'num_streams': '4',
+        'cache_dir': './ov_cache'
+    }]
+)
+
+# Command line equivalent
+# onnxruntime_perf_test.exe -e openvino -i "device_type|AUTO:GPU,NPU,CPU precision|FP16 num_of_threads|8 num_streams|4 cache_dir|./ov_cache" model.onnx
+```
+
+### Example 2 
+```python 
+import onnxruntime as ort
+
+# NPU-optimized with custom config and shape management
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=['OpenVINOExecutionProvider'],
+    provider_options=[{
+        'device_type': 'HETERO:NPU,CPU',
+        'load_config': 'custom_config.json',
+        'enable_qdq_optimizer': 'True',
+        'disable_dynamic_shapes': 'True',
+        'model_priority': 'HIGH',
+        'reshape_input': 'data[1,3,224,224..448]',
+        'layout': 'data[NCHW],output[NC]'
+    }]
+)
+
+# Example custom_config.json
+{
+    "NPU": {
+        "LOG_LEVEL": "LOG_DEBUG",
+        "PERFORMANCE_HINT": "THROUGHPUT"
+    },
+    "CPU": {
+        "EXECUTION_MODE_HINT": "ACCURACY"
+    }
+}
+
+# Command line equivalent
+# onnxruntime_perf_test.exe -e openvino -i "device_type|HETERO:NPU,CPU load_config|custom_config.json enable_qdq_optimizer|True disable_dynamic_shapes|True model_priority|HIGH reshape_input|data[1,3,224,224..448] layout|data[NCHW],output[NC]" model.onnx
+
+```
+
 
 ### Python API
 Key-Value pairs for config options can be set using InferenceSession API as follow:-
@@ -318,35 +291,6 @@ OpenVINO™ backend performs hardware, dependent as well as independent optimiza
    ```
    SessionOptions::SetGraphOptimizationLevel(ORT_DISABLE_ALL);
    ```
-
-## Summary of options
-
-The following table lists all the available configuration options for API 2.0 and the Key-Value pairs to set them:
-
-| **Key** | **Key type** | **Allowable Values** | **Value type** | **Description** |
-| --- | --- | --- | --- | --- |
-| device_type | string | CPU, NPU, GPU, GPU.0, GPU.1 based on the available GPUs, NPU, Any valid Hetero combination, Any valid Multi or Auto devices combination | string | Overrides the accelerator hardware type with these values at runtime. If this option is not explicitly set, default hardware specified during build is used. |
-| precision | string | FP32, FP16, ACCURACY based on the device_type chosen | string | Supported precisions for HW {CPU:FP32, GPU:[FP32, FP16, ACCURACY], NPU:FP16}. Default precision for HW for optimized performance {CPU:FP32, GPU:FP16, NPU:FP16}. To execute model with the default input precision, select ACCURACY precision type. |
-| num_of_threads | string | Any unsigned positive number other than 0 | size_t | Overrides the accelerator default value of number of threads with this value at runtime. If this option is not explicitly set, default value of 8 during build time will be used for inference. |
-| num_streams | string | Any unsigned positive number other than 0 | size_t | Overrides the accelerator default streams with this value at runtime. If this option is not explicitly set, default value of 1, performance for latency is used during build time will be used for inference. |
-| cache_dir | string | Any valid string path on the hardware target | string | Explicitly specify the path to save and load the blobs enabling model caching feature.|
-| context | string | OpenCL Context | void* | This option is only available when OpenVINO EP is built with OpenCL flags enabled. It takes in the remote context i.e the cl_context address as a void pointer.|
-| enable_opencl_throttling | string | True/False | boolean | This option enables OpenCL queue throttling for GPU devices (reduces CPU utilization when using GPU). |
-| enable_qdq_optimizer | string | True/False | boolean | This option enables QDQ Optimization to improve model performance and accuracy on NPU. |
-| load_config | string | Any custom JSON path | string | This option enables a feature for loading custom JSON OV config during runtime which sets OV parameters. |
-
-
-Valid Hetero or Multi or Auto Device combinations:
-`HETERO:<device 1>,<device 2>...`
-The `device` can be any of these devices from this list ['CPU','GPU', 'NPU']
-
-A minimum of two DEVICE_TYPE'S should be specified for a valid HETERO, MULTI, or AUTO Device Build.
-
-Example:
-HETERO:GPU,CPU  AUTO:GPU,CPU  MULTI:GPU,CPU
-
-Deprecated device_type option :
-CPU_FP32, GPU_FP32, GPU_FP16, NPU_FP16 are no more supported. They will be deprecated in the future release. Kindly upgrade to latest device_type and precision option.
 
 ## Support Coverage
 
