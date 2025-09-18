@@ -1983,6 +1983,13 @@ inline size_t TensorTypeAndShapeInfoImpl<T>::GetElementCount() const {
 }
 
 template <typename T>
+inline bool TensorTypeAndShapeInfoImpl<T>::GetHasShape() const {
+  bool out;
+  ThrowOnError(GetApi().GetHasShape(this->p_, &out));
+  return static_cast<bool>(out);
+}
+
+template <typename T>
 inline size_t TensorTypeAndShapeInfoImpl<T>::GetDimensionsCount() const {
   size_t out;
   ThrowOnError(GetApi().GetDimensionsCount(this->p_, &out));

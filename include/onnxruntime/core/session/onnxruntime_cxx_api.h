@@ -1768,6 +1768,7 @@ struct TensorTypeAndShapeInfoImpl : Base<T> {
   void GetSymbolicDimensions(const char** values, size_t values_count) const;  ///< Wraps OrtApi::GetSymbolicDimensions
   std::vector<const char*> GetSymbolicDimensions() const;
 
+  bool GetHasShape() const;             ///< Wraps OrtApi::GetHasShape
   std::vector<int64_t> GetShape() const;  ///< Uses GetDimensionsCount & GetDimensions to return a std::vector of the shape
 };
 
