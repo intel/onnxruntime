@@ -237,9 +237,6 @@ session = ort.InferenceSession(
 
 ```
 
-## Configuration Options
-
-OpenVINO™ Execution Provider can be configured with certain options at runtime that control the behavior of the EP. These options can be set as key-value pairs as below:-
 
 ### Python API
 Key-Value pairs for config options can be set using InferenceSession API as follow:-
