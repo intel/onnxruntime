@@ -74,7 +74,10 @@ class SharedContext : public WeakSingleton<SharedContext> {
     std::unique_ptr<WeightsFile> mapped_weights;
     Metadata::Map metadata;
     fs::path metadata_filepath;
+    std::set<std::string> model_set;  // Set of models that have contributed to the context
   } shared_weights;
+
+  std::list<SharedWeights> active_contexts;
 
   void clear(){
     shared_weights.clear();

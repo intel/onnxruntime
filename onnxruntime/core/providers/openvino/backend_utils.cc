@@ -21,6 +21,7 @@ namespace onnxruntime {
 namespace openvino_ep {
 
 SharedContext::SharedWeights::WeightsFile::WeightsFile(std::filesystem::path filename) : file_(filename, std::ios::in | std::ios::binary) {
+  std::cout<<"Weight file path: " << filename << '\n';
   try {
     file_.exceptions(std::ifstream::failbit | std::ifstream::badbit);
     weights_size_ = file_.seekg(0, std::ios::end).tellg();
@@ -30,6 +31,7 @@ SharedContext::SharedWeights::WeightsFile::WeightsFile(std::filesystem::path fil
 }
 
 void SharedContext::SharedWeights::WeightsFile::load_weights(size_t file_offset, void* data, size_t size) {
+  std::cout<<"Loading weights from offset: " << file_offset << " size: " << size << '\n';
   ORT_ENFORCE(file_offset < weights_size_ && size <= weights_size_ && (file_offset <= weights_size_ - size), "Error: File offset is out of bounds.");
   file_.seekg(file_offset);
   file_.read(reinterpret_cast<char*>(data), size);
