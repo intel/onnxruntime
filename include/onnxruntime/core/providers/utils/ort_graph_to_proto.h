@@ -225,7 +225,8 @@ static Ort::Status GetOrtValueInfoTensorTypeShape(Ort::ConstValueInfo vi,
                                                   bool get_symbolic_dims,
                                                   /*out*/ ONNXTensorElementDataType& elem_type,
                                                   /*out*/ std::vector<int64_t>& dims,
-                                                  /*out*/ std::vector<std::string>& symbolic_dims);
+                                                  /*out*/ std::vector<std::string>& symbolic_dims,
+                                                  /*out*/ bool& has_shape);
 static Ort::Status OrtValueInfoToProto(Ort::ConstValueInfo ort_value_info, onnx::ValueInfoProto& value_info_proto);
 static Ort::Status OrtOpAttrToProto(Ort::ConstOpAttr ort_attr, onnx::AttributeProto& attr_proto);
 
@@ -390,9 +391,10 @@ Ort::Status OrtGraphToProto(const OrtGraph& graph,
       std::vector<int64_t> initializer_dims;
       std::vector<std::string> initializer_sym_dims;
       ONNXTensorElementDataType initializer_elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+      bool has_shape = false;
       ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetOrtValueInfoTensorTypeShape(initializer_value_info, /*get_sym_dims*/ false,
                                                                       initializer_elem_type, initializer_dims,
-                                                                      initializer_sym_dims));
+                                                                      initializer_sym_dims, has_shape));
 
       onnx::TensorProto* tensor_proto = graph_proto.add_initializer();
       tensor_proto->set_name(initializer_name);
@@ -493,7 +495,8 @@ static Ort::Status GetOrtValueInfoTensorTypeShape(Ort::ConstValueInfo vi,
                                                   bool get_symbolic_dims,
                                                   /*out*/ ONNXTensorElementDataType& elem_type,
                                                   /*out*/ std::vector<int64_t>& dims,
-                                                  /*out*/ std::vector<std::string>& symbolic_dims) {
+                                                  /*out*/ std::vector<std::string>& symbolic_dims,
+                                                  /*out*/ bool& has_shape) {
   try {
     Ort::ConstTypeInfo ort_type_info = vi.TypeInfo();
     ONNXType ort_onnx_type = ort_type_info.GetONNXType();
@@ -505,6 +508,7 @@ static Ort::Status GetOrtValueInfoTensorTypeShape(Ort::ConstValueInfo vi,
     size_t num_dims = ort_type_shape.GetDimensionsCount();
     std::vector<int64_t> ort_dims = ort_type_shape.GetShape();
 
+    has_shape = ort_type_shape.GetHasShape();
     elem_type = ort_elem_type;
     dims = std::move(ort_dims);
 
@@ -531,10 +535,11 @@ static Ort::Status OrtValueInfoToProto(Ort::ConstValueInfo ort_value_info,
   std::vector<int64_t> ort_dims;
   std::vector<std::string> ort_dim_syms;
   ONNXTensorElementDataType ort_elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+  bool has_shape = false;
 
   // We currently only support ONNX tensors. Support for other types (e.g., ONNX_TYPE_SEQUENCE) can be added later.
   ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetOrtValueInfoTensorTypeShape(ort_value_info, /*get_sym_dims*/ true,
-                                                                  ort_elem_type, ort_dims, ort_dim_syms));
+                                                                  ort_elem_type, ort_dims, ort_dim_syms, has_shape));
 
   value_info_proto.set_name(ort_value_info.GetName());
 
@@ -543,7 +548,7 @@ static Ort::Status OrtValueInfoToProto(Ort::ConstValueInfo ort_value_info,
 
   // If there are no dimensions in the shape, do not set a TensorShapeProto. Otherwise, it always looks
   // like a scalar value.
-  if (!ort_dims.empty()) {
+  if (!ort_dims.empty() || has_shape) {
     onnx::TensorShapeProto* shape_proto = type_proto_tensor->mutable_shape();
 
     for (size_t dim_idx = 0; dim_idx < ort_dims.size(); dim_idx++) {

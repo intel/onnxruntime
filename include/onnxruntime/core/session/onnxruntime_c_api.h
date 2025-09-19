@@ -6580,6 +6580,17 @@ struct OrtApi {
                   _In_ size_t byte_size, _Outptr_ OrtExternalInitializerInfo** out);
 
   /// @}
+  /// \name OrtTensorTypeAndShapeInfo
+  /// @{
+
+  /** \brief Get the attribute `has_shape` from ::OrtTensorTypeAndShapeInfo object
+   *
+   * \param[out] out Returns bool
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   */
+  ORT_API2_STATUS(GetHasShape, _In_ const OrtTensorTypeAndShapeInfo* info, _Out_ bool* out);
+  /// @}
 };
 
 /*

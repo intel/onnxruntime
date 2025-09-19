@@ -102,6 +102,12 @@ ORT_API_STATUS_IMPL(OrtApis::GetSymbolicDimensions,
   return nullptr;
 }
 
+ORT_API_STATUS_IMPL(OrtApis::GetHasShape, _In_ const struct OrtTensorTypeAndShapeInfo* info,
+                    _Out_ bool* out) {
+  *out = info->has_shape;
+  return nullptr;
+}
+
 ORT_API_STATUS_IMPL(OrtApis::SetSymbolicDimensions,
                     _In_ struct OrtTensorTypeAndShapeInfo* info,
                     _In_ const char** names, _In_ size_t dim_params_length) {
@@ -228,6 +234,7 @@ std::unique_ptr<OrtTensorTypeAndShapeInfo> OrtTensorTypeAndShapeInfo::GetTensorS
 
   if (dim_params != nullptr) {
     type_and_shape->dim_params = *dim_params;
+    type_and_shape->has_shape = true;
   } else {
     type_and_shape->dim_params.resize(type_and_shape->shape.NumDimensions(), "");
   }

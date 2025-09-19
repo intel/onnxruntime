@@ -24,6 +24,7 @@ struct OrtTensorTypeAndShapeInfo {
   // dim_param values. empty string if dim_value or no dim_param was specified.
   // one entry per dimension in shape. only guaranteed to be populated for graph inputs and outputs
   std::vector<std::string> dim_params;
+  bool has_shape = false;
 
   OrtTensorTypeAndShapeInfo();
   ~OrtTensorTypeAndShapeInfo();
