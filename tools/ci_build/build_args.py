@@ -842,6 +842,12 @@ def parse_arguments() -> argparse.Namespace:
         fromfile_prefix_chars="@",  # Allow args from file (@filename)
     )
 
+    # dump_node_input_output
+    parser.add_argument(
+        "--dump_node_input_output",
+        type=str,
+        help="Dump node input/output data to files in the specified directory.",
+    )
     # Add arguments by category
     add_core_build_args(parser)
     add_cmake_build_config_args(parser)
