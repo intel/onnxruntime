@@ -33,16 +33,19 @@ struct OrtTensorTypeAndShapeInfo {
   static std::unique_ptr<OrtTensorTypeAndShapeInfo> GetTensorShapeAndTypeHelper(
       ONNXTensorElementDataType type,
       onnxruntime::TensorShape shape,
-      const std::vector<std::string>* dim_params);
+      const std::vector<std::string>* dim_params,
+      bool has_shape);
 
   static std::unique_ptr<OrtTensorTypeAndShapeInfo> GetTensorShapeAndType(
       onnxruntime::TensorShape shape,
-      const onnxruntime::DataTypeImpl& tensor_data_type);
+      const onnxruntime::DataTypeImpl& tensor_data_type,
+      bool has_shape);
 
   static std::unique_ptr<OrtTensorTypeAndShapeInfo> GetTensorShapeAndType(
       onnxruntime::TensorShape shape,
       const std::vector<std::string>* dim_params,
-      const ONNX_NAMESPACE::TypeProto&);
+      const ONNX_NAMESPACE::TypeProto&,
+      bool has_shape);
 
   // We provide Clone() here to satisfy the existing coding pattern
   // as we need copies made on the heap even though we achieve that
