@@ -80,7 +80,7 @@ struct OrtShapeInferContext {
       auto tensor_shape = ::onnxruntime::utils::GetTensorShapeFromTensorShapeProto(shape_proto);
       auto symbolic_dims = GetSymbolicDims(shape_proto);
       input_type_shapes_.emplace_back(
-          OrtTensorTypeAndShapeInfo::GetTensorShapeAndTypeHelper(elem_type, tensor_shape, &symbolic_dims, type_proto.has_shape()).release());
+          OrtTensorTypeAndShapeInfo::GetTensorShapeAndTypeHelper(elem_type, tensor_shape, &symbolic_dims, onnxruntime::utils::HasShape(type_proto)).release());
     }
   }
 
