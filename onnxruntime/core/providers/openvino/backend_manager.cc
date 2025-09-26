@@ -455,44 +455,76 @@ static void DumpOpenVINOEPModel([[maybe_unused]] const std::filesystem::path& on
 }
 
 static void SetExternalDataFields(ONNX_NAMESPACE::TensorProto* proto_init, const void* data_ptr, int64_t data_size) {
-    static constexpr const char* ORT_INTERNAL_MEM_INITIALIZER = "*/_ORT_MEM_ADDR_/*";
-    auto* external_data = proto_init->mutable_external_data();
-    bool found_location = false, found_offset = false, found_length = false;
-    const int ext_data_size = external_data->size();
-    proto_init->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
+  static constexpr const char* ORT_INTERNAL_MEM_INITIALIZER = "*/_ORT_MEM_ADDR_/*";
+  auto* external_data = proto_init->mutable_external_data();
+  bool found_location = false, found_offset = false, found_length = false;
+  const int ext_data_size = external_data->size();
+  proto_init->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
 
-    for (int j = 0; j < ext_data_size; ++j) {
-        auto& ext_entry = external_data->at(j);
-        auto& key = *ext_entry.mutable_key();
-        if (key == "location") {
-            *ext_entry.mutable_value() = ORT_INTERNAL_MEM_INITIALIZER;
-            found_location = true;
-        } else if (key == "offset") {
-            *ext_entry.mutable_value() = std::to_string(reinterpret_cast<uintptr_t>(data_ptr));
-            found_offset = true;
-        } else if (key == "length") {
-            *ext_entry.mutable_value() = std::to_string(data_size);
-            found_length = true;
-        }
+  for (int j = 0; j < ext_data_size; ++j) {
+    auto& ext_entry = external_data->at(j);
+    auto& key = *ext_entry.mutable_key();
+    if (key == "location") {
+      *ext_entry.mutable_value() = ORT_INTERNAL_MEM_INITIALIZER;
+      found_location = true;
+    } else if (key == "offset") {
+      *ext_entry.mutable_value() = std::to_string(reinterpret_cast<uintptr_t>(data_ptr));
+      found_offset = true;
+    } else if (key == "length") {
+      *ext_entry.mutable_value() = std::to_string(data_size);
+      found_length = true;
     }
+  }
 
-    if (!found_location) {
-        auto* new_entry = external_data->Add();
-        *new_entry->mutable_key() = "location";
-        *new_entry->mutable_value() = ORT_INTERNAL_MEM_INITIALIZER;
-    }
-    if (!found_offset) {
-        auto* new_entry = external_data->Add();
-        *new_entry->mutable_key() = "offset";
-        *new_entry->mutable_value() = std::to_string(reinterpret_cast<uintptr_t>(data_ptr));
-    }
-    if (!found_length) {
-        auto* new_entry = external_data->Add();
-        *new_entry->mutable_key() = "length";
-        *new_entry->mutable_value() = std::to_string(data_size);
-    }
+  if (!found_location) {
+    auto* new_entry = external_data->Add();
+    *new_entry->mutable_key() = "location";
+    *new_entry->mutable_value() = ORT_INTERNAL_MEM_INITIALIZER;
+  }
+  if (!found_offset) {
+    auto* new_entry = external_data->Add();
+    *new_entry->mutable_key() = "offset";
+    *new_entry->mutable_value() = std::to_string(reinterpret_cast<uintptr_t>(data_ptr));
+  }
+  if (!found_length) {
+    auto* new_entry = external_data->Add();
+    *new_entry->mutable_key() = "length";
+    *new_entry->mutable_value() = std::to_string(data_size);
+  }
 }
 
+static void ReadExternalDataFields(const ONNX_NAMESPACE::TensorProto* src_init, std::string& location, size_t& offset, size_t& length) {
+  // Remove constness as we need to use mutable_external_data() to get the entries to read. 
+  // The entries themselves are not modified...
+  auto& mutable_proto = *const_cast<ONNX_NAMESPACE::TensorProto*>(src_init);
+  auto* entry_protos = mutable_proto.mutable_external_data();
+  for (int i = 0; i < entry_protos->size(); i++) {
+    auto& string_entry_proto{entry_protos->at(i)};
+    const auto& pb_key{*(string_entry_proto.mutable_key())};
+    const auto& pb_value{*(string_entry_proto.mutable_value())};
+    if (pb_key == "location") {
+      location = pb_value;
+    } else if (pb_key == "offset") {
+      const auto res = std::from_chars(pb_value.data(), pb_value.data() + pb_value.size(), offset);
+      if (res.ec != std::errc()) {
+        std::ostringstream err_msg;
+        err_msg << "External data in memory has invalid offset field: "
+                << src_init->name() << "], location: " << location
+                << ", offset: " << pb_value;
+        ORT_THROW(err_msg.str());
+      }
+    } else if (pb_key == "length") {
+      const auto res = std::from_chars(pb_value.data(), pb_value.data() + pb_value.size(), length);
+      if (res.ec != std::errc()) {
+        std::ostringstream err_msg;
+        err_msg << "External data in memory has invalid length field: "
+                << src_init->name() << "], location: " << location
+                << ", length: " << pb_value;
+        ORT_THROW(err_msg.str());
+      }
+    }
+  }
+}
 
 std::unique_ptr<ONNX_NAMESPACE::ModelProto>
 BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
@@ -571,37 +603,33 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
   } else {
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] OVEP QDQ optimization pass is disabled";
 
-    static bool load_user_initializer_ = true;
-    size_t userWeightsFromRawData = 0;
-    size_t userWeightsFromExternalDataInMemory = 0;
-    size_t allInitializersCount = 0;
-    if (load_user_initializer_) {
-      auto allInitializers = subgraph.GetAllInitializedTensors();      
-      allInitializersCount = allInitializers.size();
-
-      for (auto& entry : allInitializers) {
-        auto* tp = entry.second;
-        if (tp->has_raw_data()) {
-          userWeightsFromRawData++;
-        } else if (utils::HasExternalDataInMemory(*tp)) {         
-          userWeightsFromExternalDataInMemory++;
+    const size_t extInitializerCount = [&subgraph, cnt = 0ull]() mutable {
+      auto allInitializers = subgraph.GetAllInitializedTensors();
+      for (auto& [name, tp] : allInitializers) {
+        if (utils::HasExternalDataInMemory(*tp)) {
+          ++cnt;
         }
       }
-    }
-    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Loaded " << allInitializersCount << " initializers from the model. "
-        << userWeightsFromRawData << " from raw_data, "
-        << userWeightsFromExternalDataInMemory << " from external_data.";
+      return cnt;
+    }();
+
+    // when we have external weights in memory, the model proto will actually embed those
+    // and bloat the serialized string. We can avoid that by not including the data in the proto
+    // but then we have to update those initializers and set the external_data fields to mem_addr tag...
+    // 1 is arbitrary number, but if we have more than 1 external initializer, then the savings are worth the effort
+    const bool include_initializer_data_in_proto = !(session_context_.has_external_weights == true && extInitializerCount > 1);
 
     auto model = subgraph.CreateModel(logger);
     auto model_proto = model->ToProto();
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-    subgraph.ToProto(*model_proto->mutable_graph(), /*include_initializers*/true, /*include_outer_scope_args*/true, /*execution order*/0, /*include_initializer_data*/!load_user_initializer_);
+    subgraph.ToProto(*model_proto->mutable_graph(), /*include_initializers*/true, 
+                     /*include_outer_scope_args*/true, /*execution_order*/0, /*include_initializer_data*/include_initializer_data_in_proto);
    
     print_model_proto_duration();
     DumpOpenVINOEPModel(onnx_model_path_name, model_proto.get(), fused_node);
     
     // new code:
-    if (load_user_initializer_)
+    if (!include_initializer_data_in_proto)
     {
         LOGS(logger, INFO) << "Initializer data is not included in the model proto. Updating metadata...";
         const auto& allInitializers = subgraph.GetAllInitializedTensors();
@@ -632,7 +660,6 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
 
             // Only set in-memory external_data fields if the data is in memory
             if (src_init->has_raw_data()) {
-                // Debug info for in-memory initializers
                 LOGS(logger, VERBOSE) << "In-memory initializer RAW: "
                     << src_init->name()
                     << ", data_type: " << src_init->data_type()
@@ -640,55 +667,17 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
 
                 SetExternalDataFields(proto_init, src_init->raw_data().data(), src_init->raw_data().size());
             }
-            else if (onnxruntime::utils::HasExternalDataInMemory(*src_init)) {
-
-                using mutable_proto_t = ONNX_NAMESPACE::TensorProto*;
-                auto& mutable_proto = *const_cast<mutable_proto_t>(src_init);
-                auto* entry_protos = mutable_proto.mutable_external_data();
+            else if (onnxruntime::utils::HasExternalDataInMemory(*src_init)) {                
                 std::string location;
                 size_t offset = 0;
                 size_t length = 0;
-                for (int i = 0; i < entry_protos->size(); i++) {
-                    auto& string_entry_proto{ entry_protos->at(i) };
-                    const auto& pb_key{ *(string_entry_proto.mutable_key()) };
-                    const auto& pb_value{ *(string_entry_proto.mutable_value()) };
-                    if (pb_key == "location") {
-                        location = pb_value;
-                    }
-                    else if (pb_key == "offset") {
-                        const auto res = std::from_chars(pb_value.data(), pb_value.data() + pb_value.size(), offset);
-                        if (res.ec != std::errc()) {
-                            LOGS(logger, ERROR) << "External data in memory has invalid offset field: "
-                                << src_init->name() << "], location: " << location
-                                << ", offset: " << pb_value;
-                            offset = 0;
-                        }
-                    }
-                    else if (pb_key == "length") {
-                      const auto res = std::from_chars(pb_value.data(), pb_value.data() + pb_value.size(), length);
-                      if (res.ec != std::errc()) {
-                          LOGS(logger, ERROR) << "External data in memory has invalid length field: "
-                                          << src_init->name() << "], location: " << location
-                                          << ", length: " << pb_value;
-                        offset = 0;
-                      }
-                    }
-                }
-                if (offset == 0 || length == 0) {
-                    LOGS(logger, ERROR) << "External data in memory has invalid external_data fields: "
-                        << src_init->name() << "], location: " << location
-                        << ", offset: " << offset
-                        << ", length: " << length;
-                }
-                else
-                {
-                    // we have data in it, so populate the proto_init
-                    LOGS(logger, VERBOSE) << "In-memory initializer EXT: "
-                        << src_init->name()
-                        << ", size: " << length;
+                ReadExternalDataFields(src_init, location, offset, length);
+                
+                LOGS(logger, VERBOSE) << "In-memory initializer EXT: "
+                    << src_init->name()
+                    << ", size: " << length;
 
-                    SetExternalDataFields(proto_init, (const void*)offset, length);
-                }
+                SetExternalDataFields(proto_init, (const void*)offset, length);
             }
             else {
                 // Debug info for file-based initializers
@@ -838,10 +827,7 @@ void BackendManager::Compute(OrtKernelContext* context) {
 
     {
       std::unique_lock<std::mutex> lock(mutex_);
-      auto it = backend_map_.find(key);
-      if (it != backend_map_.end()) {
-        dynamic_backend = it->second;
-      }
+      dynamic_backend = backend_map_[key];
     }
 
     if (!dynamic_backend) {
