@@ -454,8 +454,10 @@ static void DumpOpenVINOEPModel([[maybe_unused]] const std::filesystem::path& on
 #endif
 }
 
+// this is a helper function to set the data fields, it duplicates ExternalDataInfo::SetExternalLocationToProto
+// but we cannot use that function as it is not part of public provider api.
 static void SetExternalDataFields(ONNX_NAMESPACE::TensorProto* proto_init, const void* data_ptr, int64_t data_size) {
-  static constexpr const char* ORT_INTERNAL_MEM_INITIALIZER = "*/_ORT_MEM_ADDR_/*";
+  static constexpr const char* ORT_INTERNAL_MEM_INITIALIZER = "*/_ORT_MEM_ADDR_/*";  
   auto* external_data = proto_init->mutable_external_data();
   bool found_location = false, found_offset = false, found_length = false;
   const int ext_data_size = external_data->size();
@@ -494,7 +496,7 @@ static void SetExternalDataFields(ONNX_NAMESPACE::TensorProto* proto_init, const
 }
 
 static void ReadExternalDataFields(const ONNX_NAMESPACE::TensorProto* src_init, std::string& location, size_t& offset, size_t& length) {
-  // Remove constness as we need to use mutable_external_data() to get the entries to read. 
+  // Remove constness as we need to use mutable_external_data() to get the entries to read.
   // The entries themselves are not modified...
   auto& mutable_proto = *const_cast<ONNX_NAMESPACE::TensorProto*>(src_init);
   auto* entry_protos = mutable_proto.mutable_external_data();
@@ -603,21 +605,31 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
   } else {
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] OVEP QDQ optimization pass is disabled";
 
-    const size_t extInitializerCount = [&subgraph, cnt = 0ull]() mutable {
+    // scan ext initializers:
+    std::unordered_map<std::string, std::pair<size_t, size_t>> external_initializers_offset_and_length;
+    std::string tempLocation;
+    size_t extInitializerTotalSize = 0;
+    if (session_context_.has_external_weights) {
       auto allInitializers = subgraph.GetAllInitializedTensors();
       for (auto& [name, tp] : allInitializers) {
         if (utils::HasExternalDataInMemory(*tp)) {
-          ++cnt;
+          size_t offset = 0;
+          size_t length = 0;
+          ReadExternalDataFields(tp, tempLocation, offset, length);
+          extInitializerTotalSize += length;
+          external_initializers_offset_and_length[name] = {offset, length};
         }
-      }
-      return cnt;
-    }();
+      }     
+    }
 
     // when we have external weights in memory, the model proto will actually embed those
     // and bloat the serialized string. We can avoid that by not including the data in the proto
     // but then we have to update those initializers and set the external_data fields to mem_addr tag...
-    // 1 is arbitrary number, but if we have more than 1 external initializer, then the savings are worth the effort
-    const bool include_initializer_data_in_proto = !(session_context_.has_external_weights == true && extInitializerCount > 1);
+    // proto is limited to 2GB, but let's use 512MB as threshold to be conservative and still gain some memory reductions.
+    constexpr size_t MAX_EMBEDDED_INITIALIZER_SIZE = 1024 * 1024 * 512;
+    const bool include_initializer_data_in_proto = !(session_context_.has_external_weights == true && 
+                                                     external_initializers_offset_and_length.size() > 1 && 
+                                                     extInitializerTotalSize > MAX_EMBEDDED_INITIALIZER_SIZE);
 
     auto model = subgraph.CreateModel(logger);
     auto model_proto = model->ToProto();
@@ -628,66 +640,54 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     print_model_proto_duration();
     DumpOpenVINOEPModel(onnx_model_path_name, model_proto.get(), fused_node);
     
-    // new code:
-    if (!include_initializer_data_in_proto)
-    {
-        LOGS(logger, INFO) << "Initializer data is not included in the model proto. Updating metadata...";
-        const auto& allInitializers = subgraph.GetAllInitializedTensors();
-        auto* graph_proto = model_proto->mutable_graph();
-        auto* proto_initializers = graph_proto->mutable_initializer();
+    if (!include_initializer_data_in_proto) {
+      LOGS(logger, INFO) << "Initializer data is not included in the model proto. Updating metadata..., total size " << extInitializerTotalSize / (1024 * 1024) << " MB in " << external_initializers_offset_and_length.size() << " initializers";
+      auto* graph_proto = model_proto->mutable_graph();
+      auto* proto_initializers = graph_proto->mutable_initializer();
 
-        // Build a map for quick lookup by name
-        std::unordered_map<std::string, ONNX_NAMESPACE::TensorProto*> proto_initializer_map;
-        for (int i = 0, n = proto_initializers->size(); i < n; ++i) {
-            auto& proto_init = proto_initializers->at(i);
-            proto_initializer_map[proto_init.name()] = &proto_init;
+      std::unordered_map<std::string, ONNX_NAMESPACE::TensorProto*> proto_initializer_map;
+      for (int i = 0, n = proto_initializers->size(); i < n; ++i) {
+        auto& proto_init = proto_initializers->at(i);
+        proto_initializer_map[proto_init.name()] = &proto_init;
+      }
+
+      for (const auto& [name, src_init] : subgraph.GetAllInitializedTensors()) {
+        auto it = proto_initializer_map.find(name);
+        if (it == proto_initializer_map.end())
+          continue;
+
+        auto* proto_init = it->second;
+
+        // If the proto initializer is missing data, fill it in
+        if (!proto_init->has_raw_data() && src_init->has_raw_data()) {
+          *proto_init->mutable_raw_data() = src_init->raw_data();
         }
 
-        for (const auto& init_entry : allInitializers) {
-            const std::string& name = init_entry.first;
-            const ONNX_NAMESPACE::TensorProto* src_init = init_entry.second;
+        // Only set in-memory external_data fields if the data is in memory
+        if (src_init->has_raw_data()) {
+          LOGS(logger, VERBOSE) << "In-memory initializer RAW: "
+                                << src_init->name()
+                                << ", data_type: " << src_init->data_type()
+                                << ", raw_data size: " << src_init->raw_data().size();
 
-            auto it = proto_initializer_map.find(name);
-            if (it == proto_initializer_map.end())
-                continue;
+          SetExternalDataFields(proto_init, src_init->raw_data().data(), src_init->raw_data().size());
+        } else if (onnxruntime::utils::HasExternalDataInMemory(*src_init)) {
+          auto it_ext = external_initializers_offset_and_length.find(name);
+          if (it_ext == external_initializers_offset_and_length.end()) {
+            std::ostringstream err_msg;
+            err_msg << "Initializer marked as external in memory but missing offset/length info: " << src_init->name();
+            ORT_THROW(err_msg.str());
+          }
+          const size_t offset = it_ext->second.first;
+          const size_t length = it_ext->second.second;
 
-            auto* proto_init = it->second;
+          LOGS(logger, VERBOSE) << "In-memory initializer EXT: " << src_init->name() << ", size: " << length;
 
-            // If the proto initializer is missing data, fill it in
-            if (!proto_init->has_raw_data() && src_init->has_raw_data()) {
-                *proto_init->mutable_raw_data() = src_init->raw_data();
-            }
-
-            // Only set in-memory external_data fields if the data is in memory
-            if (src_init->has_raw_data()) {
-                LOGS(logger, VERBOSE) << "In-memory initializer RAW: "
-                    << src_init->name()
-                    << ", data_type: " << src_init->data_type()
-                    << ", raw_data size: " << src_init->raw_data().size();
-
-                SetExternalDataFields(proto_init, src_init->raw_data().data(), src_init->raw_data().size());
-            }
-            else if (onnxruntime::utils::HasExternalDataInMemory(*src_init)) {                
-                std::string location;
-                size_t offset = 0;
-                size_t length = 0;
-                ReadExternalDataFields(src_init, location, offset, length);
-                
-                LOGS(logger, VERBOSE) << "In-memory initializer EXT: "
-                    << src_init->name()
-                    << ", size: " << length;
-
-                SetExternalDataFields(proto_init, (const void*)offset, length);
-            }
-            else {
-                // Debug info for file-based initializers
-                LOGS(logger, VERBOSE)<< "File-based initializer: "
-                    << src_init->name()
-                    << ", data_type: " << src_init->data_type();
-            }
-
+          SetExternalDataFields(proto_init, (const void*)offset, length);
+        } else {
+          LOGS(logger, VERBOSE) << "File-based initializer: " << src_init->name() << ", data_type: " << src_init->data_type();
         }
-
+      }
     }
 
     return model_proto;
