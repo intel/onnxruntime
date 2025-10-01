@@ -386,6 +386,8 @@ static const char* const kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel = "sessio
 // "Efficient": OS treats this workload is efficiency oriented with low scheduling priority and efficient processor performance.
 static const char* const kOrtEpDynamicOptionsWorkloadType = "ep.dynamic.workload_type";
 
+static const char* const kOrtEpDynamicOptionsKVCacheRewind = "ep.llm.kvcache_rewind";
+
 // Disables model compilation during session initialization.
 //
 // If this option is set to "1", inference session creation will fail with error code ORT_MODEL_REQUIRES_COMPILATION
