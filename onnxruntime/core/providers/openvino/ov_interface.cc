@@ -457,6 +457,11 @@ void StatefulOVInferRequest::Infer() {
   OVInferRequest::Infer();
 }
 
+void OVInferRequest::RewindKVCache(size_t index) {
+  LOGS_DEFAULT(INFO) << log_tag << "RewindKVCache: Rewinding OpenVINO-internal KVCache state to index=" << index;
+  ovInfReq.reset_state();
+}
+
 void StatefulOVInferRequest::RewindKVCache(size_t index) {
   LOGS_DEFAULT(INFO) << log_tag << "RewindKVCache: Rewinding OpenVINO-internal KVCache state to index=" << index;
 
