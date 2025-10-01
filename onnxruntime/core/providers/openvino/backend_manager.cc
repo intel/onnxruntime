@@ -102,9 +102,9 @@ BackendManager::BackendManager(SessionContext& session_context,
       ORT_THROW(exception_str);
     }
     if (subgraph_context_.is_ep_ctx_ovir_encapsulated) {
-      model_stream = ep_ctx_handle_.GetModelBlobStream(session_context_.onnx_model_path_name.replace_extension("xml").string(), subgraph);
+      model_stream = ep_ctx_handle_.GetModelBlobStream(session_context_.onnx_model_path_name.replace_extension("xml").string(), subgraph, session_context_);
     } else {
-      model_stream = ep_ctx_handle_.GetModelBlobStream(session_context_.so_context_file_path, subgraph);
+      model_stream = ep_ctx_handle_.GetModelBlobStream(session_context_.so_context_file_path, subgraph, session_context_);
     }
 
   } else {
