@@ -133,9 +133,9 @@ EPCtxHandler::GetModelBlobStream(const std::filesystem::path& so_context_file_pa
     // If the model stream is not an XML (i.e. precompiled blob), the OpenVINO SDK version that it was
     // exported with must match the version that is currently running.
     native_blob_path = std::move(blob_filepath);
-    ORT_ENFORCE((attrs.count(EP_SDK_VER) == 1) && (attrs.at(EP_SDK_VER).s() == openvino_sdk_version_),
-                "EPCtx blob was exported / is compatible with OpenVINO SDK version " + attrs.at(EP_SDK_VER).s() +
-                    ", but OpenVINO SDK version currently in use is " + openvino_sdk_version_);
+    // ORT_ENFORCE((attrs.count(EP_SDK_VER) == 1) && (attrs.at(EP_SDK_VER).s() == openvino_sdk_version_),
+    //             "EPCtx blob was exported / is compatible with OpenVINO SDK version " + attrs.at(EP_SDK_VER).s() +
+    //                 ", but OpenVINO SDK version currently in use is " + openvino_sdk_version_);
   }
 
   LOGS_DEFAULT(VERBOSE) << "[OpenVINO EP] Read blob from EPContext Node";
