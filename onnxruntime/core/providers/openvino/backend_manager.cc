@@ -619,27 +619,31 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
           extInitializerTotalSize += length;
           external_initializers_offset_and_length[name] = {offset, length};
         }
-      }     
+      }
     }
 
     // when we have external weights in memory, the model proto will actually embed those
     // and bloat the serialized string. We can avoid that by not including the data in the proto
     // but then we have to update those initializers and set the external_data fields to mem_addr tag...
-    // proto is limited to 2GB, but let's use 512MB as threshold to be conservative and still gain some memory reductions.
-    constexpr size_t MAX_EMBEDDED_INITIALIZER_SIZE = 1024 * 1024 * 512;
-    const bool include_initializer_data_in_proto = !(session_context_.has_external_weights == true && 
+    // proto is limited to 2GB, but let's use 32MB as threshold to be conservative and still gain some memory reductions.
+#if (((OPENVINO_VERSION_MAJOR == 2025) && (OPENVINO_VERSION_MINOR > 3)) || (OPENVINO_VERSION_MAJOR > 2025))
+    constexpr size_t MAX_EMBEDDED_INITIALIZER_SIZE = 1024 * 1024 * 32;
+    const bool include_initializer_data_in_proto = !(session_context_.has_external_weights && 
                                                      external_initializers_offset_and_length.size() > 1 && 
-                                                     extInitializerTotalSize > MAX_EMBEDDED_INITIALIZER_SIZE);
+                                                     extInitializerTotalSize >= MAX_EMBEDDED_INITIALIZER_SIZE);
+#else
+    const bool include_initializer_data_in_proto = true;
+#endif
+
 
     auto model = subgraph.CreateModel(logger);
     auto model_proto = model->ToProto();
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
     subgraph.ToProto(*model_proto->mutable_graph(), /*include_initializers*/true, 
                      /*include_outer_scope_args*/true, /*execution_order*/0, /*include_initializer_data*/include_initializer_data_in_proto);
-   
+
     print_model_proto_duration();
-    DumpOpenVINOEPModel(onnx_model_path_name, model_proto.get(), fused_node);
-    
+
     if (!include_initializer_data_in_proto) {
       LOGS(logger, INFO) << "Initializer data is not included in the model proto. Updating metadata..., total size " << extInitializerTotalSize / (1024 * 1024) << " MB in " << external_initializers_offset_and_length.size() << " initializers";
       auto* graph_proto = model_proto->mutable_graph();
@@ -689,6 +693,8 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
         }
       }
     }
+
+    DumpOpenVINOEPModel(onnx_model_path_name, model_proto.get(), fused_node);
 
     return model_proto;
   }
