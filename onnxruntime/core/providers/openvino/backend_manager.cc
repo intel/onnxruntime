@@ -457,7 +457,7 @@ static void DumpOpenVINOEPModel([[maybe_unused]] const std::filesystem::path& on
 // this is a helper function to set the data fields, it duplicates ExternalDataInfo::SetExternalLocationToProto
 // but we cannot use that function as it is not part of public provider api.
 static void SetExternalDataFields(ONNX_NAMESPACE::TensorProto* proto_init, const void* data_ptr, int64_t data_size) {
-  static constexpr const char* ORT_INTERNAL_MEM_INITIALIZER = "*/_ORT_MEM_ADDR_/*";  
+  static constexpr const char* ORT_INTERNAL_MEM_INITIALIZER = "*/_ORT_MEM_ADDR_/*";
   auto* external_data = proto_init->mutable_external_data();
   bool found_location = false, found_offset = false, found_length = false;
   const int ext_data_size = external_data->size();
