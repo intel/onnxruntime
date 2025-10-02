@@ -73,7 +73,7 @@ struct OnnxToOvNetworkBindings {
         // stateful representation has introduced these new tensors, creating a name mismatch (matched_names=false).
         // So, if there is a name mismatch, or the name matches our special io list, we simply continue processing
         // here to prevent runtime exceptions.
-        //if (session_context.enable_causallm) {
+        if (session_context.enable_causallm) {
           if (!matched_names ||
               std::any_of(special_io_names_.begin(), special_io_names_.end(),
                           [&onnx_name](const std::string& name) { return onnx_name.find(name) != std::string::npos; })) {
@@ -81,7 +81,7 @@ struct OnnxToOvNetworkBindings {
             has_dynamic_io_ = true;
             continue;
           }
-        //}
+        }
 
         ORT_ENFORCE(matched_names, log_tag,
                     "Input names mismatch between OpenVINO and ONNX. ", onnx_name,
