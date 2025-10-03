@@ -12,6 +12,7 @@
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
+#include "onnxruntime_session_options_config_keys.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::logging;
@@ -61,21 +62,19 @@ namespace onnxruntime {
 namespace test {
 
 TEST_P(OVEP_ExtInit_Tests, ModelFromExtInit) {
-  Ort::SessionOptions sessionOptions;
-  std::unordered_map<std::string, std::string> ov_options;
   const auto& device = GetParam();
   if (!ProbeDevice(device))
     GTEST_SKIP() << device + " is not available on this machine";
 
   // wait 7 second for debugger
-  std::cout << "Waiting 7 seconds for debugger to attach if needed..." << std::endl;
-  std::this_thread::sleep_for(std::chrono::seconds(7));
+  //std::cout << "Waiting 7 seconds for debugger to attach if needed..." << std::endl;
+  //std::this_thread::sleep_for(std::chrono::seconds(7));
        
   // Model and weights file paths
   const std::string model_path = "ovep_ext_init_test.onnx";
   const std::string weights_path = "ovep_ext_init_test.onnx.data";
-  const size_t num_initializers = 4;
-  const size_t floats_per_initializer = 2 * 1024 * 1024;  // 2 millions floats per initializer, 8MB bytes
+  const size_t num_initializers = 8;
+  const size_t floats_per_initializer = 64 * 1024 * 1024;  // 64 millions floats per initializer, 256MB
   const size_t total_floats = num_initializers * floats_per_initializer;
   const size_t total_bytes = total_floats * sizeof(float);
   // min size threshold for new logic with ext initializers
@@ -180,16 +179,18 @@ TEST_P(OVEP_ExtInit_Tests, ModelFromExtInit) {
 
   // 6. Set up session options with OpenVINO
   Ort::SessionOptions session_options;
-  // session_options.SetIntraOpNumThreads(1);
-  session_options.SetLogSeverityLevel(0);  // verbose...
-  session_options.AppendExecutionProvider("OpenVINO", { {"device_type", device.c_str()} });
+  session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
+  session_options.SetIntraOpNumThreads(1);
+  //session_options.SetLogSeverityLevel(0);  // verbose...
+  std::unordered_map<std::string, std::string> ov_options = { {"device_type", device } };
+  session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
   session_options.AddExternalInitializersFromFilesInMemory(names_w, buffers, buffer_sizes);
 
   // 7. Create session from memory
   Ort::Session session(*ort_env, model_data.data(), model_data.size(), session_options);
 
   // 8. Run inference to verify weights are loaded
-  std::vector<float> input_data(floats_per_initializer, 2.0f);  // shape [4194304]
+  std::vector<float> input_data(floats_per_initializer, 2.0f);
   std::vector<int64_t> input_shape = {static_cast<int64_t>(floats_per_initializer)};
   Ort::MemoryInfo mem_info = Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtDeviceAllocator, OrtMemTypeDefault);
   Ort::Value input_tensor = Ort::Value::CreateTensor<float>(mem_info, input_data.data(), input_data.size(), input_shape.data(), input_shape.size());
@@ -216,7 +217,7 @@ TEST_P(OVEP_ExtInit_Tests, ModelFromExtInit) {
 }
 INSTANTIATE_TEST_SUITE_P(OVEP_Tests,
                          OVEP_ExtInit_Tests,
-                         ::testing::Values(/*"CPU",*/ "GPU"/*"NPU"*/));
+                         ::testing::Values("CPU", "GPU", "NPU"));
 
 }  // namespace test
 }  // namespace onnxruntime
