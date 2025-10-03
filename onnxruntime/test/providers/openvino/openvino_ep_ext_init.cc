@@ -65,10 +65,6 @@ TEST_P(OVEP_ExtInit_Tests, ModelFromExtInit) {
   const auto& device = GetParam();
   if (!ProbeDevice(device))
     GTEST_SKIP() << device + " is not available on this machine";
-
-  // wait 7 second for debugger
-  //std::cout << "Waiting 7 seconds for debugger to attach if needed..." << std::endl;
-  //std::this_thread::sleep_for(std::chrono::seconds(7));
        
   // Model and weights file paths
   const std::string model_path = "ovep_ext_init_test.onnx";
@@ -207,8 +203,8 @@ TEST_P(OVEP_ExtInit_Tests, ModelFromExtInit) {
   for (size_t i = 0; i < num_initializers; ++i) {
     expected += initializer_data[i][0];
   }
-  // Check first 10 elements
-  for (size_t i = 0; i < std::min<size_t>(10, floats_per_initializer); ++i)
+
+  for (size_t i = 0; i < floats_per_initializer; ++i)
     ASSERT_FLOAT_EQ(out_data[i], expected);
 
   // Cleanup
