@@ -360,10 +360,10 @@ void OVInferRequest::Infer() {
 
 StatefulOVInferRequest::StatefulOVInferRequest(ov::InferRequest infer_request, std::string device)
     : OVInferRequest(std::move(infer_request)), target_device(device) {
-  bool gpu_or_npu = ((device.find("NPU") != std::string::npos) || (device.find("GPU") != std::string::npos));
-  if (gpu_or_npu) {
-    prefill_use_full_chat_history = true;
-  }
+  // bool gpu_or_npu = ((device.find("NPU") != std::string::npos) || (device.find("GPU") != std::string::npos));
+  // if (gpu_or_npu) {
+  //   prefill_use_full_chat_history = true;
+  // }
 }
 
 void StatefulOVInferRequest::FillTensor(const std::string& tensor_name, const ov::element::Type& type,
@@ -455,6 +455,11 @@ void StatefulOVInferRequest::PreProcessInferRequest() {
 void StatefulOVInferRequest::Infer() {
   PreProcessInferRequest();
   OVInferRequest::Infer();
+}
+
+void OVInferRequest::RewindKVCache(size_t index) {
+  LOGS_DEFAULT(INFO) << log_tag << "RewindKVCache: Rewinding OpenVINO-internal KVCache state to index=" << index;
+  ovInfReq.reset_state();
 }
 
 void StatefulOVInferRequest::RewindKVCache(size_t index) {
