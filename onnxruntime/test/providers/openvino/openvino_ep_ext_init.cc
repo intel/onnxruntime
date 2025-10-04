@@ -177,7 +177,6 @@ TEST_P(OVEP_ExtInit_Tests, ModelFromExtInit) {
   Ort::SessionOptions session_options;
   session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
   session_options.SetIntraOpNumThreads(1);
-  //session_options.SetLogSeverityLevel(0);  // verbose...
   std::unordered_map<std::string, std::string> ov_options = { {"device_type", device } };
   session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
   session_options.AddExternalInitializersFromFilesInMemory(names_w, buffers, buffer_sizes);
