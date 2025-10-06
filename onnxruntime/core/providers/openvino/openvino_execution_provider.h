@@ -11,9 +11,14 @@
 #include <vector>
 #include <set>
 #include <utility>
+#include <atomic>
 
 #include "core/providers/openvino/backend_manager.h"
 #include "core/providers/openvino/contexts.h"
+
+#ifdef _WIN32
+#include "core/providers/openvino/ov_telemetry.h"
+#endif
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -74,6 +79,13 @@ class OpenVINOExecutionProvider : public IExecutionProvider {
   std::shared_ptr<SharedContext> shared_context_;
   std::list<BackendManager> backend_managers_;  // EP session owns the backend objects
   EPCtxHandler ep_ctx_handle_;
+
+  // Telemetry and session tracking
+  mutable uint32_t session_id_;
+  static std::atomic<uint32_t> global_session_counter_;
+#ifdef _WIN32
+  onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_etw_;
+#endif
 };
 
 }  // namespace openvino_ep
