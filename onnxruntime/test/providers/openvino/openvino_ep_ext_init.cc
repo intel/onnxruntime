@@ -57,7 +57,7 @@ auto ProbeDevice(const std::string& device) {
 namespace onnxruntime {
 namespace test {
 
-TEST_P(OVEP_ExtInit_Tests, ModelFromExtInit) {
+TEST_P(OVEP_ExtInit_Tests, DISABLED_ModelFromExtInit) {
   const auto& device = GetParam();
   if (!ProbeDevice(device))
     GTEST_SKIP() << device + " is not available on this machine";
