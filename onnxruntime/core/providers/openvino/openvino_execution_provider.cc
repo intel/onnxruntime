@@ -277,7 +277,7 @@ common::Status OpenVINOExecutionProvider::SetEpDynamicOptions(gsl::span<const ch
           }
         }
       }
-    } else if (key == "kvcache_rewind" || key == kOrtEpDynamicOptionsKVCacheRewind) {
+    } else if (key == "kvcache_rewind") {
       // Convert kvcache_rewind value to int64_t
       int64_t index;
       try {
