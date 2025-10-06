@@ -21,6 +21,8 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
+std::atomic<uint32_t> OpenVINOExecutionProvider::global_session_counter_{0};
+
 // Parking this code here for now before it's moved to the factory
 #if defined OPENVINO_CONFIG_HETERO || defined OPENVINO_CONFIG_MULTI || defined OPENVINO_CONFIG_AUTO
 static std::vector<std::string> parseDevices(const std::string& device_string,
@@ -58,6 +60,33 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const ProviderInfo& info, s
       shared_context_{std::move(shared_context)},
       ep_ctx_handle_{session_context_.openvino_sdk_version, *GetLogger()} {
   InitProviderOrtApi();
+#ifdef _WIN32
+  session_id_ = ++global_session_counter_;
+  auto& telem = onnxruntime::openvino_ep::OVTelemetry::Instance();
+  telem.LogSessionCreation(session_id_,
+                           session_context_.onnx_model_path_name.string(),
+                           session_context_.openvino_sdk_version);
+  telem.LogProviderOptions(session_id_, {
+    {"device_type", session_context_.device_type},
+    {"precision", session_context_.precision},
+    {"enable_qdq_optimizer", session_context_.enable_qdq_optimizer ? "1":"0"},
+    {"enable_dynamic_shapes", session_context_.disable_dynamic_shapes ? "0":"1"}
+  });
+  telem.LogProviderInit(session_id_, session_context_.device_type, session_context_.precision);
+
+  if (logging::EtwRegistrationManager::SupportsETW()) {
+    auto& mgr = logging::EtwRegistrationManager::Instance();
+    callback_etw_ = logging::EtwRegistrationManager::EtwInternalCallback(
+        [](LPCGUID, ULONG en, UCHAR lvl, ULONGLONG any, ULONGLONG, PEVENT_FILTER_DESCRIPTOR, PVOID) {
+          if (en == EVENT_CONTROL_CODE_ENABLE_PROVIDER &&
+              (any & static_cast<ULONGLONG>(logging::ORTTraceLoggingKeyword::Logs))) {
+            LOGS_DEFAULT(VERBOSE) << "[OVEP] ETW enabled lvl=" << static_cast<int>(lvl);
+          }
+        });
+    mgr.RegisterInternalCallback(callback_etw_);
+  }
+#endif
+
 }
 
 OpenVINOExecutionProvider::~OpenVINOExecutionProvider() {
@@ -65,6 +94,14 @@ OpenVINOExecutionProvider::~OpenVINOExecutionProvider() {
     backend_manager.ShutdownBackendManager();
   }
   backend_managers_.clear();
+#ifdef _WIN32
+  auto& telem = onnxruntime::openvino_ep::OVTelemetry::Instance();
+  telem.LogSessionDestruction(session_id_);
+  telem.LogProviderShutdown(session_id_);
+  if (callback_etw_)
+    logging::EtwRegistrationManager::Instance().UnregisterInternalCallback(callback_etw_);
+#endif
+
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>
@@ -93,6 +130,16 @@ common::Status OpenVINOExecutionProvider::Compile(
     std::vector<NodeComputeInfo>& node_compute_funcs) {
   auto& logger = *GetLogger();
   Status status = Status::OK();
+
+  auto t0 = std::chrono::high_resolution_clock::now();
+#ifdef _WIN32
+  OVTelemetry::Instance().LogCompileStart(
+      session_id_,
+      static_cast<uint32_t>(fused_nodes.size()),
+      session_context_.device_type,
+      session_context_.precision);
+#endif
+
 
   bool is_epctx_model = false;
   if (!fused_nodes.empty()) {
@@ -213,6 +260,13 @@ common::Status OpenVINOExecutionProvider::Compile(
     ORT_RETURN_IF_NOT(file, "Metadata file could not be written: ", metadata_file_path);
     file << metadata;
   }
+
+#ifdef _WIN32
+  auto t1 = std::chrono::high_resolution_clock::now();
+  int64_t ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+  OVTelemetry::Instance().LogCompileEnd(session_id_, status.IsOK(), status.ErrorMessage(), ms);
+#endif
+
 
   return status;
 }
