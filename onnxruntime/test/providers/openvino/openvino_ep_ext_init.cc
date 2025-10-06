@@ -37,10 +37,6 @@ std::vector<uint8_t> LoadFileToMemory(const std::string& path) {
   return buffer;
 }
 
-std::wstring StringToWstring(const std::string& str) {
-  return std::wstring(str.begin(), str.end());
-}
-
 auto ProbeDevice(const std::string& device) {
   static std::map<std::string, bool> is_present;
   if (is_present.find(device) == is_present.end()) {
@@ -168,8 +164,8 @@ TEST_P(OVEP_ExtInit_Tests, ModelFromExtInit) {
   std::vector<uint8_t> weights_data = LoadFileToMemory(weights_path);
 
   // 5. Prepare external initializer info
-  std::wstring weights_name_w = StringToWstring(std::filesystem::path(weights_path).filename().string());
-  std::vector<std::wstring> names_w = {weights_name_w};
+  PathString weights_name_path(weights_path.begin(), weights_path.end());
+  std::vector<PathString> names_path = {weights_name_path};
   std::vector<char*> buffers = {reinterpret_cast<char*>(weights_data.data())};
   std::vector<size_t> buffer_sizes = {weights_data.size()};
 
@@ -179,7 +175,7 @@ TEST_P(OVEP_ExtInit_Tests, ModelFromExtInit) {
   session_options.SetIntraOpNumThreads(1);
   std::unordered_map<std::string, std::string> ov_options = { {"device_type", device } };
   session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
-  session_options.AddExternalInitializersFromFilesInMemory(names_w, buffers, buffer_sizes);
+  session_options.AddExternalInitializersFromFilesInMemory(names_path, buffers, buffer_sizes);
 
   // 7. Create session from memory
   Ort::Session session(*ort_env, model_data.data(), model_data.size(), session_options);
