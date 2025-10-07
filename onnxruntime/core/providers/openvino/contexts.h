@@ -65,9 +65,7 @@ class SharedContext : public WeakSingleton<SharedContext> {
       metadata.clear();
       metadata_filepath.clear();
       external_weight_filename.clear();
-      if (mapped_weights) {
-        delete mapped_weights.release();
-      }
+      mapped_weights.reset();
     }
 
     fs::path external_weight_filename;
@@ -76,7 +74,7 @@ class SharedContext : public WeakSingleton<SharedContext> {
     fs::path metadata_filepath;
   } shared_weights;
 
-  void clear(){
+  void clear() {
     shared_weights.clear();
   }
 };
