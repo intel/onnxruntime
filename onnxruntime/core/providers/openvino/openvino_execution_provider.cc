@@ -216,7 +216,9 @@ common::Status OpenVINOExecutionProvider::Compile(
   }
 
   if (session_context_.so_stop_share_ep_contexts) {
-    shared_context_->clear();
+    if (shared_context_) {
+      shared_context_->clear();
+    }
   }
 
   return status;
