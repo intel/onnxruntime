@@ -62,29 +62,15 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const ProviderInfo& info, s
   InitProviderOrtApi();
 #ifdef _WIN32
   session_id_ = ++global_session_counter_;
-  auto& telem = onnxruntime::openvino_ep::OVTelemetry::Instance();
-  telem.LogSessionCreation(session_id_,
-                           session_context_.onnx_model_path_name.string(),
-                           session_context_.openvino_sdk_version);
-  telem.LogProviderOptions(session_id_, {
-    {"device_type", session_context_.device_type},
-    {"precision", session_context_.precision},
-    {"enable_qdq_optimizer", session_context_.enable_qdq_optimizer ? "1":"0"},
-    {"enable_dynamic_shapes", session_context_.disable_dynamic_shapes ? "0":"1"}
-  });
-  telem.LogProviderInit(session_id_, session_context_.device_type, session_context_.precision);
-
-  if (logging::EtwRegistrationManager::SupportsETW()) {
-    auto& mgr = logging::EtwRegistrationManager::Instance();
-    callback_etw_ = logging::EtwRegistrationManager::EtwInternalCallback(
-        [](LPCGUID, ULONG en, UCHAR lvl, ULONGLONG any, ULONGLONG, PEVENT_FILTER_DESCRIPTOR, PVOID) {
-          if (en == EVENT_CONTROL_CODE_ENABLE_PROVIDER &&
-              (any & static_cast<ULONGLONG>(logging::ORTTraceLoggingKeyword::Logs))) {
-            LOGS_DEFAULT(VERBOSE) << "[OVEP] ETW enabled lvl=" << static_cast<int>(lvl);
-          }
-        });
-    mgr.RegisterInternalCallback(callback_etw_);
-  }
+  OV_LOG_SESSION_CREATION(session_id_,
+                          session_context_.onnx_model_path_name.string(),
+                          session_context_.openvino_sdk_version);
+  // Trace all provider options as one event
+  OVTelemetry::Instance().LogAllProviderOptions(session_id_, session_context_);
+  // Trace all session-related flags and inferred states
+  OVTelemetry::Instance().LogAllSessionOptions(session_id_, session_context_);
+  // Optionally: log provider init message also
+  OV_LOG_PROVIDER_INIT(session_id_, session_context_.device_type, session_context_.precision);
 #endif
 
 }
