@@ -6,13 +6,16 @@
 #include <windows.h>
 #if !BUILD_OPENVINO_EP_STATIC_LIB
 #include <TraceLoggingProvider.h>
+#include <winmeta.h>
 #endif
 #include <functional>
 #include <mutex>
 #include <string>
 #include <vector>
+#include <sstream>
 #include <unordered_map>
-// #include "core/common/logging/logging.h"
+#include "core/providers/openvino/contexts.h"
+#include "nlohmann/json.hpp"
 
 #if !BUILD_OPENVINO_EP_STATIC_LIB
 TRACELOGGING_DECLARE_PROVIDER(ov_telemetry_provider_handle);
@@ -21,6 +24,18 @@ TRACELOGGING_DECLARE_PROVIDER(ov_telemetry_provider_handle);
 namespace onnxruntime {
 namespace openvino_ep {
 
+namespace ov_keywords {
+  constexpr uint64_t OV_PROVIDER   = 0x1;
+  constexpr uint64_t OV_SESSION    = 0x2;
+  constexpr uint64_t OV_OPTIONS    = 0x4;
+  constexpr uint64_t OV_CAPABILITY = 0x8;
+  constexpr uint64_t OV_COMPILATION= 0x10;
+  constexpr uint64_t OV_EXECUTION  = 0x20;
+  constexpr uint64_t OV_BACKEND    = 0x40;
+  constexpr uint64_t OV_PERFORMANCE= 0x80;
+  constexpr uint64_t OV_ERROR      = 0x100;
+}
+
 class OVTelemetry {
  public:
   static OVTelemetry& Instance();
@@ -28,38 +43,18 @@ class OVTelemetry {
   unsigned char Level() const;
   UINT64 Keyword() const;
 
-  // Provider lifecycle events
-  void LogProviderInit(uint32_t session_id, const std::string& device_type, const std::string& precision) const;
-  void LogProviderShutdown(uint32_t session_id) const;
+  // Comprehensive provider options logging
+  void LogAllProviderOptions(uint32_t session_id, const SessionContext& ctx) const;
+  void LogAllSessionOptions(uint32_t session_id, const SessionContext& ctx) const;
 
-  // Session and Provider Options logging
-  void LogSessionOptions(uint32_t session_id, const std::unordered_map<std::string, std::string>& session_options) const;
-  void LogProviderOptions(uint32_t session_id, const std::unordered_map<std::string, std::string>& provider_options) const;
-  void LogSessionCreation(uint32_t session_id, const std::string& model_path, const std::string& openvino_version) const;
+  // Individual logging methods to avoid template issues
   void LogSessionDestruction(uint32_t session_id) const;
-
-  // Core OpenVINO EP events
-  void LogCapabilityDetection(uint32_t session_id, uint32_t node_count, bool wholly_supported,
-                             bool has_external_weights, const std::string& device_type) const;
-  void LogCompileStart(uint32_t session_id, uint32_t fused_node_count, const std::string& device_type,
-                      const std::string& precision) const;
-  void LogCompileEnd(uint32_t session_id, bool success, const std::string& error_message,
-                    int64_t compile_duration_ms = 0) const;
-  void LogComputeStart(uint32_t session_id, const std::string& subgraph_name, const std::string& device_type) const;
-  void LogComputeEnd(uint32_t session_id, int64_t duration_microseconds, const std::string& subgraph_name,
-                    bool success = true, const std::string& error_message = "") const;
-
-  // Backend and configuration events
-  void LogBackendManagerEvent(uint32_t session_id, const std::string& event_type, const std::string& details) const;
-  void LogDeviceSelection(uint32_t session_id, const std::string& requested_device,
-                         const std::string& actual_device, const std::string& selection_reason) const;
-  void LogError(uint32_t session_id, const std::string& error_category, const std::string& error_message,
-               const std::string& function_name = "", int line_number = 0) const;
+  void LogProviderShutdown(uint32_t session_id) const;
+  void LogCompileStart(uint32_t session_id, uint32_t fused_node_count, const std::string& device_type, const std::string& precision) const;
+  void LogCompileEnd(uint32_t session_id, bool success, const std::string& error_message, int64_t duration_ms) const;
 
   using EtwInternalCallback = std::function<void(
-      LPCGUID SourceId, ULONG IsEnabled, UCHAR Level, ULONGLONG MatchAnyKeyword, ULONGLONG MatchAllKeyword,
-      PEVENT_FILTER_DESCRIPTOR FilterData, PVOID CallbackContext)>;
-
+    LPCGUID, ULONG, UCHAR, ULONGLONG, ULONGLONG, PEVENT_FILTER_DESCRIPTOR, PVOID)>;
   static void RegisterInternalCallback(const EtwInternalCallback& callback);
   static void UnregisterInternalCallback(const EtwInternalCallback& callback);
 
@@ -71,7 +66,10 @@ class OVTelemetry {
   OVTelemetry(OVTelemetry&&) = delete;
   OVTelemetry& operator=(OVTelemetry&&) = delete;
 
-  std::string SerializeOptionsMap(const std::unordered_map<std::string, std::string>& options) const;
+  // Helper functions for complex serialization
+  std::string SerializeLoadConfig(const SessionContext& ctx) const;
+  std::string SerializeReshapeConfig(const SessionContext& ctx) const;
+  std::string SerializeLayoutConfig(const SessionContext& ctx) const;
 
 #if !BUILD_OPENVINO_EP_STATIC_LIB
   static std::mutex mutex_;
@@ -83,27 +81,56 @@ class OVTelemetry {
   static UCHAR level_;
   static ULONGLONG keyword_;
 
-  static void InvokeCallbacks(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level, ULONGLONG MatchAnyKeyword,
-                             ULONGLONG MatchAllKeyword, PEVENT_FILTER_DESCRIPTOR FilterData, PVOID CallbackContext);
-
-  static void NTAPI ORT_TL_EtwEnableCallback(
-      _In_ LPCGUID SourceId, _In_ ULONG IsEnabled, _In_ UCHAR Level, _In_ ULONGLONG MatchAnyKeyword,
-      _In_ ULONGLONG MatchAllKeyword, _In_opt_ PEVENT_FILTER_DESCRIPTOR FilterData, _In_opt_ PVOID CallbackContext);
+  static void InvokeCallbacks(LPCGUID, ULONG, UCHAR, ULONGLONG, ULONGLONG, PEVENT_FILTER_DESCRIPTOR, PVOID);
+  static void NTAPI ORT_TL_EtwEnableCallback(_In_ LPCGUID, _In_ ULONG, _In_ UCHAR, _In_ ULONGLONG,
+                                             _In_ ULONGLONG, _In_opt_ PEVENT_FILTER_DESCRIPTOR, _In_opt_ PVOID);
 #endif
 };
 
-// Keywords for comprehensive OpenVINO EP tracing
-namespace ov_keywords {
-  constexpr uint64_t OV_PROVIDER = 0x1;
-  constexpr uint64_t OV_SESSION = 0x2;
-  constexpr uint64_t OV_OPTIONS = 0x4;
-  constexpr uint64_t OV_CAPABILITY = 0x8;
-  constexpr uint64_t OV_COMPILATION = 0x10;
-  constexpr uint64_t OV_EXECUTION = 0x20;
-  constexpr uint64_t OV_BACKEND = 0x40;
-  constexpr uint64_t OV_PERFORMANCE = 0x80;
-  constexpr uint64_t OV_ERROR = 0x100;
-}
+// Direct macro definitions to avoid template conflicts
+#define OV_LOG_SESSION_CREATION(session_id, model_path, version) \
+  do { \
+    if (OVTelemetry::Instance().IsEnabled()) { \
+      TraceLoggingWrite(ov_telemetry_provider_handle, "OVSessionCreation", \
+                       TraceLoggingKeyword(ov_keywords::OV_SESSION), \
+                       TraceLoggingLevel(5), \
+                       TraceLoggingUInt32(session_id, "session_id"), \
+                       TraceLoggingString(model_path.c_str(), "model_path"), \
+                       TraceLoggingString(version.c_str(), "openvino_version")); \
+    } \
+  } while(0)
+
+#define OV_LOG_PROVIDER_INIT(session_id, device_type, precision) \
+  do { \
+    if (OVTelemetry::Instance().IsEnabled()) { \
+      TraceLoggingWrite(ov_telemetry_provider_handle, "OVProviderInit", \
+                       TraceLoggingKeyword(ov_keywords::OV_PROVIDER), \
+                       TraceLoggingLevel(5), \
+                       TraceLoggingUInt32(session_id, "session_id"), \
+                       TraceLoggingString(device_type.c_str(), "device_type"), \
+                       TraceLoggingString(precision.c_str(), "precision")); \
+    } \
+  } while(0)
+
+#define OV_LOG_CAPABILITY_DETECTION(session_id, node_count, wholly_supported, has_external_weights, device_type) \
+  do { \
+    if (OVTelemetry::Instance().IsEnabled()) { \
+      TraceLoggingWrite(ov_telemetry_provider_handle, "OVCapabilityDetection", \
+                       TraceLoggingKeyword(ov_keywords::OV_CAPABILITY), \
+                       TraceLoggingLevel(5), \
+                       TraceLoggingUInt32(session_id, "session_id"), \
+                       TraceLoggingUInt32(node_count, "node_count"), \
+                       TraceLoggingBool(wholly_supported, "wholly_supported"), \
+                       TraceLoggingBool(has_external_weights, "has_external_weights"), \
+                       TraceLoggingString(device_type.c_str(), "device_type")); \
+    } \
+  } while(0)
+
+#define OV_LOG_COMPILE_START(session_id, fused_node_count, device_type, precision) \
+  OVTelemetry::Instance().LogCompileStart(session_id, fused_node_count, device_type, precision)
+
+#define OV_LOG_COMPILE_END(session_id, success, error_message, duration_ms) \
+  OVTelemetry::Instance().LogCompileEnd(session_id, success, error_message, duration_ms)
 
 } // namespace openvino_ep
 } // namespace onnxruntime

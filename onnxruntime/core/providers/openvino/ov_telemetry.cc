@@ -11,18 +11,7 @@
 #endif
 #include <TraceLoggingProvider.h>
 #include <winmeta.h>
-#include <sstream>
 #include "core/platform/windows/TraceLoggingConfig.h"
-
-// UTF-8 workarounds
-#ifdef _TlgPragmaUtf8Begin
-#undef _TlgPragmaUtf8Begin
-#define _TlgPragmaUtf8Begin
-#endif
-#ifdef _TlgPragmaUtf8End
-#undef _TlgPragmaUtf8End
-#define _TlgPragmaUtf8End
-#endif
 
 TRACELOGGING_DEFINE_PROVIDER(
     ov_telemetry_provider_handle,
@@ -82,7 +71,7 @@ OVTelemetry& OVTelemetry::Instance() {
 
 bool OVTelemetry::IsEnabled() const {
 #if BUILD_OPENVINO_EP_STATIC_LIB
-  return false; // Simplified for now
+  return false;
 #else
   std::lock_guard<std::mutex> lock(provider_change_mutex_);
   return enabled_;
@@ -107,201 +96,240 @@ UINT64 OVTelemetry::Keyword() const {
 #endif
 }
 
-std::string OVTelemetry::SerializeOptionsMap(const std::unordered_map<std::string, std::string>& options) const {
-  std::stringstream ss;
+std::string OVTelemetry::SerializeLoadConfig(const SessionContext& ctx) const {
+  if (ctx.load_config.empty()) return "{}";
+
+  std::ostringstream json;
+  json << "{";
+  bool first_device = true;
+
+  for (const auto& [device, anymap] : ctx.load_config) {
+    if (!first_device) json << ",";
+    json << "\"" << device << "\":{";
+
+    bool first_entry = true;
+    for (const auto& [key, value] : anymap) {
+      if (!first_entry) json << ",";
+      json << "\"" << key << "\":";
+
+      // Use ov::Any's type checking and extraction capabilities
+      if (value.is<std::string>()) {
+        std::string str_val = value.as<std::string>();
+        // Escape quotes in string
+        std::string escaped;
+        for (char c : str_val) {
+          if (c == '\"' || c == '\\') escaped.push_back('\\');
+          escaped.push_back(c);
+        }
+        json << "\"" << escaped << "\"";
+      } else if (value.is<int>()) {
+        json << value.as<int>();
+      } else if (value.is<int64_t>()) {
+        json << value.as<int64_t>();
+      } else if (value.is<uint64_t>()) {
+        json << value.as<uint64_t>();
+      } else if (value.is<bool>()) {
+        json << (value.as<bool>() ? "true" : "false");
+      } else if (value.is<float>()) {
+        json << value.as<float>();
+      } else if (value.is<double>()) {
+        json << value.as<double>();
+      } else {
+        // Use ov::Any's print method for unknown types
+        std::ostringstream temp;
+        value.print(temp);
+        std::string val_str = temp.str();
+
+        // Escape quotes in the printed string
+        std::string escaped;
+        for (char c : val_str) {
+          if (c == '\"' || c == '\\') escaped.push_back('\\');
+          escaped.push_back(c);
+        }
+        json << "\"" << escaped << "\"";
+      }
+      first_entry = false;
+    }
+    json << "}";
+    first_device = false;
+  }
+  json << "}";
+  return json.str();
+}
+
+
+std::string OVTelemetry::SerializeReshapeConfig(const SessionContext& ctx) const {
+  if (ctx.reshape.empty()) return "{}";
+
+  std::ostringstream json;
+  json << "{";
   bool first = true;
-  for (const auto& [key, value] : options) {
-    if (!first) ss << ", ";
-    ss << key << "=" << value;
+
+  for (const auto& [tensor_name, partial_shape] : ctx.reshape) {
+    if (!first) json << ",";
+    json << "\"" << tensor_name << "\":[";
+
+    bool first_dim = true;
+    // Use ov::PartialShape's iterator interface to iterate through dimensions
+    for (const auto& dimension : partial_shape) {
+      if (!first_dim) json << ",";
+
+      if (dimension.is_dynamic()) {
+        // Handle dynamic dimensions
+        if (dimension.get_interval().has_upper_bound()) {
+          // Dynamic dimension with bounds: {min..max}
+          json << "{\"min\":" << dimension.get_min_length()
+               << ",\"max\":" << dimension.get_max_length() << "}";
+        } else {
+          // Fully dynamic dimension
+          json << "\"dynamic\"";
+        }
+      } else {
+        // Static dimension - use get_length() for ov::Dimension
+        json << dimension.get_length();
+      }
+      first_dim = false;
+    }
+    json << "]";
     first = false;
   }
-  return ss.str();
+  json << "}";
+  return json.str();
 }
 
-void OVTelemetry::LogProviderInit(uint32_t session_id, const std::string& device_type, const std::string& precision) const {
+std::string OVTelemetry::SerializeLayoutConfig(const SessionContext& ctx) const {
+  if (ctx.layout.empty()) return "{}";
+
+  std::ostringstream json;
+  json << "{";
+  bool first = true;
+
+  for (const auto& [tensor_name, ov_layout] : ctx.layout) {
+    if (!first) json << ",";
+    json << "\"" << tensor_name << "\":";
+
+    // Use ov::Layout's to_string() method for proper string representation
+    std::string layout_str = ov_layout.to_string();
+
+    // Escape quotes in the layout string if any
+    std::string escaped;
+    for (char c : layout_str) {
+      if (c == '\"' || c == '\\') escaped.push_back('\\');
+      escaped.push_back(c);
+    }
+
+    json << "\"" << escaped << "\"";
+    first = false;
+  }
+  json << "}";
+  return json.str();
+}
+
+
+void OVTelemetry::LogAllProviderOptions(uint32_t session_id, const SessionContext& ctx) const {
 #if !BUILD_OPENVINO_EP_STATIC_LIB
-  TraceLoggingWrite(
-      ov_telemetry_provider_handle, "OVProviderInit",
-      TraceLoggingKeyword(ov_keywords::OV_PROVIDER),
-      TraceLoggingLevel(WINEVENT_LEVEL_INFO),
-      TraceLoggingUInt32(session_id, "session_id"),
-      TraceLoggingString(device_type.c_str(), "device_type"),
-      TraceLoggingString(precision.c_str(), "precision"));
+  if (!IsEnabled()) return;
+
+  std::ostringstream opts;
+  opts << "{"
+       << "\"device_type\":\"" << ctx.device_type << "\","
+       << "\"precision\":\"" << ctx.precision << "\","
+       << "\"num_of_threads\":" << ctx.num_of_threads << ","
+       << "\"model_priority\":\"" << ctx.model_priority << "\","
+       << "\"num_streams\":" << ctx.num_streams << ","
+       << "\"enable_opencl_throttling\":" << (ctx.enable_opencl_throttling ? "true" : "false") << ","
+       << "\"disable_dynamic_shapes\":" << (ctx.disable_dynamic_shapes ? "true" : "false") << ","
+       << "\"enable_qdq_optimizer\":" << (ctx.enable_qdq_optimizer ? "true" : "false") << ","
+       << "\"enable_causallm\":" << (ctx.enable_causallm ? "true" : "false") << ","
+       << "\"cache_dir\":\"" << ctx.cache_dir.string() << "\","
+       << "\"context\":" << (ctx.context ? "\"set\"" : "null") << ","
+       << "\"load_config\":" << SerializeLoadConfig(ctx) << ","
+       << "\"reshape\":" << SerializeReshapeConfig(ctx) << ","
+       << "\"layout\":" << SerializeLayoutConfig(ctx)
+       << "}";
+
+  TraceLoggingWrite(ov_telemetry_provider_handle, "OVProviderOptionsComplete",
+                   TraceLoggingKeyword(ov_keywords::OV_PROVIDER | ov_keywords::OV_OPTIONS),
+                   TraceLoggingLevel(5),
+                   TraceLoggingUInt32(session_id, "session_id"),
+                   TraceLoggingString(opts.str().c_str(), "provider_options"));
 #endif
 }
 
-void OVTelemetry::LogProviderShutdown(uint32_t session_id) const {
+void OVTelemetry::LogAllSessionOptions(uint32_t session_id, const SessionContext& ctx) const {
 #if !BUILD_OPENVINO_EP_STATIC_LIB
-  TraceLoggingWrite(
-      ov_telemetry_provider_handle, "OVProviderShutdown",
-      TraceLoggingKeyword(ov_keywords::OV_PROVIDER),
-      TraceLoggingLevel(WINEVENT_LEVEL_INFO),
-      TraceLoggingUInt32(session_id, "session_id"));
-#endif
-}
+  if (!IsEnabled()) return;
 
-void OVTelemetry::LogSessionOptions(uint32_t session_id, const std::unordered_map<std::string, std::string>& session_options) const {
-#if !BUILD_OPENVINO_EP_STATIC_LIB
-  std::string options_str = SerializeOptionsMap(session_options);
-  TraceLoggingWrite(
-      ov_telemetry_provider_handle, "OVSessionOptions",
-      TraceLoggingKeyword(ov_keywords::OV_SESSION | ov_keywords::OV_OPTIONS),
-      TraceLoggingLevel(WINEVENT_LEVEL_INFO),
-      TraceLoggingUInt32(session_id, "session_id"),
-      TraceLoggingUInt32(static_cast<uint32_t>(session_options.size()), "options_count"),
-      TraceLoggingString(options_str.c_str(), "session_options"));
-#endif
-}
+  std::ostringstream sopts;
+  sopts << "{"
+        << "\"onnx_model_path_name\":\"" << ctx.onnx_model_path_name.string() << "\","
+        << "\"onnx_opset_version\":" << ctx.onnx_opset_version << ","
+        << "\"wholly_supported_graph\":" << (ctx.is_wholly_supported_graph ? "true" : "false") << ","
+        << "\"has_external_weights\":" << (ctx.has_external_weights ? "true" : "false") << ","
+        << "\"openvino_sdk_version\":\"" << ctx.openvino_sdk_version << "\","
+        << "\"so_context_enable\":" << (ctx.so_context_enable ? "true" : "false") << ","
+        << "\"so_disable_cpu_ep_fallback\":" << (ctx.so_disable_cpu_ep_fallback ? "true" : "false") << ","
+        << "\"so_context_embed_mode\":" << (ctx.so_context_embed_mode ? "true" : "false") << ","
+        << "\"so_share_ep_contexts\":" << (ctx.so_share_ep_contexts ? "true" : "false") << ","
+        << "\"so_context_file_path\":\"" << ctx.so_context_file_path.string() << "\""
+        << "}";
 
-void OVTelemetry::LogProviderOptions(uint32_t session_id, const std::unordered_map<std::string, std::string>& provider_options) const {
-#if !BUILD_OPENVINO_EP_STATIC_LIB
-  std::string options_str = SerializeOptionsMap(provider_options);
-  TraceLoggingWrite(
-      ov_telemetry_provider_handle, "OVProviderOptions",
-      TraceLoggingKeyword(ov_keywords::OV_PROVIDER | ov_keywords::OV_OPTIONS),
-      TraceLoggingLevel(WINEVENT_LEVEL_INFO),
-      TraceLoggingUInt32(session_id, "session_id"),
-      TraceLoggingUInt32(static_cast<uint32_t>(provider_options.size()), "options_count"),
-      TraceLoggingString(options_str.c_str(), "provider_options"));
-#endif
-}
-
-void OVTelemetry::LogSessionCreation(uint32_t session_id, const std::string& model_path, const std::string& openvino_version) const {
-#if !BUILD_OPENVINO_EP_STATIC_LIB
-  TraceLoggingWrite(
-      ov_telemetry_provider_handle, "OVSessionCreation",
-      TraceLoggingKeyword(ov_keywords::OV_SESSION),
-      TraceLoggingLevel(WINEVENT_LEVEL_INFO),
-      TraceLoggingUInt32(session_id, "session_id"),
-      TraceLoggingString(model_path.c_str(), "model_path"),
-      TraceLoggingString(openvino_version.c_str(), "openvino_version"));
+  TraceLoggingWrite(ov_telemetry_provider_handle, "OVSessionOptionsComplete",
+                   TraceLoggingKeyword(ov_keywords::OV_SESSION | ov_keywords::OV_OPTIONS),
+                   TraceLoggingLevel(5),
+                   TraceLoggingUInt32(session_id, "session_id"),
+                   TraceLoggingString(sopts.str().c_str(), "session_options"));
 #endif
 }
 
 void OVTelemetry::LogSessionDestruction(uint32_t session_id) const {
 #if !BUILD_OPENVINO_EP_STATIC_LIB
-  TraceLoggingWrite(
-      ov_telemetry_provider_handle, "OVSessionDestruction",
-      TraceLoggingKeyword(ov_keywords::OV_SESSION),
-      TraceLoggingLevel(WINEVENT_LEVEL_INFO),
-      TraceLoggingUInt32(session_id, "session_id"));
+  if (!IsEnabled()) return;
+  TraceLoggingWrite(ov_telemetry_provider_handle, "OVSessionDestruction",
+                   TraceLoggingKeyword(ov_keywords::OV_SESSION),
+                   TraceLoggingLevel(5),
+                   TraceLoggingUInt32(session_id, "session_id"));
 #endif
 }
 
-void OVTelemetry::LogCapabilityDetection(uint32_t session_id, uint32_t node_count, bool wholly_supported,
-                                        bool has_external_weights, const std::string& device_type) const {
+void OVTelemetry::LogProviderShutdown(uint32_t session_id) const {
 #if !BUILD_OPENVINO_EP_STATIC_LIB
-  TraceLoggingWrite(
-      ov_telemetry_provider_handle, "OVCapabilityDetection",
-      TraceLoggingKeyword(ov_keywords::OV_CAPABILITY),
-      TraceLoggingLevel(WINEVENT_LEVEL_INFO),
-      TraceLoggingUInt32(session_id, "session_id"),
-      TraceLoggingUInt32(node_count, "node_count"),
-      TraceLoggingBool(wholly_supported, "wholly_supported"),
-      TraceLoggingBool(has_external_weights, "has_external_weights"),
-      TraceLoggingString(device_type.c_str(), "device_type"));
+  if (!IsEnabled()) return;
+  TraceLoggingWrite(ov_telemetry_provider_handle, "OVProviderShutdown",
+                   TraceLoggingKeyword(ov_keywords::OV_PROVIDER),
+                   TraceLoggingLevel(5),
+                   TraceLoggingUInt32(session_id, "session_id"));
 #endif
 }
 
-void OVTelemetry::LogCompileStart(uint32_t session_id, uint32_t fused_node_count, const std::string& device_type,
-                                 const std::string& precision) const {
+void OVTelemetry::LogCompileStart(uint32_t session_id, uint32_t fused_node_count, const std::string& device_type, const std::string& precision) const {
 #if !BUILD_OPENVINO_EP_STATIC_LIB
-  TraceLoggingWrite(
-      ov_telemetry_provider_handle, "OVCompileStart",
-      TraceLoggingKeyword(ov_keywords::OV_COMPILATION),
-      TraceLoggingLevel(WINEVENT_LEVEL_INFO),
-      TraceLoggingUInt32(session_id, "session_id"),
-      TraceLoggingUInt32(fused_node_count, "fused_node_count"),
-      TraceLoggingString(device_type.c_str(), "device_type"),
-      TraceLoggingString(precision.c_str(), "precision"));
+  if (!IsEnabled()) return;
+  TraceLoggingWrite(ov_telemetry_provider_handle, "OVCompileStart",
+                   TraceLoggingKeyword(ov_keywords::OV_COMPILATION),
+                   TraceLoggingLevel(5),
+                   TraceLoggingUInt32(session_id, "session_id"),
+                   TraceLoggingUInt32(fused_node_count, "fused_node_count"),
+                   TraceLoggingString(device_type.c_str(), "device_type"),
+                   TraceLoggingString(precision.c_str(), "precision"));
 #endif
 }
 
-void OVTelemetry::LogCompileEnd(uint32_t session_id, bool success, const std::string& error_message,
-                               int64_t compile_duration_ms) const {
+void OVTelemetry::LogCompileEnd(uint32_t session_id, bool success, const std::string& error_message, int64_t duration_ms) const {
 #if !BUILD_OPENVINO_EP_STATIC_LIB
-  TraceLoggingWrite(
-    ov_telemetry_provider_handle, "OVCompileEnd",
-    TraceLoggingKeyword(ov_keywords::OV_COMPILATION | ov_keywords::OV_PERFORMANCE),
-    TraceLoggingLevel(WINEVENT_LEVEL_VERBOSE),
-    TraceLoggingUInt32(session_id, "session_id"),
-    TraceLoggingBool(success, "success"),
-    TraceLoggingString(error_message.c_str(), "error_message"),
-    TraceLoggingInt64(compile_duration_ms, "compile_duration_ms"));
-#endif
-}
-
-void OVTelemetry::LogComputeStart(uint32_t session_id, const std::string& subgraph_name, const std::string& device_type) const {
-#if !BUILD_OPENVINO_EP_STATIC_LIB
-  TraceLoggingWrite(
-      ov_telemetry_provider_handle, "OVComputeStart",
-      TraceLoggingKeyword(ov_keywords::OV_EXECUTION),
-      TraceLoggingLevel(WINEVENT_LEVEL_VERBOSE),
-      TraceLoggingUInt32(session_id, "session_id"),
-      TraceLoggingString(subgraph_name.c_str(), "subgraph_name"),
-      TraceLoggingString(device_type.c_str(), "device_type"));
-#endif
-}
-
-void OVTelemetry::LogComputeEnd(uint32_t session_id, int64_t duration_microseconds, const std::string& subgraph_name,
-                               bool success, const std::string& error_message) const {
-#if !BUILD_OPENVINO_EP_STATIC_LIB
-  TraceLoggingWrite(
-    ov_telemetry_provider_handle, "OVComputeEnd",
-    TraceLoggingKeyword(ov_keywords::OV_EXECUTION | ov_keywords::OV_PERFORMANCE),
-    TraceLoggingLevel(WINEVENT_LEVEL_VERBOSE),
-    TraceLoggingUInt32(session_id, "session_id"),
-    TraceLoggingInt64(duration_microseconds, "duration_microseconds"),
-    TraceLoggingString(subgraph_name.c_str(), "subgraph_name"),
-    TraceLoggingBool(success, "success"),
-    TraceLoggingString(error_message.c_str(), "error_message"));
-#endif
-}
-
-void OVTelemetry::LogBackendManagerEvent(uint32_t session_id, const std::string& event_type, const std::string& details) const {
-#if !BUILD_OPENVINO_EP_STATIC_LIB
-  TraceLoggingWrite(
-      ov_telemetry_provider_handle, "OVBackendEvent",
-      TraceLoggingKeyword(ov_keywords::OV_BACKEND),
-      TraceLoggingLevel(WINEVENT_LEVEL_VERBOSE),
-      TraceLoggingUInt32(session_id, "session_id"),
-      TraceLoggingString(event_type.c_str(), "event_type"),
-      TraceLoggingString(details.c_str(), "details"));
-#endif
-}
-
-void OVTelemetry::LogDeviceSelection(uint32_t session_id, const std::string& requested_device,
-                                    const std::string& actual_device, const std::string& selection_reason) const {
-#if !BUILD_OPENVINO_EP_STATIC_LIB
-  TraceLoggingWrite(
-      ov_telemetry_provider_handle, "OVDeviceSelection",
-      TraceLoggingKeyword(ov_keywords::OV_PROVIDER | ov_keywords::OV_OPTIONS),
-      TraceLoggingLevel(WINEVENT_LEVEL_INFO),
-      TraceLoggingUInt32(session_id, "session_id"),
-      TraceLoggingString(requested_device.c_str(), "requested_device"),
-      TraceLoggingString(actual_device.c_str(), "actual_device"),
-      TraceLoggingString(selection_reason.c_str(), "selection_reason"));
-#endif
-}
-
-void OVTelemetry::LogError(uint32_t session_id, const std::string& error_category, const std::string& error_message,
-                          const std::string& function_name, int line_number) const {
-#if !BUILD_OPENVINO_EP_STATIC_LIB
-  TraceLoggingWrite(
-      ov_telemetry_provider_handle, "OVError",
-      TraceLoggingKeyword(ov_keywords::OV_ERROR),
-      TraceLoggingLevel(WINEVENT_LEVEL_ERROR),
-      TraceLoggingUInt32(session_id, "session_id"),
-      TraceLoggingString(error_category.c_str(), "error_category"),
-      TraceLoggingString(error_message.c_str(), "error_message"),
-      TraceLoggingString(function_name.c_str(), "function_name"),
-      TraceLoggingInt32(line_number, "line_number"));
+  if (!IsEnabled()) return;
+  TraceLoggingWrite(ov_telemetry_provider_handle, "OVCompileEnd",
+                   TraceLoggingKeyword(ov_keywords::OV_COMPILATION | ov_keywords::OV_PERFORMANCE),
+                   TraceLoggingLevel(4),
+                   TraceLoggingUInt32(session_id, "session_id"),
+                   TraceLoggingBool(success, "success"),
+                   TraceLoggingString(error_message.c_str(), "error_message"),
+                   TraceLoggingInt64(duration_ms, "compile_duration_ms"));
 #endif
 }
 
 void OVTelemetry::RegisterInternalCallback(const EtwInternalCallback& callback) {
 #if BUILD_OPENVINO_EP_STATIC_LIB
-  // Handle static case if needed
 #else
   std::lock_guard<std::mutex> lock_callbacks(callbacks_mutex_);
   callbacks_.push_back(&callback);
@@ -310,7 +338,6 @@ void OVTelemetry::RegisterInternalCallback(const EtwInternalCallback& callback) 
 
 void OVTelemetry::UnregisterInternalCallback(const EtwInternalCallback& callback) {
 #if BUILD_OPENVINO_EP_STATIC_LIB
-  // Handle static case if needed
 #else
   std::lock_guard<std::mutex> lock_callbacks(callbacks_mutex_);
   auto new_end = std::remove_if(callbacks_.begin(), callbacks_.end(),
