@@ -676,7 +676,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
           if (src_init->raw_data().size() > 0)
               SetExternalDataFields(proto_init, src_init->raw_data().data(), src_init->raw_data().size());
           else
-              LOGS(logger, VERBOSE) << "Initializer has empty raw_data: skipping...";
+              LOGS(logger, VERBOSE) << "Initializer has empty raw_data: skipping initializer '" << src_init->name() << "'...";
         } else if (onnxruntime::utils::HasExternalDataInMemory(*src_init)) {
           auto it_ext = external_initializers_offset_and_length.find(name);
           if (it_ext == external_initializers_offset_and_length.end()) {
