@@ -62,15 +62,10 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const ProviderInfo& info, s
   InitProviderOrtApi();
 #ifdef _WIN32
   session_id_ = ++global_session_counter_;
-  OV_LOG_SESSION_CREATION(session_id_,
-                          session_context_.onnx_model_path_name.string(),
-                          session_context_.openvino_sdk_version);
   // Trace all provider options as one event
   OVTelemetry::Instance().LogAllProviderOptions(session_id_, session_context_);
   // Trace all session-related flags and inferred states
   OVTelemetry::Instance().LogAllSessionOptions(session_id_, session_context_);
-  // Optionally: log provider init message also
-  OV_LOG_PROVIDER_INIT(session_id_, session_context_.device_type, session_context_.precision);
 #endif
 
 }
@@ -109,16 +104,6 @@ common::Status OpenVINOExecutionProvider::Compile(
     std::vector<NodeComputeInfo>& node_compute_funcs) {
   auto& logger = *GetLogger();
   Status status = Status::OK();
-
-  auto t0 = std::chrono::high_resolution_clock::now();
-#ifdef _WIN32
-  OVTelemetry::Instance().LogCompileStart(
-      session_id_,
-      static_cast<uint32_t>(fused_nodes.size()),
-      session_context_.device_type,
-      session_context_.precision);
-#endif
-
 
   bool is_epctx_model = false;
   if (!fused_nodes.empty()) {
