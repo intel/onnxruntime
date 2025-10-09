@@ -1,9 +1,8 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "core/providers/openvino/ov_telemetry.h"
 
 #ifdef _WIN32
-#if !BUILD_OPENVINO_EP_STATIC_LIB
 #include <windows.h>
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -15,19 +14,18 @@
 
 TRACELOGGING_DEFINE_PROVIDER(
     ov_telemetry_provider_handle,
-    "Microsoft.ML.ONNXRuntime.OpenVINO",
+    "Intel.ML.ONNXRuntime.OpenVINO",
+    // {"b5a8c2e1-4d7f-4a3b-9c2e-1f8e5a6b7c9d"}
     (0xb5a8c2e1, 0x4d7f, 0x4a3b, 0x9c, 0x2e, 0x1f, 0x8e, 0x5a, 0x6b, 0x7c, 0x9d),
     TraceLoggingOptionMicrosoftTelemetry());
 
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
-#endif // !BUILD_OPENVINO_EP_STATIC_LIB
 
 namespace onnxruntime {
 namespace openvino_ep {
 
-#if !BUILD_OPENVINO_EP_STATIC_LIB
 std::mutex OVTelemetry::mutex_;
 std::mutex OVTelemetry::provider_change_mutex_;
 uint32_t OVTelemetry::global_register_count_ = 0;
@@ -36,10 +34,8 @@ UCHAR OVTelemetry::level_ = 0;
 UINT64 OVTelemetry::keyword_ = 0;
 std::vector<const OVTelemetry::EtwInternalCallback*> OVTelemetry::callbacks_;
 std::mutex OVTelemetry::callbacks_mutex_;
-#endif
 
 OVTelemetry::OVTelemetry() {
-#if !BUILD_OPENVINO_EP_STATIC_LIB
   std::lock_guard<std::mutex> lock(mutex_);
   if (global_register_count_ == 0) {
     HRESULT hr = TraceLoggingRegisterEx(ov_telemetry_provider_handle, ORT_TL_EtwEnableCallback, nullptr);
@@ -47,11 +43,9 @@ OVTelemetry::OVTelemetry() {
       global_register_count_ += 1;
     }
   }
-#endif
 }
 
 OVTelemetry::~OVTelemetry() {
-#if !BUILD_OPENVINO_EP_STATIC_LIB
   std::lock_guard<std::mutex> lock(mutex_);
   if (global_register_count_ > 0) {
     global_register_count_ -= 1;
@@ -61,7 +55,6 @@ OVTelemetry::~OVTelemetry() {
   }
   std::lock_guard<std::mutex> lock_callbacks(callbacks_mutex_);
   callbacks_.clear();
-#endif
 }
 
 OVTelemetry& OVTelemetry::Instance() {
@@ -70,31 +63,36 @@ OVTelemetry& OVTelemetry::Instance() {
 }
 
 bool OVTelemetry::IsEnabled() const {
-#if BUILD_OPENVINO_EP_STATIC_LIB
-  return false;
-#else
   std::lock_guard<std::mutex> lock(provider_change_mutex_);
   return enabled_;
-#endif
 }
 
 UCHAR OVTelemetry::Level() const {
-#if BUILD_OPENVINO_EP_STATIC_LIB
-  return 0;
-#else
   std::lock_guard<std::mutex> lock(provider_change_mutex_);
   return level_;
-#endif
 }
 
 UINT64 OVTelemetry::Keyword() const {
-#if BUILD_OPENVINO_EP_STATIC_LIB
-  return 0;
-#else
   std::lock_guard<std::mutex> lock(provider_change_mutex_);
   return keyword_;
-#endif
 }
+
+template<typename T>
+void AddOptionalValue(std::ostringstream& json, const std::string& key, const T& value, const T& default_value, bool& first) {
+  if (value != default_value) {
+    if (!first) json << ",";
+    json << "\"" << key << "\":";
+    if constexpr (std::is_same_v<T, std::string>) {
+      json << "\"" << value << "\"";
+    } else if constexpr (std::is_same_v<T, bool>) {
+      json << (value ? "true" : "false");
+    } else {
+      json << value;
+    }
+    first = false;
+  }
+}
+
 
 std::string OVTelemetry::SerializeLoadConfig(const SessionContext& ctx) const {
   if (ctx.load_config.empty()) return "{}";
@@ -158,7 +156,7 @@ std::string OVTelemetry::SerializeLoadConfig(const SessionContext& ctx) const {
 }
 
 
-std::string OVTelemetry::SerializeReshapeConfig(const SessionContext& ctx) const {
+std::string OVTelemetry::SerializeReshapeInputConfig(const SessionContext& ctx) const {
   if (ctx.reshape.empty()) return "{}";
 
   std::ostringstream json;
@@ -227,128 +225,129 @@ std::string OVTelemetry::SerializeLayoutConfig(const SessionContext& ctx) const 
 
 
 void OVTelemetry::LogAllProviderOptions(uint32_t session_id, const SessionContext& ctx) const {
-#if !BUILD_OPENVINO_EP_STATIC_LIB
   if (!IsEnabled()) return;
 
   std::ostringstream opts;
-  opts << "{"
-       << "\"device_type\":\"" << ctx.device_type << "\","
-       << "\"precision\":\"" << ctx.precision << "\","
-       << "\"num_of_threads\":" << ctx.num_of_threads << ","
-       << "\"model_priority\":\"" << ctx.model_priority << "\","
-       << "\"num_streams\":" << ctx.num_streams << ","
-       << "\"enable_opencl_throttling\":" << (ctx.enable_opencl_throttling ? "true" : "false") << ","
-       << "\"disable_dynamic_shapes\":" << (ctx.disable_dynamic_shapes ? "true" : "false") << ","
-       << "\"enable_qdq_optimizer\":" << (ctx.enable_qdq_optimizer ? "true" : "false") << ","
-       << "\"enable_causallm\":" << (ctx.enable_causallm ? "true" : "false") << ","
-       << "\"cache_dir\":\"" << ctx.cache_dir.string() << "\","
-       << "\"context\":" << (ctx.context ? "\"set\"" : "null") << ","
-       << "\"load_config\":" << SerializeLoadConfig(ctx) << ","
-       << "\"reshape\":" << SerializeReshapeConfig(ctx) << ","
-       << "\"layout\":" << SerializeLayoutConfig(ctx)
-       << "}";
+  opts << "{";
+  bool first = true;
 
-  TraceLoggingWrite(ov_telemetry_provider_handle, "OVProviderOptionsComplete",
-                   TraceLoggingKeyword(ov_keywords::OV_PROVIDER | ov_keywords::OV_OPTIONS),
-                   TraceLoggingLevel(5),
-                   TraceLoggingUInt32(session_id, "session_id"),
-                   TraceLoggingString(opts.str().c_str(), "provider_options"));
-#endif
+  // Only log non-default values
+  AddOptionalValue(opts, "device_type", ctx.device_type, std::string(""), first);
+  AddOptionalValue(opts, "precision", ctx.precision, std::string(""), first);
+  AddOptionalValue(opts, "num_of_threads", ctx.num_of_threads, 0u, first);
+  AddOptionalValue(opts, "model_priority", ctx.model_priority, std::string("DEFAULT"), first);
+  AddOptionalValue(opts, "num_streams", ctx.num_streams, 1u, first);
+  AddOptionalValue(opts, "enable_opencl_throttling", ctx.enable_opencl_throttling, false, first);
+  AddOptionalValue(opts, "disable_dynamic_shapes", ctx.disable_dynamic_shapes, false, first);
+  AddOptionalValue(opts, "enable_qdq_optimizer", ctx.enable_qdq_optimizer, false, first);
+  AddOptionalValue(opts, "enable_causallm", ctx.enable_causallm, false, first);
+
+  if (!ctx.cache_dir.empty()) {
+    if (!first) opts << ",";
+    opts << "\"cache_dir\":\"" << ctx.cache_dir.string() << "\"";
+    first = false;
+  }
+
+  if (ctx.context != nullptr) {
+    if (!first) opts << ",";
+    opts << "\"context\":\"set\"";
+    first = false;
+  }
+
+  std::string load_config_json = SerializeLoadConfig(ctx);
+  if (load_config_json != "{}") {
+    if (!first) opts << ",";
+    opts << "\"load_config\":" << load_config_json;
+    first = false;
+  }
+
+  std::string reshape_json = SerializeReshapeInputConfig(ctx);
+  if (reshape_json != "{}") {
+    if (!first) opts << ",";
+    opts << "\"reshape_input\":" << reshape_json;
+    first = false;
+  }
+
+  std::string layout_json = SerializeLayoutConfig(ctx);
+  if (layout_json != "{}") {
+    if (!first) opts << ",";
+    opts << "\"layout\":" << layout_json;
+    first = false;
+  }
+
+  opts << "}";
+
+  // Only log if there are actual provider options
+  if (opts.str() != "{}") {
+    TraceLoggingWrite(ov_telemetry_provider_handle, "OVEPProviderOptions",
+                     TraceLoggingKeyword(ov_keywords::OV_PROVIDER | ov_keywords::OV_OPTIONS),
+                     TraceLoggingLevel(5),
+                     TraceLoggingUInt32(session_id, "session_id"),
+                     TraceLoggingString(opts.str().c_str(), "provider_options"));
+  }
 }
 
 void OVTelemetry::LogAllSessionOptions(uint32_t session_id, const SessionContext& ctx) const {
-#if !BUILD_OPENVINO_EP_STATIC_LIB
   if (!IsEnabled()) return;
 
   std::ostringstream sopts;
-  sopts << "{"
-        << "\"onnx_model_path_name\":\"" << ctx.onnx_model_path_name.string() << "\","
-        << "\"onnx_opset_version\":" << ctx.onnx_opset_version << ","
-        << "\"wholly_supported_graph\":" << (ctx.is_wholly_supported_graph ? "true" : "false") << ","
-        << "\"has_external_weights\":" << (ctx.has_external_weights ? "true" : "false") << ","
-        << "\"openvino_sdk_version\":\"" << ctx.openvino_sdk_version << "\","
-        << "\"so_context_enable\":" << (ctx.so_context_enable ? "true" : "false") << ","
-        << "\"so_disable_cpu_ep_fallback\":" << (ctx.so_disable_cpu_ep_fallback ? "true" : "false") << ","
-        << "\"so_context_embed_mode\":" << (ctx.so_context_embed_mode ? "true" : "false") << ","
-        << "\"so_share_ep_contexts\":" << (ctx.so_share_ep_contexts ? "true" : "false") << ","
-        << "\"so_context_file_path\":\"" << ctx.so_context_file_path.string() << "\""
-        << "}";
+  sopts << "{";
+  bool first = true;
 
-  TraceLoggingWrite(ov_telemetry_provider_handle, "OVSessionOptionsComplete",
+  // Always log model path if available
+  if (!ctx.onnx_model_path_name.empty()) {
+    if (!first) sopts << ",";
+    sopts << "\"onnx_model_path_name\":\"" << ctx.onnx_model_path_name.string() << "\"";
+    first = false;
+  }
+
+  // Only log non-zero opset version
+  AddOptionalValue(sopts, "onnx_opset_version", ctx.onnx_opset_version, 0u, first);
+
+  // Only log if explicitly set
+  AddOptionalValue(sopts, "wholly_supported_graph", ctx.is_wholly_supported_graph, false, first);
+  AddOptionalValue(sopts, "has_external_weights", ctx.has_external_weights, false, first);
+
+  // Always log SDK version
+  if (!first) sopts << ",";
+  sopts << "\"openvino_sdk_version\":\"" << ctx.openvino_sdk_version << "\"";
+  first = false;
+
+  // Only log session options if they're non-default
+  AddOptionalValue(sopts, "ep.context_enable", ctx.so_context_enable, false, first);
+  AddOptionalValue(sopts, "session.disable_cpu_ep_fallback", ctx.so_disable_cpu_ep_fallback, false, first);
+  AddOptionalValue(sopts, "ep.context_embed_mode", ctx.so_context_embed_mode, false, first);
+  AddOptionalValue(sopts, "ep.context_file_path", ctx.so_share_ep_contexts, false, first);
+
+  if (!ctx.so_context_file_path.empty()) {
+    if (!first) sopts << ",";
+    sopts << "\"ep.context_file_path\":\"" << ctx.so_context_file_path.string() << "\"";
+    first = false;
+  }
+
+  sopts << "}";
+
+  TraceLoggingWrite(ov_telemetry_provider_handle, "OVEPSessionOptions",
                    TraceLoggingKeyword(ov_keywords::OV_SESSION | ov_keywords::OV_OPTIONS),
                    TraceLoggingLevel(5),
                    TraceLoggingUInt32(session_id, "session_id"),
                    TraceLoggingString(sopts.str().c_str(), "session_options"));
-#endif
-}
-
-void OVTelemetry::LogSessionDestruction(uint32_t session_id) const {
-#if !BUILD_OPENVINO_EP_STATIC_LIB
-  if (!IsEnabled()) return;
-  TraceLoggingWrite(ov_telemetry_provider_handle, "OVSessionDestruction",
-                   TraceLoggingKeyword(ov_keywords::OV_SESSION),
-                   TraceLoggingLevel(5),
-                   TraceLoggingUInt32(session_id, "session_id"));
-#endif
-}
-
-void OVTelemetry::LogProviderShutdown(uint32_t session_id) const {
-#if !BUILD_OPENVINO_EP_STATIC_LIB
-  if (!IsEnabled()) return;
-  TraceLoggingWrite(ov_telemetry_provider_handle, "OVProviderShutdown",
-                   TraceLoggingKeyword(ov_keywords::OV_PROVIDER),
-                   TraceLoggingLevel(5),
-                   TraceLoggingUInt32(session_id, "session_id"));
-#endif
-}
-
-void OVTelemetry::LogCompileStart(uint32_t session_id, uint32_t fused_node_count, const std::string& device_type, const std::string& precision) const {
-#if !BUILD_OPENVINO_EP_STATIC_LIB
-  if (!IsEnabled()) return;
-  TraceLoggingWrite(ov_telemetry_provider_handle, "OVCompileStart",
-                   TraceLoggingKeyword(ov_keywords::OV_COMPILATION),
-                   TraceLoggingLevel(5),
-                   TraceLoggingUInt32(session_id, "session_id"),
-                   TraceLoggingUInt32(fused_node_count, "fused_node_count"),
-                   TraceLoggingString(device_type.c_str(), "device_type"),
-                   TraceLoggingString(precision.c_str(), "precision"));
-#endif
-}
-
-void OVTelemetry::LogCompileEnd(uint32_t session_id, bool success, const std::string& error_message, int64_t duration_ms) const {
-#if !BUILD_OPENVINO_EP_STATIC_LIB
-  if (!IsEnabled()) return;
-  TraceLoggingWrite(ov_telemetry_provider_handle, "OVCompileEnd",
-                   TraceLoggingKeyword(ov_keywords::OV_COMPILATION | ov_keywords::OV_PERFORMANCE),
-                   TraceLoggingLevel(4),
-                   TraceLoggingUInt32(session_id, "session_id"),
-                   TraceLoggingBool(success, "success"),
-                   TraceLoggingString(error_message.c_str(), "error_message"),
-                   TraceLoggingInt64(duration_ms, "compile_duration_ms"));
-#endif
 }
 
 void OVTelemetry::RegisterInternalCallback(const EtwInternalCallback& callback) {
-#if BUILD_OPENVINO_EP_STATIC_LIB
-#else
   std::lock_guard<std::mutex> lock_callbacks(callbacks_mutex_);
   callbacks_.push_back(&callback);
-#endif
 }
 
 void OVTelemetry::UnregisterInternalCallback(const EtwInternalCallback& callback) {
-#if BUILD_OPENVINO_EP_STATIC_LIB
-#else
   std::lock_guard<std::mutex> lock_callbacks(callbacks_mutex_);
   auto new_end = std::remove_if(callbacks_.begin(), callbacks_.end(),
                                [&callback](const EtwInternalCallback* ptr) {
                                  return ptr == &callback;
                                });
   callbacks_.erase(new_end, callbacks_.end());
-#endif
 }
 
-#if !BUILD_OPENVINO_EP_STATIC_LIB
 void NTAPI OVTelemetry::ORT_TL_EtwEnableCallback(
     _In_ LPCGUID SourceId, _In_ ULONG IsEnabled, _In_ UCHAR Level, _In_ ULONGLONG MatchAnyKeyword,
     _In_ ULONGLONG MatchAllKeyword, _In_opt_ PEVENT_FILTER_DESCRIPTOR FilterData, _In_opt_ PVOID CallbackContext) {
@@ -366,7 +365,6 @@ void OVTelemetry::InvokeCallbacks(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level
     (*callback)(SourceId, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, FilterData, CallbackContext);
   }
 }
-#endif
 
 } // namespace openvino_ep
 } // namespace onnxruntime
