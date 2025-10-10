@@ -57,6 +57,7 @@ struct OnnxToOvNetworkBindings {
       "beam_idx",
       "past_key_values",
       "present",
+      "total_seq_len",
   };
 
   OnnxToOvNetworkBindings(OVExeNetwork& exec_network, SubGraphContext& subgraph_context, SessionContext& session_context) {
