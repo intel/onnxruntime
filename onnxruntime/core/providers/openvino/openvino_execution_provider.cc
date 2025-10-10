@@ -21,6 +21,8 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
+std::atomic<uint32_t> OpenVINOExecutionProvider::global_session_counter_{0};
+
 // Parking this code here for now before it's moved to the factory
 #if defined OPENVINO_CONFIG_HETERO || defined OPENVINO_CONFIG_MULTI || defined OPENVINO_CONFIG_AUTO
 static std::vector<std::string> parseDevices(const std::string& device_string,
@@ -58,6 +60,14 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const ProviderInfo& info, s
       shared_context_{std::move(shared_context)},
       ep_ctx_handle_{session_context_.openvino_sdk_version, *GetLogger()} {
   InitProviderOrtApi();
+#ifdef _WIN32
+  session_id_ = ++global_session_counter_;
+  // Trace all provider options as one event
+  OVTelemetry::Instance().LogAllProviderOptions(session_id_, session_context_);
+  // Trace all session-related flags and inferred states
+  OVTelemetry::Instance().LogAllSessionOptions(session_id_, session_context_);
+#endif
+
 }
 
 OpenVINOExecutionProvider::~OpenVINOExecutionProvider() {
