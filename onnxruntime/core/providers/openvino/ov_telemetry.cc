@@ -39,13 +39,10 @@ namespace {
         case '\r': escaped += "\\r"; break;
         case '\t': escaped += "\\t"; break;
         default:
-          if (c < 0x20) {
-            escaped += "\\u";
-            escaped += "0000"[0];
-            escaped += "0000"[1];
-            char hex[3];
-            sprintf_s(hex, "%02x", static_cast<unsigned char>(c));
-            escaped += hex;
+          if (static_cast<unsigned char>(c) < 0x20) {
+            char unicode_escape[7];
+            sprintf_s(unicode_escape, sizeof(unicode_escape), "\\u%04x", static_cast<unsigned char>(c));
+            escaped += unicode_escape;
           } else {
             escaped += c;
           }
@@ -53,6 +50,24 @@ namespace {
       }
     }
     return escaped;
+  }
+
+  template<typename T>
+  void AddOptionalValue(std::ostringstream& json, const std::string& key, const T& value, const T& default_value, bool& first) {
+    if (value != default_value) {
+      if (!first) json << ",";
+      json << "\"" << key << "\":";
+      if constexpr (std::is_same_v<T, std::string>) {
+        json << "\"" << EscapeJsonString(value) << "\"";
+      } else if constexpr (std::is_same_v<T, std::filesystem::path>) {
+        json << "\"" << EscapeJsonString(value.string()) << "\"";
+      } else if constexpr (std::is_same_v<T, bool>) {
+        json << (value ? "true" : "false");
+      } else {
+        json << value;
+      }
+      first = false;
+    }
   }
 }
 
@@ -118,25 +133,6 @@ UINT64 OVTelemetry::Keyword() const {
   std::lock_guard<std::mutex> lock(provider_change_mutex_);
   return keyword_;
 }
-
-template<typename T>
-void AddOptionalValue(std::ostringstream& json, const std::string& key, const T& value, const T& default_value, bool& first) {
-  if (value != default_value) {
-    if (!first) json << ",";
-    json << "\"" << key << "\":";
-    if constexpr (std::is_same_v<T, std::string>) {
-      json << "\"" << EscapeJsonString(value) << "\"";
-    } else if constexpr (std::is_same_v<T, std::filesystem::path>) {
-      json << "\"" << EscapeJsonString(value.string()) << "\"";
-    } else if constexpr (std::is_same_v<T, bool>) {
-      json << (value ? "true" : "false");
-    } else {
-      json << value;
-    }
-    first = false;
-  }
-}
-
 
 std::string OVTelemetry::SerializeLoadConfig(const SessionContext& ctx) const {
   if (ctx.load_config.empty()) return "{}";

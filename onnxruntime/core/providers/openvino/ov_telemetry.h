@@ -16,7 +16,6 @@
 #include <optional>
 #include <algorithm>
 #include "core/providers/openvino/contexts.h"
-#include "nlohmann/json.hpp"
 
 TRACELOGGING_DECLARE_PROVIDER(ov_telemetry_provider_handle);
 
@@ -26,7 +25,7 @@ namespace openvino_ep {
 namespace ov_keywords {
   constexpr uint64_t OV_PROVIDER   = 0x1;
   constexpr uint64_t OV_SESSION    = 0x2;
-  constexpr uint64_t OV_OPTIONS    = 0x3;
+  constexpr uint64_t OV_OPTIONS    = 0x4;
 }
 
 class OVTelemetry {
