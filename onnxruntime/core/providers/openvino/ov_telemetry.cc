@@ -46,16 +46,24 @@ OVTelemetry::OVTelemetry() {
 }
 
 OVTelemetry::~OVTelemetry() {
-  std::lock_guard<std::mutex> lock(mutex_);
-  if (global_register_count_ > 0) {
-    global_register_count_ -= 1;
-    if (global_register_count_ == 0) {
-      TraceLoggingUnregister(ov_telemetry_provider_handle);
+  // Clean up TraceLogging, only hold mutex_
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (global_register_count_ > 0) {
+      global_register_count_ -= 1;
+      if (global_register_count_ == 0) {
+        TraceLoggingUnregister(ov_telemetry_provider_handle);
+      }
     }
   }
-  std::lock_guard<std::mutex> lock_callbacks(callbacks_mutex_);
-  callbacks_.clear();
+
+  // Clean up callbacks, only hold callbacks_mutex_
+  {
+    std::lock_guard<std::mutex> lock_callbacks(callbacks_mutex_);
+    callbacks_.clear();
+  }
 }
+
 
 OVTelemetry& OVTelemetry::Instance() {
   static OVTelemetry instance;
@@ -84,6 +92,8 @@ void AddOptionalValue(std::ostringstream& json, const std::string& key, const T&
     json << "\"" << key << "\":";
     if constexpr (std::is_same_v<T, std::string>) {
       json << "\"" << value << "\"";
+    } else if constexpr (std::is_same_v<T, std::filesystem::path>) {
+      json << "\"" << value.string() << "\"";
     } else if constexpr (std::is_same_v<T, bool>) {
       json << (value ? "true" : "false");
     } else {
@@ -317,13 +327,8 @@ void OVTelemetry::LogAllSessionOptions(uint32_t session_id, const SessionContext
   AddOptionalValue(sopts, "ep.context_enable", ctx.so_context_enable, false, first);
   AddOptionalValue(sopts, "session.disable_cpu_ep_fallback", ctx.so_disable_cpu_ep_fallback, false, first);
   AddOptionalValue(sopts, "ep.context_embed_mode", ctx.so_context_embed_mode, false, first);
-  AddOptionalValue(sopts, "ep.context_file_path", ctx.so_share_ep_contexts, false, first);
-
-  if (!ctx.so_context_file_path.empty()) {
-    if (!first) sopts << ",";
-    sopts << "\"ep.context_file_path\":\"" << ctx.so_context_file_path.string() << "\"";
-    first = false;
-  }
+  AddOptionalValue(sopts, "ep.share_ep_contexts", ctx.so_share_ep_contexts, false, first);
+  AddOptionalValue(sopts, "ep.context_file_path", ctx.so_context_file_path, std::filesystem::path(), first);
 
   sopts << "}";
 
