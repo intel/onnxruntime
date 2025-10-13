@@ -14,6 +14,7 @@
 #include <sstream>
 #include <unordered_map>
 #include <optional>
+#include <algorithm>
 #include "core/providers/openvino/contexts.h"
 #include "nlohmann/json.hpp"
 

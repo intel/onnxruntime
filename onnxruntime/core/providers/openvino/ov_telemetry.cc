@@ -23,6 +23,40 @@ TRACELOGGING_DEFINE_PROVIDER(
 #pragma warning(pop)
 #endif
 
+namespace {
+  std::string EscapeJsonString(const std::string& input) {
+    std::string escaped;
+    // Reserve extra space for escaping
+    escaped.reserve(input.size() + input.size() / 5);
+
+    for (char c : input) {
+      switch (c) {
+        case '\"': escaped += "\\\""; break;
+        case '\\': escaped += "\\\\"; break;
+        case '\b': escaped += "\\b"; break;
+        case '\f': escaped += "\\f"; break;
+        case '\n': escaped += "\\n"; break;
+        case '\r': escaped += "\\r"; break;
+        case '\t': escaped += "\\t"; break;
+        default:
+          if (c < 0x20) {
+            escaped += "\\u";
+            escaped += "0000"[0];
+            escaped += "0000"[1];
+            char hex[3];
+            sprintf_s(hex, "%02x", static_cast<unsigned char>(c));
+            escaped += hex;
+          } else {
+            escaped += c;
+          }
+          break;
+      }
+    }
+    return escaped;
+  }
+}
+
+
 namespace onnxruntime {
 namespace openvino_ep {
 
@@ -91,9 +125,9 @@ void AddOptionalValue(std::ostringstream& json, const std::string& key, const T&
     if (!first) json << ",";
     json << "\"" << key << "\":";
     if constexpr (std::is_same_v<T, std::string>) {
-      json << "\"" << value << "\"";
+      json << "\"" << EscapeJsonString(value) << "\"";
     } else if constexpr (std::is_same_v<T, std::filesystem::path>) {
-      json << "\"" << value.string() << "\"";
+      json << "\"" << EscapeJsonString(value.string()) << "\"";
     } else if constexpr (std::is_same_v<T, bool>) {
       json << (value ? "true" : "false");
     } else {
@@ -123,13 +157,7 @@ std::string OVTelemetry::SerializeLoadConfig(const SessionContext& ctx) const {
       // Use ov::Any's type checking and extraction capabilities
       if (value.is<std::string>()) {
         std::string str_val = value.as<std::string>();
-        // Escape quotes in string
-        std::string escaped;
-        for (char c : str_val) {
-          if (c == '\"' || c == '\\') escaped.push_back('\\');
-          escaped.push_back(c);
-        }
-        json << "\"" << escaped << "\"";
+        json << "\"" << EscapeJsonString(str_val) << "\"";
       } else if (value.is<int>()) {
         json << value.as<int>();
       } else if (value.is<int64_t>()) {
@@ -147,14 +175,7 @@ std::string OVTelemetry::SerializeLoadConfig(const SessionContext& ctx) const {
         std::ostringstream temp;
         value.print(temp);
         std::string val_str = temp.str();
-
-        // Escape quotes in the printed string
-        std::string escaped;
-        for (char c : val_str) {
-          if (c == '\"' || c == '\\') escaped.push_back('\\');
-          escaped.push_back(c);
-        }
-        json << "\"" << escaped << "\"";
+        json << "\"" << EscapeJsonString(val_str) << "\"";
       }
       first_entry = false;
     }
@@ -218,15 +239,7 @@ std::string OVTelemetry::SerializeLayoutConfig(const SessionContext& ctx) const 
 
     // Use ov::Layout's to_string() method for proper string representation
     std::string layout_str = ov_layout.to_string();
-
-    // Escape quotes in the layout string if any
-    std::string escaped;
-    for (char c : layout_str) {
-      if (c == '\"' || c == '\\') escaped.push_back('\\');
-      escaped.push_back(c);
-    }
-
-    json << "\"" << escaped << "\"";
+    json << "\"" << EscapeJsonString(layout_str) << "\"";
     first = false;
   }
   json << "}";
@@ -254,7 +267,7 @@ void OVTelemetry::LogAllProviderOptions(uint32_t session_id, const SessionContex
 
   if (!ctx.cache_dir.empty()) {
     if (!first) opts << ",";
-    opts << "\"cache_dir\":\"" << ctx.cache_dir.string() << "\"";
+    opts << "\"cache_dir\":\"" << EscapeJsonString(ctx.cache_dir.string()) << "\"";
     first = false;
   }
 
@@ -307,7 +320,7 @@ void OVTelemetry::LogAllSessionOptions(uint32_t session_id, const SessionContext
   // Always log model path if available
   if (!ctx.onnx_model_path_name.empty()) {
     if (!first) sopts << ",";
-    sopts << "\"onnx_model_path_name\":\"" << ctx.onnx_model_path_name.string() << "\"";
+    sopts << "\"onnx_model_path_name\":\"" << EscapeJsonString(ctx.onnx_model_path_name.string()) << "\"";
     first = false;
   }
 
