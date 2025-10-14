@@ -20,7 +20,7 @@ namespace openvino_ep {
 class BackendManager {
  public:
   BackendManager(SessionContext& session_context,
-                 SharedContext& shared_context,
+                 SharedContext::SharedWeights& shared_weights,
                  const onnxruntime::Node& fused_node,
                  const onnxruntime::GraphViewer& subgraph,
                  const logging::Logger& logger,
@@ -59,7 +59,7 @@ class BackendManager {
   SubGraphContext subgraph_context_;
   EPCtxHandler& ep_ctx_handle_;
   SessionContext& session_context_;
-  SharedContext& shared_context_;
+  SharedContext::SharedWeights& shared_weights_;
 };
 
 }  // namespace openvino_ep

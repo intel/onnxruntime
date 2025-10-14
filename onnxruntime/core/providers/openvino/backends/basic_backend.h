@@ -129,7 +129,7 @@ class BasicBackend : public IBackend {
   BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_proto,
                SessionContext& session_context,
                const SubGraphContext& subgraph_context,
-               SharedContext& shared_context,
+               SharedContext::SharedWeights& shared_weights,
                ptr_stream_t& model_stream);
 
   void Infer(OrtKernelContext* context) const override;
@@ -152,7 +152,7 @@ class BasicBackend : public IBackend {
 
   SessionContext& session_context_;
   SubGraphContext subgraph_context_;
-  SharedContext& shared_context_;
+  SharedContext::SharedWeights& shared_weights_;
   OVExeNetwork exe_network_;
   std::map<std::string, std::shared_ptr<ov::Node>> const_outputs_map_;
   std::unique_ptr<InferRequestPool> infer_req_pool_;

@@ -110,88 +110,75 @@ common::Status OpenVINOExecutionProvider::Compile(
     session_context_.onnx_opset_version =
         graph_body_viewer_0.DomainToVersionMap().at(kOnnxDomain);
 
-    //model name saved in shared context for reference
-    if (!session_context_.onnx_model_path_name.empty()) {
-    auto name = fs::path(session_context_.onnx_model_path_name).stem().string();
-    shared_context_->shared_weights.model_set.insert(name);
-
-     // Print the current contents of model_set
-    std::cout << "Current model_set: ";
-    for (const auto& m : shared_context_->shared_weights.model_set) {
-        std::cout << m << " ";
-    }
-    std::cout << std::endl;
-    }
-
     // OVIR wrapped in epctx should be treated as source but this code does not
     // This corner case is not in use and will be addressed in a future commit
     is_epctx_model = ep_ctx_handle_.CheckForOVEPCtxNodeInGraph(graph_body_viewer_0);
   }
 
+  SharedContext::SharedWeights* active_weights = nullptr;
+
   // The block below is executed during EP context model inference
-auto& metadata = shared_context_->shared_weights.metadata;
-if (session_context_.so_share_ep_contexts &&
-    is_epctx_model &&
-    metadata.empty()) {
+  if (session_context_.so_share_ep_contexts) {
+    if (is_epctx_model) {
+      // Determine context file name
+      fs::path context_model_file_path = session_context_.so_context_file_path;
+      if (context_model_file_path.empty()) {
+        context_model_file_path = session_context_.onnx_model_path_name;
+      }
 
-  fs::path context_model_file_path = session_context_.so_context_file_path;
-  if (context_model_file_path.empty()) {
-    context_model_file_path = session_context_.onnx_model_path_name;
-  }
+      // Metadata name and path for the epctx model
+      fs::path metadata_filename = context_model_file_path.stem().string() + "_metadata.bin";
+      fs::path metadata_file_path = context_model_file_path.parent_path() / metadata_filename;
 
-  std::cout << "Context model file path: " << context_model_file_path << '\n';
+      bool load_metadata_file = false;
+      if (shared_context_->shared_weight_set.empty()) {
+        // If there are no active weights create one
+        active_weights = &shared_context_->shared_weight_set.emplace_back();
+        load_metadata_file = true;
+      } else {
+        auto& sws = shared_context_->shared_weight_set;
+        const auto& cmfp = context_model_file_path.filename().string();
+        const auto& predicate = [cmfp](const SharedContext::SharedWeights& sw) { return sw.ctx_model_set.contains(cmfp); };
+        if (auto sw_iter = std::find_if(sws.begin(), sws.end(), predicate); sw_iter != sws.end()) {
+          // The compiled context model belongs to an active weight model set, continue using the weights
+          active_weights = &(*sw_iter);
+          load_metadata_file = false;
+        } else {
+          // The compiled context model does not belong to the weight model set, create a new active weight and load the metadata
+          active_weights = &shared_context_->shared_weight_set.emplace_back();
+          load_metadata_file = true;
+        }
+      }
+      auto& metadata = active_weights->metadata;
 
-  // Metadata path for the epctx model
-  fs::path metadata_filename = context_model_file_path.stem().string() + "_metadata.bin";
-  fs::path metadata_file_path = context_model_file_path.parent_path() / metadata_filename;
-  std::cout << "Metadata file path: " << metadata_file_path << '\n';
+      if (load_metadata_file) {
+        std::ifstream file(metadata_file_path, std::ios::binary);
+        ORT_RETURN_IF_NOT(file, "Metadata file was not found: " + metadata_file_path.string());
+        active_weights->metadata_filepath = metadata_file_path;
+        file >> metadata;
+        uint32_t model_set_count = 0;
+        file >> model_set_count;
+        for (uint32_t i = 0; i < model_set_count; i++) {
+          std::string ctx_model_name;
+          file >> ctx_model_name;
+          active_weights->ctx_model_set.insert(ctx_model_name);
+        }
+      }
+    } else {
+      // (!is_epctx_model) Compiling from source
 
-  std::ifstream file(metadata_file_path, std::ios::binary);
-  ORT_RETURN_IF_NOT(file, "Metadata file was not found: " + metadata_file_path.string());
-  shared_context_->shared_weights.metadata_filepath = metadata_file_path;
-  file >> metadata;
-
-  // ---- Find original model name ----
-  std::string current_name = fs::path(session_context_.onnx_model_path_name).stem().string();
-  if (current_name.size() > 4 &&
-      current_name.rfind("_ctx") == current_name.size() - 4) {
-    current_name.erase(current_name.size() - 4);
-  } else if (current_name.size() > 6 &&
-             current_name.rfind("_epctx") == current_name.size() - 6) {
-    current_name.erase(current_name.size() - 6);
-  }
-
-  std::cout << "Cleaned model name for lookup: " << current_name << '\n';
-
-  auto& sw = shared_context_->shared_weights;
-
-  // Check if original model is already in current context
-  if (sw.model_set.find(current_name) == sw.model_set.end()) {
-    // Try to find it in any previously active contexts
-    for (auto& ctx : shared_context_->active_contexts) {
-      if (ctx.model_set.find(current_name) != ctx.model_set.end()) {
-        std::cout << "Switching to matching active context for model: "
-                  << current_name << '\n';
-        shared_context_->shared_weights.metadata         = ctx.metadata;
-        shared_context_->shared_weights.metadata_filepath= ctx.metadata_filepath;
-        shared_context_->shared_weights.model_set        = ctx.model_set;
-  // swap in-memory context
-        return status;
+      if (shared_context_->shared_weight_set.empty()) {
+        // If there are no active weights create one
+        active_weights = &shared_context_->shared_weight_set.emplace_back();
+      } else {
+        ORT_RETURN_IF_NOT(shared_context_->shared_weight_set.size() == 1, "Only one active context exxpected during model compilation");
+        active_weights = &shared_context_->shared_weight_set.back();
       }
     }
-
-    // Fallback: load that model’s metadata from disk
-    fs::path base_path = fs::path(session_context_.onnx_model_path_name).parent_path();
-    fs::path meta_path = base_path / (current_name + "_metadata.bin");
-    std::ifstream meta_file(meta_path, std::ios::binary);
-    ORT_RETURN_IF_NOT(meta_file, "Metadata not found for model: ", current_name);
-    meta_file >> shared_context_->shared_weights.metadata;
-    shared_context_->shared_weights.metadata_filepath = meta_path;
-
-    std::cout << "Loaded metadata from disk for model: " << current_name << '\n';
+  } else {
+    // No sharing, a shared weight set is still needed to create the backend manager
+    active_weights = &shared_context_->shared_weight_set.emplace_back();
   }
-}
-
 
   struct OpenVINOEPFunctionState {
     AllocateFunc allocate_func = nullptr;
@@ -211,7 +198,7 @@ if (session_context_.so_share_ep_contexts &&
     // For original model, check if the user wants to export a model with pre-compiled blob
 
     auto& backend_manager = backend_managers_.emplace_back(session_context_,
-                                                           *shared_context_,
+                                                           *active_weights,
                                                            fused_node,
                                                            graph_body_viewer,
                                                            logger,
@@ -256,9 +243,9 @@ if (session_context_.so_share_ep_contexts &&
   // The block below is executed during EP context model generation
   if (session_context_.so_context_enable &&
       session_context_.so_share_ep_contexts &&
-      !metadata.empty()) {
+      !active_weights->metadata.empty()) {
     // For models after the first the metadata name comes from the shared context
-    fs::path metadata_file_path = shared_context_->shared_weights.metadata_filepath;
+    fs::path metadata_file_path = active_weights->metadata_filepath;
     if (metadata_file_path.empty()) {
       metadata_file_path = session_context_.so_context_file_path;
       std::string name_append{"_metadata.bin"};
@@ -268,7 +255,7 @@ if (session_context_.so_share_ep_contexts &&
       }
       auto metadata_filename = metadata_file_path.stem().string() + name_append;
       metadata_file_path.replace_filename(metadata_filename);
-      shared_context_->shared_weights.metadata_filepath = metadata_file_path;
+      active_weights->metadata_filepath = metadata_file_path;
     }
 
     // Metadata is generated only for shared contexts
@@ -277,14 +264,25 @@ if (session_context_.so_share_ep_contexts &&
     //   the resulting file will contain the aggregated content
     std::ofstream file{metadata_file_path, std::ios::binary};
     ORT_RETURN_IF_NOT(file, "Metadata file could not be written: ", metadata_file_path);
-    file << metadata;
+    file << active_weights->metadata;
+
+    // Add context model name to set
+     auto context_model_filename = session_context_.so_context_file_path.filename().string();
+     if (context_model_filename.empty()) {
+       context_model_filename = session_context_.onnx_model_path_name.filename().string() + "_ctx";
+     }
+     active_weights->ctx_model_set.insert(context_model_filename);
+
+    // Save context model set
+     file << std::endl
+          << (uint32_t)active_weights->ctx_model_set.size();
+     for (const auto ctx_model : active_weights->ctx_model_set) {
+       file << std::endl
+            << ctx_model;
+     }
   }
 
-  if (session_context_.so_stop_share_ep_contexts) {
-    std::cout<<"STOP EP SHARING CALLLED HERE"<<std::endl;
-    shared_context_->active_contexts.push_back(
-    std::move(shared_context_->shared_weights));
-
+  if (!session_context_.so_share_ep_contexts || session_context_.so_stop_share_ep_contexts) {
     shared_context_->clear();
   }
 

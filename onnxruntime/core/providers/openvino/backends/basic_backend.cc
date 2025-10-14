@@ -27,9 +27,9 @@ using namespace backend_utils;
 BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_proto,
                            SessionContext& session_context,
                            const SubGraphContext& subgraph_context,
-                           SharedContext& shared_context,
+                           SharedContext::SharedWeights& shared_weights,
                            ptr_stream_t& model_stream)
-    : session_context_{session_context}, subgraph_context_{subgraph_context}, shared_context_{shared_context} {
+    : session_context_{session_context}, subgraph_context_{subgraph_context}, shared_weights_{shared_weights} {
   std::string& hw_target = session_context_.device_type;
   bool enable_causallm = session_context_.enable_causallm;
 
@@ -138,7 +138,7 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
   }
   int num_infer_req = (session_context_.num_of_threads > 0) ? session_context_.num_of_threads : 1;
   std::function<void(OVInferRequestPtr)> initializer = [](OVInferRequestPtr) {};
-  auto metadata = shared_context_.shared_weights.metadata;
+  auto metadata = shared_weights_.metadata;
   if (session_context_.so_share_ep_contexts) {
     initializer = [&metadata](OVInferRequestPtr ir_ptr) {
       const auto input_count = ir_ptr->GetNumInputs();

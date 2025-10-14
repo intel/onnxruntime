@@ -38,13 +38,13 @@ ov::CompiledModel BackendManager::GetOVCompiledModel() {
 }
 
 BackendManager::BackendManager(SessionContext& session_context,
-                               SharedContext& shared_context,
+                               SharedContext::SharedWeights& shared_weights,
                                const onnxruntime::Node& fused_node,
                                const onnxruntime::GraphViewer& subgraph,
                                const logging::Logger& logger,
                                EPCtxHandler& ep_ctx_handle) : ep_ctx_handle_(ep_ctx_handle),
                                                               session_context_(session_context),
-                                                              shared_context_{shared_context} {
+                                                              shared_weights_{shared_weights} {
   subgraph_context_.is_ep_ctx_graph = ep_ctx_handle_.CheckForOVEPCtxNodeInGraph(subgraph);
   // If the graph contains a OVIR wrapped node, we check if it has matching xml file name attribute
   subgraph_context_.is_ep_ctx_ovir_encapsulated = ep_ctx_handle_.CheckEPCacheContextAttribute(subgraph,
@@ -107,7 +107,7 @@ BackendManager::BackendManager(SessionContext& session_context,
   }
   std::string device_type = session_context_.device_type;
 
-  auto& sw = shared_context_.shared_weights;
+  auto& sw = shared_weights_;
   if (session_context_.so_share_ep_contexts && !sw.metadata.empty()) {
     std::filesystem::path weight_filename = session_context_.onnx_model_path_name.parent_path();
     if (sw.external_weight_filename.empty()) {
@@ -138,7 +138,7 @@ BackendManager::BackendManager(SessionContext& session_context,
         concrete_backend_ = BackendFactory::MakeBackend(model_proto,
                                                         session_context_,
                                                         subgraph_context_,
-                                                        shared_context_,
+                                                        shared_weights_,
                                                         model_stream);
       } catch (std::string const& msg) {
         ORT_THROW(msg);
@@ -162,7 +162,7 @@ BackendManager::BackendManager(SessionContext& session_context,
       concrete_backend_ = BackendFactory::MakeBackend(model_proto,
                                                       session_context_,
                                                       subgraph_context_,
-                                                      shared_context_,
+                                                      shared_weights_,
                                                       model_stream);
     } catch (const OnnxRuntimeException& ex) {
       std::string exception_str = ex.what();
@@ -581,14 +581,28 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
 
   const auto& onnx_model_path_name = subgraph.ModelPath();
   // QDQ stripping enabled only for the NPU and experimentally on the GPU
-  if ((session_context_.device_type.find("NPU") != std::string::npos) &&
+  if (/*(session_context_.device_type.find("NPU") != std::string::npos) &&*/
       (enable_ovep_qdq_optimizer || session_context_.so_share_ep_contexts)) {
     std::unique_ptr<onnxruntime::Model> model;
-    Status status = CreateModelWithStrippedQDQNodes(subgraph, logger, session_context_.so_share_ep_contexts, enable_ovep_qdq_optimizer, model, shared_context_.shared_weights);
+    Status status = CreateModelWithStrippedQDQNodes(subgraph, logger, session_context_.so_share_ep_contexts, enable_ovep_qdq_optimizer, model, shared_weights_);
     auto model_proto = model->ToProto();
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
     print_model_proto_duration();
-    DumpOpenVINOEPModel(onnx_model_path_name, model_proto.get(), fused_node);
+    if (!onnxruntime::GetEnvironmentVar("LORA_DEBUG").empty()) {
+      auto model_name = onnx_model_path_name.empty() ? "unknown.onnx" : onnx_model_path_name.filename();
+
+      const auto& subgraph_name = fused_node.Name();
+      size_t dash = subgraph_name.find_last_of("-");
+      if (dash != std::string::npos) {
+        auto new_name = model_name.stem().string() + subgraph_name.substr(dash, std::string::npos);
+        model_name.replace_filename(new_name);
+        model_name.replace_extension(".onnx");
+      }
+
+      std::fstream dump(model_name, std::ios::out | std::ios::trunc | std::ios::binary);
+      model_proto->SerializeToOstream(dump);
+    }
+    //DumpOpenVINOEPModel(onnx_model_path_name, model_proto.get(), fused_node);
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     return model_proto;
   } else if ((session_context_.device_type.find("GPU") != std::string::npos) &&
@@ -706,7 +720,20 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
       }
     }
 
-    DumpOpenVINOEPModel(onnx_model_path_name, model_proto.get(), fused_node);
+    if (!onnxruntime::GetEnvironmentVar("LORA_DEBUG").empty()) {
+        auto model_name = onnx_model_path_name.empty() ? "unknown.onnx" : onnx_model_path_name.filename();
+
+        const auto& subgraph_name = fused_node.Name();
+        size_t dash = subgraph_name.find_last_of("-");
+        if (dash != std::string::npos) {
+            auto new_name = model_name.stem().string() + subgraph_name.substr(dash, std::string::npos);
+            model_name.replace_filename(new_name);
+            model_name.replace_extension(".onnx");
+        }
+
+        std::fstream dump(model_name, std::ios::out | std::ios::trunc | std::ios::binary);
+        model_proto->SerializeToOstream(dump);
+    }
 
     return model_proto;
   }
@@ -862,7 +889,7 @@ void BackendManager::Compute(OrtKernelContext* context) {
         dynamic_backend = BackendFactory::MakeBackend(modelproto_with_concrete_shapes,
                                                       session_context_,
                                                       subgraph_context_,
-                                                      shared_context_,
+                                                      shared_weights_,
                                                       model_stream);
       } catch (const OnnxRuntimeException& ex) {
         // Build option disables fallback to CPU on compilation failures with NPU.
@@ -882,7 +909,7 @@ void BackendManager::Compute(OrtKernelContext* context) {
             dynamic_backend = BackendFactory::MakeBackend(modelproto_with_concrete_shapes,
                                                           session_context_,
                                                           subgraph_context_,
-                                                          shared_context_,
+                                                          shared_weights_,
                                                           model_stream);
           } catch (std::string const& msg) {
             ORT_THROW(msg);

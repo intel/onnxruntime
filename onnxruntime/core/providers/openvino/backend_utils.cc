@@ -30,7 +30,6 @@ SharedContext::SharedWeights::WeightsFile::WeightsFile(std::filesystem::path fil
 }
 
 void SharedContext::SharedWeights::WeightsFile::load_weights(size_t file_offset, void* data, size_t size) {
-  std::cout<<"Loading weights from offset: " << file_offset << " size: " << size << '\n';
   ORT_ENFORCE(file_offset < weights_size_ && size <= weights_size_ && (file_offset <= weights_size_ - size), "Error: File offset is out of bounds.");
   file_.seekg(file_offset);
   file_.read(reinterpret_cast<char*>(data), size);
@@ -101,7 +100,7 @@ std::istream& operator>>(std::istream& stream, SharedContext::SharedWeights::Met
   try {
     stream >> map_size;
 
-    while (!stream.eof()) {
+    for (uint32_t entry_index = 0; entry_index < map_size; entry_index++) {
       SharedContext::SharedWeights::Metadata::Key key;
       SharedContext::SharedWeights::Metadata::Value value;
       stream >> key.name;
