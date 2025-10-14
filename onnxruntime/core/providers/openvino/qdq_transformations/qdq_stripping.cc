@@ -854,6 +854,26 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
     metadata.emplace(key, std::move(value));
   };
 
+    const static auto allowed_initializers = []() {
+    std::set<std::string> result;
+    auto env_var_value = onnxruntime::GetEnvironmentVar("ALLOWED_INITIALIZERS");
+
+    // Skip on empty string
+    if (env_var_value.empty()) {
+      return result;
+    }
+
+    std::stringstream ss(env_var_value);
+    std::string item;
+    std::cout << "Allowed intititializers:\n";
+    while (std::getline(ss, item, ';')) {
+      result.insert(item);
+      std::cout << "    " << item << "\n";
+    }
+
+    return result;
+  }();
+
   // Handle initializers
   for (const auto& it : all_inits) {
     const auto& [name, init] = *it;
@@ -862,6 +882,8 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
     std::unique_ptr<ONNX_NAMESPACE::TensorProto> init_with_data;
     ORT_RETURN_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(initializer_tensor, init_with_data));
 
+    auto is_allowed_initializer = allowed_initializers.empty() || allowed_initializers.contains(name);
+
     // Check if the initializer has external data
     if (!init_with_data &&
         utils::HasExternalData(initializer_tensor) &&
@@ -869,7 +891,7 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
       // Only convert to input if it's not a quantization parameter
       bool is_quant_param = IsQuantizationParameter(name, src_graph);
 
-      if (!is_quant_param) {
+      if (!is_quant_param && is_allowed_initializer) {
         // This is actual weight data - so to convert to input for weight sharing
         insert_metadata(initializer_tensor);
         AddInitializerAsInput(dst_graph, accumulated_inputs, src_graph, name);
@@ -898,6 +920,8 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
   for (auto& node_idx : src_graph.GetNodesInTopologicalOrder()) {
     const auto& node = src_graph.GetNode(node_idx);
     for (const auto& input : node->InputDefs()) {
+      auto is_allowed_initializer = allowed_initializers.empty() || allowed_initializers.contains(input->Name());
+
       if (current_scope_initializer_set.count(input->Name()) > 0) {
         continue;
       }
@@ -911,7 +935,7 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
         // Check if the initializer has external data
         if (!init_with_data &&
             utils::HasExternalData(initializer_tensor) &&
-            enable_ovep_weight_sharing) {
+            enable_ovep_weight_sharing && is_allowed_initializer) {
           insert_metadata(initializer_tensor);
 
           // Add initializer as input if it has external data
