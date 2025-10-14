@@ -61,7 +61,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const ProviderInfo& info, s
       ep_ctx_handle_{session_context_.openvino_sdk_version, *GetLogger()} {
   InitProviderOrtApi();
 #ifdef _WIN32
-  session_id_ = ++global_session_counter_;
+  session_id_ = global_session_counter_.fetch_add(1) + 1;
   // Trace all provider options as one event
   OVTelemetry::Instance().LogAllProviderOptions(session_id_, session_context_);
   // Trace all session-related flags and inferred states
