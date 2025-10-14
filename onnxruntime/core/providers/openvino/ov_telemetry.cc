@@ -253,10 +253,6 @@ void OVTelemetry::LogAllProviderOptions(uint32_t session_id, const SessionContex
   // Only log non-default values
   AddOptionalValue(opts, "device_type", ctx.device_type, std::string(""), first);
   AddOptionalValue(opts, "precision", ctx.precision, std::string(""), first);
-  AddOptionalValue(opts, "num_of_threads", ctx.num_of_threads, 0u, first);
-  AddOptionalValue(opts, "model_priority", ctx.model_priority, std::string("DEFAULT"), first);
-  AddOptionalValue(opts, "num_streams", ctx.num_streams, 1u, first);
-  AddOptionalValue(opts, "enable_opencl_throttling", ctx.enable_opencl_throttling, false, first);
   AddOptionalValue(opts, "disable_dynamic_shapes", ctx.disable_dynamic_shapes, false, first);
   AddOptionalValue(opts, "enable_qdq_optimizer", ctx.enable_qdq_optimizer, false, first);
   AddOptionalValue(opts, "enable_causallm", ctx.enable_causallm, false, first);
@@ -267,12 +263,7 @@ void OVTelemetry::LogAllProviderOptions(uint32_t session_id, const SessionContex
     first = false;
   }
 
-  if (ctx.context != nullptr) {
-    if (!first) opts << ",";
-    opts << "\"context\":\"set\"";
-    first = false;
-  }
-
+  // Load configuration
   std::string load_config_json = SerializeLoadConfig(ctx);
   if (load_config_json != "{}") {
     if (!first) opts << ",";
@@ -280,6 +271,7 @@ void OVTelemetry::LogAllProviderOptions(uint32_t session_id, const SessionContex
     first = false;
   }
 
+  // Reshape configuration
   std::string reshape_json = SerializeReshapeInputConfig(ctx);
   if (reshape_json != "{}") {
     if (!first) opts << ",";
@@ -287,6 +279,7 @@ void OVTelemetry::LogAllProviderOptions(uint32_t session_id, const SessionContex
     first = false;
   }
 
+  // Layout configuration
   std::string layout_json = SerializeLayoutConfig(ctx);
   if (layout_json != "{}") {
     if (!first) opts << ",";
@@ -296,7 +289,7 @@ void OVTelemetry::LogAllProviderOptions(uint32_t session_id, const SessionContex
 
   opts << "}";
 
-  // Only log if there are actual provider options
+  // Log only if there are provider options available
   if (opts.str() != "{}") {
     TraceLoggingWrite(ov_telemetry_provider_handle, "OVEPProviderOptions",
                      TraceLoggingKeyword(ov_keywords::OV_PROVIDER | ov_keywords::OV_OPTIONS),
@@ -313,22 +306,7 @@ void OVTelemetry::LogAllSessionOptions(uint32_t session_id, const SessionContext
   sopts << "{";
   bool first = true;
 
-  // Always log model path if available
-  if (!ctx.onnx_model_path_name.empty()) {
-    if (!first) sopts << ",";
-    sopts << "\"onnx_model_path_name\":\"" << EscapeJsonString(ctx.onnx_model_path_name.string()) << "\"";
-    first = false;
-  }
-
-  // Only log non-zero opset version
-  AddOptionalValue(sopts, "onnx_opset_version", ctx.onnx_opset_version, 0u, first);
-
-  // Only log if explicitly set
-  AddOptionalValue(sopts, "wholly_supported_graph", ctx.is_wholly_supported_graph, false, first);
-  AddOptionalValue(sopts, "has_external_weights", ctx.has_external_weights, false, first);
-
   // Always log SDK version
-  if (!first) sopts << ",";
   sopts << "\"openvino_sdk_version\":\"" << ctx.openvino_sdk_version << "\"";
   first = false;
 
