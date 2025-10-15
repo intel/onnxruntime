@@ -23,10 +23,10 @@ namespace onnxruntime {
 namespace openvino_ep {
 
 namespace ov_keywords {
-  constexpr uint64_t OV_PROVIDER   = 0x1;
-  constexpr uint64_t OV_SESSION    = 0x2;
-  constexpr uint64_t OV_OPTIONS    = 0x4;
-}
+constexpr uint64_t OV_PROVIDER = 0x1;
+constexpr uint64_t OV_SESSION = 0x2;
+constexpr uint64_t OV_OPTIONS = 0x4;
+}  // namespace ov_keywords
 
 class OVTelemetry {
  public:
@@ -39,7 +39,7 @@ class OVTelemetry {
   void LogAllSessionOptions(uint32_t session_id, const SessionContext& ctx) const;
 
   using EtwInternalCallback = std::function<void(
-    LPCGUID, ULONG, UCHAR, ULONGLONG, ULONGLONG, PEVENT_FILTER_DESCRIPTOR, PVOID)>;
+      LPCGUID, ULONG, UCHAR, ULONGLONG, ULONGLONG, PEVENT_FILTER_DESCRIPTOR, PVOID)>;
   static void RegisterInternalCallback(const EtwInternalCallback& callback);
   static void UnregisterInternalCallback(const EtwInternalCallback& callback);
 
@@ -68,10 +68,9 @@ class OVTelemetry {
   static void InvokeCallbacks(LPCGUID, ULONG, UCHAR, ULONGLONG, ULONGLONG, PEVENT_FILTER_DESCRIPTOR, PVOID);
   static void NTAPI ORT_TL_EtwEnableCallback(_In_ LPCGUID, _In_ ULONG, _In_ UCHAR, _In_ ULONGLONG,
                                              _In_ ULONGLONG, _In_opt_ PEVENT_FILTER_DESCRIPTOR, _In_opt_ PVOID);
-
 };
 
-} // namespace openvino_ep
-} // namespace onnxruntime
+}  // namespace openvino_ep
+}  // namespace onnxruntime
 
-#endif // defined(_WIN32)
+#endif  // defined(_WIN32)

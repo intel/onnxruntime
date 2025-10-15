@@ -67,7 +67,6 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const ProviderInfo& info, s
   // Trace all session-related flags and inferred states
   OVTelemetry::Instance().LogAllSessionOptions(session_id_, session_context_);
 #endif
-
 }
 
 OpenVINOExecutionProvider::~OpenVINOExecutionProvider() {

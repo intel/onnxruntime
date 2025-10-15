@@ -24,53 +24,66 @@ TRACELOGGING_DEFINE_PROVIDER(
 #endif
 
 namespace {
-  std::string EscapeJsonString(const std::string& input) {
-    std::string escaped;
-    // Reserve extra space for escaping
-    escaped.reserve(input.size() + input.size() / 5);
+std::string EscapeJsonString(const std::string& input) {
+  std::string escaped;
+  // Reserve extra space for escaping
+  escaped.reserve(input.size() + input.size() / 5);
 
-    for (char c : input) {
-      switch (c) {
-        case '\"': escaped += "\\\""; break;
-        case '\\': escaped += "\\\\"; break;
-        case '\b': escaped += "\\b"; break;
-        case '\f': escaped += "\\f"; break;
-        case '\n': escaped += "\\n"; break;
-        case '\r': escaped += "\\r"; break;
-        case '\t': escaped += "\\t"; break;
-        default:
-          if (static_cast<unsigned char>(c) < 0x20) {
-            char unicode_escape[7];
-            sprintf_s(unicode_escape, sizeof(unicode_escape), "\\u%04x", static_cast<unsigned char>(c));
-            escaped += unicode_escape;
-          } else {
-            escaped += c;
-          }
-          break;
-      }
-    }
-    return escaped;
-  }
-
-  template<typename T>
-  void AddOptionalValue(std::ostringstream& json, const std::string& key, const T& value, const T& default_value, bool& first) {
-    if (value != default_value) {
-      if (!first) json << ",";
-      json << "\"" << key << "\":";
-      if constexpr (std::is_same_v<T, std::string>) {
-        json << "\"" << EscapeJsonString(value) << "\"";
-      } else if constexpr (std::is_same_v<T, std::filesystem::path>) {
-        json << "\"" << EscapeJsonString(value.string()) << "\"";
-      } else if constexpr (std::is_same_v<T, bool>) {
-        json << (value ? "true" : "false");
-      } else {
-        json << value;
-      }
-      first = false;
+  for (char c : input) {
+    switch (c) {
+      case '\"':
+        escaped += "\\\"";
+        break;
+      case '\\':
+        escaped += "\\\\";
+        break;
+      case '\b':
+        escaped += "\\b";
+        break;
+      case '\f':
+        escaped += "\\f";
+        break;
+      case '\n':
+        escaped += "\\n";
+        break;
+      case '\r':
+        escaped += "\\r";
+        break;
+      case '\t':
+        escaped += "\\t";
+        break;
+      default:
+        if (static_cast<unsigned char>(c) < 0x20) {
+          char unicode_escape[7];
+          sprintf_s(unicode_escape, sizeof(unicode_escape), "\\u%04x", static_cast<unsigned char>(c));
+          escaped += unicode_escape;
+        } else {
+          escaped += c;
+        }
+        break;
     }
   }
+  return escaped;
 }
 
+template <typename T>
+void AddOptionalValue(std::ostringstream& json, const std::string& key, const T& value, const T& default_value, bool& first) {
+  if (value != default_value) {
+    if (!first) json << ",";
+    json << "\"" << key << "\":";
+    if constexpr (std::is_same_v<T, std::string>) {
+      json << "\"" << EscapeJsonString(value) << "\"";
+    } else if constexpr (std::is_same_v<T, std::filesystem::path>) {
+      json << "\"" << EscapeJsonString(value.string()) << "\"";
+    } else if constexpr (std::is_same_v<T, bool>) {
+      json << (value ? "true" : "false");
+    } else {
+      json << value;
+    }
+    first = false;
+  }
+}
+}  // namespace
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -112,7 +125,6 @@ OVTelemetry::~OVTelemetry() {
     callbacks_.clear();
   }
 }
-
 
 OVTelemetry& OVTelemetry::Instance() {
   static OVTelemetry instance;
@@ -182,7 +194,6 @@ std::string OVTelemetry::SerializeLoadConfig(const SessionContext& ctx) const {
   return json.str();
 }
 
-
 std::string OVTelemetry::SerializeReshapeInputConfig(const SessionContext& ctx) const {
   if (ctx.reshape.empty()) return "{}";
 
@@ -242,7 +253,6 @@ std::string OVTelemetry::SerializeLayoutConfig(const SessionContext& ctx) const 
   return json.str();
 }
 
-
 void OVTelemetry::LogAllProviderOptions(uint32_t session_id, const SessionContext& ctx) const {
   if (!IsEnabled()) return;
 
@@ -292,10 +302,10 @@ void OVTelemetry::LogAllProviderOptions(uint32_t session_id, const SessionContex
   // Log only if there are provider options available
   if (opts.str() != "{}") {
     TraceLoggingWrite(ov_telemetry_provider_handle, "OVEPProviderOptions",
-                     TraceLoggingKeyword(ov_keywords::OV_PROVIDER | ov_keywords::OV_OPTIONS),
-                     TraceLoggingLevel(5),
-                     TraceLoggingUInt32(session_id, "session_id"),
-                     TraceLoggingString(opts.str().c_str(), "provider_options"));
+                      TraceLoggingKeyword(ov_keywords::OV_PROVIDER | ov_keywords::OV_OPTIONS),
+                      TraceLoggingLevel(5),
+                      TraceLoggingUInt32(session_id, "session_id"),
+                      TraceLoggingString(opts.str().c_str(), "provider_options"));
   }
 }
 
@@ -321,10 +331,10 @@ void OVTelemetry::LogAllSessionOptions(uint32_t session_id, const SessionContext
   sopts << "}";
 
   TraceLoggingWrite(ov_telemetry_provider_handle, "OVEPSessionOptions",
-                   TraceLoggingKeyword(ov_keywords::OV_SESSION | ov_keywords::OV_OPTIONS),
-                   TraceLoggingLevel(5),
-                   TraceLoggingUInt32(session_id, "session_id"),
-                   TraceLoggingString(sopts.str().c_str(), "session_options"));
+                    TraceLoggingKeyword(ov_keywords::OV_SESSION | ov_keywords::OV_OPTIONS),
+                    TraceLoggingLevel(5),
+                    TraceLoggingUInt32(session_id, "session_id"),
+                    TraceLoggingString(sopts.str().c_str(), "session_options"));
 }
 
 void OVTelemetry::RegisterInternalCallback(const EtwInternalCallback& callback) {
@@ -335,9 +345,9 @@ void OVTelemetry::RegisterInternalCallback(const EtwInternalCallback& callback) 
 void OVTelemetry::UnregisterInternalCallback(const EtwInternalCallback& callback) {
   std::lock_guard<std::mutex> lock_callbacks(callbacks_mutex_);
   auto new_end = std::remove_if(callbacks_.begin(), callbacks_.end(),
-                               [&callback](const EtwInternalCallback* ptr) {
-                                 return ptr == &callback;
-                               });
+                                [&callback](const EtwInternalCallback* ptr) {
+                                  return ptr == &callback;
+                                });
   callbacks_.erase(new_end, callbacks_.end());
 }
 
@@ -352,14 +362,14 @@ void NTAPI OVTelemetry::ORT_TL_EtwEnableCallback(
 }
 
 void OVTelemetry::InvokeCallbacks(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level, ULONGLONG MatchAnyKeyword,
-                                 ULONGLONG MatchAllKeyword, PEVENT_FILTER_DESCRIPTOR FilterData, PVOID CallbackContext) {
+                                  ULONGLONG MatchAllKeyword, PEVENT_FILTER_DESCRIPTOR FilterData, PVOID CallbackContext) {
   std::lock_guard<std::mutex> lock_callbacks(callbacks_mutex_);
   for (const auto& callback : callbacks_) {
     (*callback)(SourceId, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, FilterData, CallbackContext);
   }
 }
 
-} // namespace openvino_ep
-} // namespace onnxruntime
+}  // namespace openvino_ep
+}  // namespace onnxruntime
 
-#endif // defined(_WIN32)
+#endif  // defined(_WIN32)
