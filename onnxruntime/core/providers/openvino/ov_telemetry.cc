@@ -315,6 +315,7 @@ void OVTelemetry::LogAllSessionOptions(uint32_t session_id, const SessionContext
   AddOptionalValue(sopts, "session.disable_cpu_ep_fallback", ctx.so_disable_cpu_ep_fallback, false, first);
   AddOptionalValue(sopts, "ep.context_embed_mode", ctx.so_context_embed_mode, false, first);
   AddOptionalValue(sopts, "ep.share_ep_contexts", ctx.so_share_ep_contexts, false, first);
+  AddOptionalValue(sopts, "ep.stop_share_ep_contexts", ctx.so_stop_share_ep_contexts, false, first);
   AddOptionalValue(sopts, "ep.context_file_path", ctx.so_context_file_path, std::filesystem::path(), first);
 
   sopts << "}";
