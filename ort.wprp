@@ -20,11 +20,7 @@
 
     <!-- OpenVINO EP provider -->
     <EventProvider Id="EventProvider_OpenVINOExecutionProvider"
-      Name="b5a8c2e1-4d7f-4a3b-9c2e-1f8e5a6b7c9d" Level="5">
-      <CaptureStateOnSave>
-        <Keyword Value="0xffffffffffffffff"/> <!-- capture all keywords -->
-      </CaptureStateOnSave>
-    </EventProvider>
+      Name="b5a8c2e1-4d7f-4a3b-9c2e-1f8e5a6b7c9d" Level="5" />
 
     <Profile Id="OrtTraceLoggingProvider.Verbose.File"
       Name="OrtTraceLoggingProvider" Description="OrtTraceLoggingProvider"
