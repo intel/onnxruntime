@@ -136,6 +136,7 @@ class OVInferRequest {
     return ovInfReq;
   }
   virtual void RewindKVCache([[maybe_unused]] size_t index) {}
+  virtual void ReorderKVCache([[maybe_unused]] const std::vector<size_t>& src_indices,  [[maybe_unused]] const std::vector<size_t>& dst_indices) {}
 };
 
 class StatefulOVInferRequest : public OVInferRequest {
@@ -144,6 +145,7 @@ class StatefulOVInferRequest : public OVInferRequest {
 
   void Infer() override;
   void RewindKVCache(size_t index) override;
+  void ReorderKVCache(const std::vector<size_t>& src_indices, const std::vector<size_t>& dst_indices) override;
   void FillTensor(const std::string& tensor_name, const ov::element::Type& type,
                   const std::vector<size_t>& shape, int32_t fill_value);
   void CacheTensor(const std::string& tensor_name, std::vector<int64_t>& cache);
