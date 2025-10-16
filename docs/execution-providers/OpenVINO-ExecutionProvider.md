@@ -215,8 +215,6 @@ Enables model caching to significantly reduce subsequent load times. Supports CP
 - `"NPU"` - Intel Neural Processing Unit
 - `"AUTO"` - Automatic device selection
 
-**Property Precedence**: `load_config` properties override legacy provider options when both are specified.
-
 
 #### Popular OpenVINO Properties
 
@@ -231,15 +229,15 @@ The following properties are commonly used for optimizing inference performance.
 | `MODEL_PRIORITY` | `"LOW"`, `"MEDIUM"`, `"HIGH"`, `"DEFAULT"` | Model resource allocation priority |
 
 **PERFORMANCE_HINT:**
-- `"LATENCY"`: Optimizes for low latency, single-stream inference
-- `"THROUGHPUT"`: Optimizes for high throughput, multi-stream inference
+- `"LATENCY"`: Optimizes for low latency
+- `"THROUGHPUT"`: Optimizes for high throughput
 
 **EXECUTION_MODE_HINT:**
 - `"ACCURACY"`: Maintains model precision, dynamic precision selection
 - `"PERFORMANCE"`: Optimizes for speed, may use lower precision
 
 **INFERENCE_PRECISION_HINT:**
-- `"f16"`: FP16 precision - recommended for GPU/NPU performance
+- `"f16"`: FP16 precision 
 - `"f32"`: FP32 precision - highest accuracy
 - `"bf16"`: BF16 precision - balance between f16 and f32
 
@@ -273,16 +271,15 @@ The following properties are commonly used for optimizing inference performance.
 | `CACHE_MODE` | `"OPTIMIZE_SIZE"`, `"OPTIMIZE_SPEED"` | Cache optimization strategy |
 
 **CACHE_MODE:**
-- `"OPTIMIZE_SPEED"`: Faster model loading, larger cache files
-- `"OPTIMIZE_SIZE"`: Smaller cache files, slower loading
-
+- `"OPTIMIZE_SPEED"`: Faster cache creation, larger cache files
+- `"OPTIMIZE_SIZE"`: Slower cache creation, smaller cache files
 ##### Logging Properties
 
 | Property | Valid Values | Description | 
 |----------|-------------|-------------|
 | `LOG_LEVEL` | `"LOG_NONE"`, `"LOG_ERROR"`, `"LOG_WARNING"`, `"LOG_INFO"`, `"LOG_DEBUG"`, `"LOG_TRACE"` | Logging verbosity level | 
 
-**Note:** `LOG_LEVEL` is not supported on GPU devices. Use with CPU or NPU for debugging purposes.
+**Note:** `LOG_LEVEL` is not supported on GPU devices.
 
 ##### AUTO Device Properties
 
@@ -302,13 +299,6 @@ Used to configure properties for individual devices when using AUTO mode.
   }
 }
 ```
-
-**Syntax Rules:**
-- Entire value is a single JSON string (enclosed in quotes)
-- No spaces between properties
-- No quotes around property names/values inside the nested structure
-- Device names are uppercase (CPU, GPU, NPU)
-
 
 #### Property Reference Documentation
 
@@ -378,7 +368,7 @@ Configures resource allocation priority for multi-model deployment scenarios.
 | **LOW** | Minimal allocation, yields resources to higher priority models |
 | **DEFAULT** | System-determined priority based on workload |
 
-> **Note:** Can be configured via `load_config` using the `MODEL_PRIORITY` property.
+**Note:** Can be configured via `load_config` using the `MODEL_PRIORITY` property.
 
 ---
 
