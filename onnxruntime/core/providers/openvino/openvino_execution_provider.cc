@@ -62,10 +62,8 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const ProviderInfo& info, s
   InitProviderOrtApi();
 #ifdef _WIN32
   session_id_ = global_session_counter_.fetch_add(1) + 1;
-  // Trace all provider options as one event
-  OVTracing::Instance().LogAllProviderOptions(session_id_, session_context_);
-  // Trace all session-related flags and inferred states
-  OVTracing::Instance().LogAllSessionOptions(session_id_, session_context_);
+  // Trace all runtime options (includes both session and provider options)
+  OVTracing::Instance().LogAllRuntimeOptions(session_id_, session_context_);
 #endif
 }
 

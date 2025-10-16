@@ -65,24 +65,6 @@ std::string EscapeJsonString(const std::string& input) {
   }
   return escaped;
 }
-
-template <typename T>
-void AddOptionalValue(std::ostringstream& json, const std::string& key, const T& value, const T& default_value, bool& first) {
-  if (value != default_value) {
-    if (!first) json << ",";
-    json << "\"" << key << "\":";
-    if constexpr (std::is_same_v<T, std::string>) {
-      json << "\"" << EscapeJsonString(value) << "\"";
-    } else if constexpr (std::is_same_v<T, std::filesystem::path>) {
-      json << "\"" << EscapeJsonString(value.string()) << "\"";
-    } else if constexpr (std::is_same_v<T, bool>) {
-      json << (value ? "true" : "false");
-    } else {
-      json << value;
-    }
-    first = false;
-  }
-}
 }  // namespace
 
 namespace onnxruntime {
@@ -146,195 +128,32 @@ UINT64 OVTracing::Keyword() const {
   return keyword_;
 }
 
-std::string OVTracing::SerializeLoadConfig(const SessionContext& ctx) const {
-  if (ctx.load_config.empty()) return "{}";
-
-  std::ostringstream json;
-  json << "{";
-  bool first_device = true;
-
-  for (const auto& [device, anymap] : ctx.load_config) {
-    if (!first_device) json << ",";
-    json << "\"" << device << "\":{";
-
-    bool first_entry = true;
-    for (const auto& [key, value] : anymap) {
-      if (!first_entry) json << ",";
-      json << "\"" << key << "\":";
-
-      // Use ov::Any's type checking and extraction capabilities
-      if (value.is<std::string>()) {
-        std::string str_val = value.as<std::string>();
-        json << "\"" << EscapeJsonString(str_val) << "\"";
-      } else if (value.is<int>()) {
-        json << value.as<int>();
-      } else if (value.is<int64_t>()) {
-        json << value.as<int64_t>();
-      } else if (value.is<uint64_t>()) {
-        json << value.as<uint64_t>();
-      } else if (value.is<bool>()) {
-        json << (value.as<bool>() ? "true" : "false");
-      } else if (value.is<float>()) {
-        json << value.as<float>();
-      } else if (value.is<double>()) {
-        json << value.as<double>();
-      } else {
-        // Use ov::Any's print method for unknown types
-        std::ostringstream temp;
-        value.print(temp);
-        std::string val_str = temp.str();
-        json << "\"" << EscapeJsonString(val_str) << "\"";
-      }
-      first_entry = false;
-    }
-    json << "}";
-    first_device = false;
-  }
-  json << "}";
-  return json.str();
-}
-
-std::string OVTracing::SerializeReshapeInputConfig(const SessionContext& ctx) const {
-  if (ctx.reshape.empty()) return "{}";
-
-  std::ostringstream json;
-  json << "{";
-  bool first = true;
-
-  for (const auto& [tensor_name, partial_shape] : ctx.reshape) {
-    if (!first) json << ",";
-    json << "\"" << tensor_name << "\":[";
-
-    bool first_dim = true;
-    // Use ov::PartialShape's iterator interface to iterate through dimensions
-    for (const auto& dimension : partial_shape) {
-      if (!first_dim) json << ",";
-
-      if (dimension.is_dynamic()) {
-        // Handle dynamic dimensions
-        if (dimension.get_interval().has_upper_bound()) {
-          // Dynamic dimension with bounds: {min..max}
-          json << "{\"min\":" << dimension.get_min_length()
-               << ",\"max\":" << dimension.get_max_length() << "}";
-        } else {
-          // Fully dynamic dimension
-          json << "\"dynamic\"";
-        }
-      } else {
-        // Static dimension - use get_length() for ov::Dimension
-        json << dimension.get_length();
-      }
-      first_dim = false;
-    }
-    json << "]";
-    first = false;
-  }
-  json << "}";
-  return json.str();
-}
-
-std::string OVTracing::SerializeLayoutConfig(const SessionContext& ctx) const {
-  if (ctx.layout.empty()) return "{}";
-
-  std::ostringstream json;
-  json << "{";
-  bool first = true;
-
-  for (const auto& [tensor_name, ov_layout] : ctx.layout) {
-    if (!first) json << ",";
-    json << "\"" << tensor_name << "\":";
-
-    // Use ov::Layout's to_string() method for proper string representation
-    std::string layout_str = ov_layout.to_string();
-    json << "\"" << EscapeJsonString(layout_str) << "\"";
-    first = false;
-  }
-  json << "}";
-  return json.str();
-}
-
-void OVTracing::LogAllProviderOptions(uint32_t session_id, const SessionContext& ctx) const {
+void OVTracing::LogAllRuntimeOptions(uint32_t session_id, const SessionContext& ctx) const {
   if (!IsEnabled()) return;
 
   std::ostringstream opts;
   opts << "{";
   bool first = true;
 
-  // Only log non-default values
-  AddOptionalValue(opts, "device_type", ctx.device_type, std::string(""), first);
-  AddOptionalValue(opts, "precision", ctx.precision, std::string(""), first);
-  AddOptionalValue(opts, "disable_dynamic_shapes", ctx.disable_dynamic_shapes, false, first);
-  AddOptionalValue(opts, "enable_qdq_optimizer", ctx.enable_qdq_optimizer, false, first);
-  AddOptionalValue(opts, "enable_causallm", ctx.enable_causallm, false, first);
+  // Always log SDK version first
+  opts << "\"openvino_sdk_version\":\"" << ctx.openvino_sdk_version << "\"";
+  first = false;
 
-  if (!ctx.cache_dir.empty()) {
-    if (!first) opts << ",";
-    opts << "\"cache_dir\":\"" << EscapeJsonString(ctx.cache_dir.string()) << "\"";
-    first = false;
-  }
-
-  // Load configuration
-  std::string load_config_json = SerializeLoadConfig(ctx);
-  if (load_config_json != "{}") {
-    if (!first) opts << ",";
-    opts << "\"load_config\":" << load_config_json;
-    first = false;
-  }
-
-  // Reshape configuration
-  std::string reshape_json = SerializeReshapeInputConfig(ctx);
-  if (reshape_json != "{}") {
-    if (!first) opts << ",";
-    opts << "\"reshape_input\":" << reshape_json;
-    first = false;
-  }
-
-  // Layout configuration
-  std::string layout_json = SerializeLayoutConfig(ctx);
-  if (layout_json != "{}") {
-    if (!first) opts << ",";
-    opts << "\"layout\":" << layout_json;
-    first = false;
+  // Log all runtime options (session options contain everything including provider options)
+  for (const auto& [key, value] : ctx.runtime_config.options) {
+    if (!value.empty()) {
+      if (!first) opts << ",";
+      opts << "\"" << key << "\":\"" << EscapeJsonString(value) << "\"";
+      first = false;
+    }
   }
 
   opts << "}";
 
-  // Log only if there are provider options available
-  if (opts.str() != "{}") {
-    TraceLoggingWrite(ov_tracing_provider_handle, "OVEPProviderOptions",
-                      TraceLoggingKeyword(ov_keywords::OV_PROVIDER | ov_keywords::OV_OPTIONS),
-                      TraceLoggingLevel(5),
-                      TraceLoggingUInt32(session_id, "session_id"),
-                      TraceLoggingString(opts.str().c_str(), "provider_options"));
-  }
-}
-
-void OVTracing::LogAllSessionOptions(uint32_t session_id, const SessionContext& ctx) const {
-  if (!IsEnabled()) return;
-
-  std::ostringstream sopts;
-  sopts << "{";
-  bool first = true;
-
-  // Always log SDK version
-  sopts << "\"openvino_sdk_version\":\"" << ctx.openvino_sdk_version << "\"";
-  first = false;
-
-  // Only log session options if they're non-default
-  AddOptionalValue(sopts, "ep.context_enable", ctx.so_context_enable, false, first);
-  AddOptionalValue(sopts, "session.disable_cpu_ep_fallback", ctx.so_disable_cpu_ep_fallback, false, first);
-  AddOptionalValue(sopts, "ep.context_embed_mode", ctx.so_context_embed_mode, false, first);
-  AddOptionalValue(sopts, "ep.share_ep_contexts", ctx.so_share_ep_contexts, false, first);
-  AddOptionalValue(sopts, "ep.stop_share_ep_contexts", ctx.so_stop_share_ep_contexts, false, first);
-  AddOptionalValue(sopts, "ep.context_file_path", ctx.so_context_file_path, std::filesystem::path(), first);
-
-  sopts << "}";
-
-  TraceLoggingWrite(ov_tracing_provider_handle, "OVEPSessionOptions",
-                    TraceLoggingKeyword(ov_keywords::OV_SESSION | ov_keywords::OV_OPTIONS),
-                    TraceLoggingLevel(5),
+  TraceLoggingWrite(ov_tracing_provider_handle, "OVEPRuntimeOptions",
+                    TraceLoggingLevel(WINEVENT_LEVEL_VERBOSE),
                     TraceLoggingUInt32(session_id, "session_id"),
-                    TraceLoggingString(sopts.str().c_str(), "session_options"));
+                    TraceLoggingString(opts.str().c_str(), "runtime_options"));
 }
 
 void OVTracing::RegisterInternalCallback(const EtwInternalCallback& callback) {

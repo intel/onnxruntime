@@ -127,9 +127,23 @@ struct ProviderInfo {
                                                                "enable_causallm", "disable_dynamic_shapes", "reshape_input", "layout"};
 };
 
+// Simple holder for runtime configuration (only session options - contains everything)
+struct RuntimeConfig {
+  std::unordered_map<std::string, std::string> options;
+
+  // Query any option
+  std::optional<std::string> Get(const std::string& key) const {
+    auto it = options.find(key);
+    return it != options.end() ? std::optional{it->second} : std::nullopt;
+  }
+};
+
 // Holds context applicable to the entire EP instance.
 struct SessionContext : ProviderInfo {
-  SessionContext(const ProviderInfo& info) : ProviderInfo{info} {}
+  SessionContext(const ProviderInfo& info) : ProviderInfo{info} {
+    InitRuntimeConfig();
+  }
+
   std::vector<bool> deviceAvailableList = {true, true, true, true, true, true, true, true};
   std::filesystem::path onnx_model_path_name;
   uint32_t onnx_opset_version{0};
@@ -137,6 +151,16 @@ struct SessionContext : ProviderInfo {
   mutable bool has_external_weights = false;       // Value is set to mutable to modify from capability
   const std::vector<uint32_t> OpenVINO_Version = {OPENVINO_VERSION_MAJOR, OPENVINO_VERSION_MINOR};
   const std::string openvino_sdk_version = std::to_string(OPENVINO_VERSION_MAJOR) + "." + std::to_string(OPENVINO_VERSION_MINOR);
+
+  RuntimeConfig runtime_config;  // All runtime options (from session config)
+
+ private:
+  void InitRuntimeConfig() {
+    // Session options contain everything (including provider options with ep.openvinoexecutionprovider.* prefix)
+    if (config_options) {
+      runtime_config.options = config_options->GetConfigOptionsMap();
+    }
+  }
 };
 
 // Holds context specific to subgraph.

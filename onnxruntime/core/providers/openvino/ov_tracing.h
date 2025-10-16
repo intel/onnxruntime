@@ -22,12 +22,6 @@ TRACELOGGING_DECLARE_PROVIDER(ov_tracing_provider_handle);
 namespace onnxruntime {
 namespace openvino_ep {
 
-namespace ov_keywords {
-constexpr uint64_t OV_PROVIDER = 0x1;
-constexpr uint64_t OV_SESSION = 0x2;
-constexpr uint64_t OV_OPTIONS = 0x4;
-}  // namespace ov_keywords
-
 class OVTracing {
  public:
   static OVTracing& Instance();
@@ -35,8 +29,7 @@ class OVTracing {
   unsigned char Level() const;
   UINT64 Keyword() const;
 
-  void LogAllProviderOptions(uint32_t session_id, const SessionContext& ctx) const;
-  void LogAllSessionOptions(uint32_t session_id, const SessionContext& ctx) const;
+  void LogAllRuntimeOptions(uint32_t session_id, const SessionContext& ctx) const;
 
   using EtwInternalCallback = std::function<void(
       LPCGUID, ULONG, UCHAR, ULONGLONG, ULONGLONG, PEVENT_FILTER_DESCRIPTOR, PVOID)>;
@@ -50,11 +43,6 @@ class OVTracing {
   OVTracing& operator=(const OVTracing&) = delete;
   OVTracing(OVTracing&&) = delete;
   OVTracing& operator=(OVTracing&&) = delete;
-
-  // Helper functions for complex serialization
-  std::string SerializeLoadConfig(const SessionContext& ctx) const;
-  std::string SerializeReshapeInputConfig(const SessionContext& ctx) const;
-  std::string SerializeLayoutConfig(const SessionContext& ctx) const;
 
   static std::mutex mutex_;
   static uint32_t global_register_count_;
