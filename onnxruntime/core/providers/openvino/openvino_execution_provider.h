@@ -80,7 +80,7 @@ class OpenVINOExecutionProvider : public IExecutionProvider {
   std::list<BackendManager> backend_managers_;  // EP session owns the backend objects
   EPCtxHandler ep_ctx_handle_;
 
-  // Telemetry and session tracking
+  // Tracing and session tracking
   uint32_t session_id_{0};
   static std::atomic<uint32_t> global_session_counter_;
 };

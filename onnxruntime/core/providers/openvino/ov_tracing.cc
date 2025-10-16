@@ -135,29 +135,56 @@ UINT64 OVTracing::Keyword() const {
 void OVTracing::LogAllRuntimeOptions(uint32_t session_id, const SessionContext& ctx) const {
   if (!IsEnabled()) return;
 
-  std::ostringstream opts;
-  opts << "{";
-  bool first = true;
+  // Log OpenVINO SDK version separately
+  TraceLoggingWrite(ov_tracing_provider_handle, "OV.SDK.Version",
+                    TraceLoggingLevel(WINEVENT_LEVEL_VERBOSE),
+                    TraceLoggingUInt32(session_id, "session_id"),
+                    TraceLoggingString(ctx.openvino_sdk_version.c_str(), "openvino_sdk_version"));
 
-  // Always log SDK version first
-  opts << "\"openvino_sdk_version\":\"" << ctx.openvino_sdk_version << "\"";
-  first = false;
+  constexpr std::string_view provider_prefix = "ep.openvinoexecutionprovider.";
+  std::ostringstream provider_opts;
+  std::ostringstream session_opts;
+  bool provider_first = true;
+  bool session_first = true;
 
-  // Log all runtime options (session options contain everything including provider options)
+  provider_opts << "{";
+  session_opts << "{";
+
+  // Segregate options based on prefix
   for (const auto& [key, value] : ctx.runtime_config.options) {
     if (!value.empty()) {
-      if (!first) opts << ",";
-      opts << "\"" << key << "\":\"" << EscapeJsonString(value) << "\"";
-      first = false;
+      if (key.starts_with(provider_prefix)) {
+        // Provider option
+        if (!provider_first) provider_opts << ",";
+        provider_opts << "\"" << key << "\":\"" << EscapeJsonString(value) << "\"";
+        provider_first = false;
+      } else {
+        // Session option
+        if (!session_first) session_opts << ",";
+        session_opts << "\"" << key << "\":\"" << EscapeJsonString(value) << "\"";
+        session_first = false;
+      }
     }
   }
 
-  opts << "}";
+  provider_opts << "}";
+  session_opts << "}";
 
-  TraceLoggingWrite(ov_tracing_provider_handle, "OVEPRuntimeOptions",
-                    TraceLoggingLevel(WINEVENT_LEVEL_VERBOSE),
-                    TraceLoggingUInt32(session_id, "session_id"),
-                    TraceLoggingString(opts.str().c_str(), "runtime_options"));
+  // Log provider options only if there are any
+  if (!provider_first) {
+    TraceLoggingWrite(ov_tracing_provider_handle, "OVEP.Provider.Options",
+                      TraceLoggingLevel(WINEVENT_LEVEL_VERBOSE),
+                      TraceLoggingUInt32(session_id, "session_id"),
+                      TraceLoggingString(provider_opts.str().c_str(), "provider_options"));
+  }
+
+  // Log session options only if there are any
+  if (!session_first) {
+    TraceLoggingWrite(ov_tracing_provider_handle, "OVEP.Session.Options",
+                      TraceLoggingLevel(WINEVENT_LEVEL_VERBOSE),
+                      TraceLoggingUInt32(session_id, "session_id"),
+                      TraceLoggingString(session_opts.str().c_str(), "session_options"));
+  }
 }
 
 void OVTracing::RegisterInternalCallback(const EtwInternalCallback& callback) {
