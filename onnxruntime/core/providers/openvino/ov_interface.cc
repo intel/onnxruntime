@@ -461,6 +461,84 @@ void StatefulOVInferRequest::Infer() {
   OVInferRequest::Infer();
 }
 
+
+void StatefulOVInferRequest::ReorderKVCache(const std::vector<size_t>& src_indices, const std::vector<size_t>& dst_indices) {
+  // Validate input parameters
+  if (src_indices.size() != dst_indices.size()) {
+    ORT_THROW(log_tag + "ReorderKVCache: src_indices and dst_indices must have the same size. "
+              "Got src_indices.size()=" + std::to_string(src_indices.size()) +
+              ", dst_indices.size()=" + std::to_string(dst_indices.size()));
+  }
+
+  LOGS_DEFAULT(INFO) << log_tag << "ReorderKVCache: Reordering OpenVINO-internal KVCache state with "
+                     << src_indices.size() << " index pairs";
+
+  // Retrieve KVCache states and reorder them based on the provided indices
+  auto states = ovInfReq.query_state();
+
+  for (auto& state : states) {
+    auto start_time = std::chrono::high_resolution_clock::now();
+      ov::Tensor ori_tensor = state.get_state();
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
+    LOGS_DEFAULT(INFO) << log_tag << "get_state " << duration << " microseconds";
+      const auto& shape = ori_tensor.get_shape();
+
+      // Validate tensor shape (expecting 4D: [batch_size, num_heads, seq_len, head_size])
+      if (shape.size() != 4) {
+        LOGS_DEFAULT(WARNING) << log_tag << "ReorderKVCache: Expected 4D tensor, got "
+                             << shape.size() << "D tensor. Skipping this state.";
+        continue;
+      }
+
+      const size_t batch_size = shape[0];
+      const size_t H = shape[1];  // num_heads
+      const size_t seq_len = shape[2];
+      const size_t D = shape[3];  // head_size
+
+      // Perform reordering for each src_idx -> dst_idx pair
+      for (size_t i = 0; i < src_indices.size(); ++i) {
+        const size_t src_idx = src_indices[i];
+        const size_t dst_idx = dst_indices[i];
+
+        // Validate indices
+        if (src_idx >= seq_len || dst_idx >= seq_len) {
+          LOGS_DEFAULT(WARNING) << log_tag << "ReorderKVCache: Index out of bounds. "
+                               << "src_idx=" << src_idx << ", dst_idx=" << dst_idx
+                               << ", seq_len=" << seq_len << ". Skipping this pair.";
+          continue;
+        }
+
+        // Define coordinates for source slice: [0:batch_size, 0:H, src_idx:src_idx+1, 0:D]
+        ov::Coordinate src_begin{0, 0, src_idx, 0};
+        ov::Coordinate src_end{batch_size, H, src_idx + 1, D};
+
+        // Define coordinates for destination slice: [0:batch_size, 0:H, dst_idx:dst_idx+1, 0:D]
+        ov::Coordinate dst_begin{0, 0, dst_idx, 0};
+        ov::Coordinate dst_end{batch_size, H, dst_idx + 1, D};
+
+        // Create tensor views for source and destination slices
+        ov::Tensor src_view(ori_tensor, src_begin, src_end);
+        ov::Tensor dst_view(ori_tensor, dst_begin, dst_end);
+
+        // Copy source slice to destination slice: dst_view[:, :, dst_idx, :] = src_view[:, :, src_idx, :]
+        start_time = std::chrono::high_resolution_clock::now();
+        src_view.copy_to(dst_view);
+        end_time = std::chrono::high_resolution_clock::now();
+         duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
+        LOGS_DEFAULT(INFO) << log_tag << "copy: " << duration << " microseconds";
+      }
+      start_time = std::chrono::high_resolution_clock::now();
+      // Update the state with the modified tensor
+      state.set_state(ori_tensor);
+      end_time = std::chrono::high_resolution_clock::now();
+       duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
+      LOGS_DEFAULT(INFO) << log_tag << "set_state: " << duration << " microseconds";
+
+    }
+}
+
+
 void StatefulOVInferRequest::RewindKVCache(size_t index) {
   LOGS_DEFAULT(INFO) << log_tag << "RewindKVCache: Rewinding OpenVINO-internal KVCache state to index=" << index;
 
