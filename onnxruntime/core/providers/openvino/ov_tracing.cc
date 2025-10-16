@@ -1,6 +1,6 @@
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include "core/providers/openvino/ov_telemetry.h"
+#include "core/providers/openvino/ov_tracing.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -13,7 +13,7 @@
 #include "core/platform/windows/TraceLoggingConfig.h"
 
 TRACELOGGING_DEFINE_PROVIDER(
-    ov_telemetry_provider_handle,
+    ov_tracing_provider_handle,
     "Intel.ML.ONNXRuntime.OpenVINO",
     // {"b5a8c2e1-4d7f-4a3b-9c2e-1f8e5a6b7c9d"}
     (0xb5a8c2e1, 0x4d7f, 0x4a3b, 0x9c, 0x2e, 0x1f, 0x8e, 0x5a, 0x6b, 0x7c, 0x9d),
@@ -88,33 +88,33 @@ void AddOptionalValue(std::ostringstream& json, const std::string& key, const T&
 namespace onnxruntime {
 namespace openvino_ep {
 
-std::mutex OVTelemetry::mutex_;
-std::mutex OVTelemetry::provider_change_mutex_;
-uint32_t OVTelemetry::global_register_count_ = 0;
-bool OVTelemetry::enabled_ = true;
-UCHAR OVTelemetry::level_ = 0;
-UINT64 OVTelemetry::keyword_ = 0;
-std::vector<const OVTelemetry::EtwInternalCallback*> OVTelemetry::callbacks_;
-std::mutex OVTelemetry::callbacks_mutex_;
+std::mutex OVTracing::mutex_;
+std::mutex OVTracing::provider_change_mutex_;
+uint32_t OVTracing::global_register_count_ = 0;
+bool OVTracing::enabled_ = true;
+UCHAR OVTracing::level_ = 0;
+UINT64 OVTracing::keyword_ = 0;
+std::vector<const OVTracing::EtwInternalCallback*> OVTracing::callbacks_;
+std::mutex OVTracing::callbacks_mutex_;
 
-OVTelemetry::OVTelemetry() {
+OVTracing::OVTracing() {
   std::lock_guard<std::mutex> lock(mutex_);
   if (global_register_count_ == 0) {
-    HRESULT hr = TraceLoggingRegisterEx(ov_telemetry_provider_handle, ORT_TL_EtwEnableCallback, nullptr);
+    HRESULT hr = TraceLoggingRegisterEx(ov_tracing_provider_handle, ORT_TL_EtwEnableCallback, nullptr);
     if (SUCCEEDED(hr)) {
       global_register_count_ += 1;
     }
   }
 }
 
-OVTelemetry::~OVTelemetry() {
+OVTracing::~OVTracing() {
   // Clean up TraceLogging, only hold mutex_
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (global_register_count_ > 0) {
       global_register_count_ -= 1;
       if (global_register_count_ == 0) {
-        TraceLoggingUnregister(ov_telemetry_provider_handle);
+        TraceLoggingUnregister(ov_tracing_provider_handle);
       }
     }
   }
@@ -126,27 +126,27 @@ OVTelemetry::~OVTelemetry() {
   }
 }
 
-OVTelemetry& OVTelemetry::Instance() {
-  static OVTelemetry instance;
+OVTracing& OVTracing::Instance() {
+  static OVTracing instance;
   return instance;
 }
 
-bool OVTelemetry::IsEnabled() const {
+bool OVTracing::IsEnabled() const {
   std::lock_guard<std::mutex> lock(provider_change_mutex_);
   return enabled_;
 }
 
-UCHAR OVTelemetry::Level() const {
+UCHAR OVTracing::Level() const {
   std::lock_guard<std::mutex> lock(provider_change_mutex_);
   return level_;
 }
 
-UINT64 OVTelemetry::Keyword() const {
+UINT64 OVTracing::Keyword() const {
   std::lock_guard<std::mutex> lock(provider_change_mutex_);
   return keyword_;
 }
 
-std::string OVTelemetry::SerializeLoadConfig(const SessionContext& ctx) const {
+std::string OVTracing::SerializeLoadConfig(const SessionContext& ctx) const {
   if (ctx.load_config.empty()) return "{}";
 
   std::ostringstream json;
@@ -194,7 +194,7 @@ std::string OVTelemetry::SerializeLoadConfig(const SessionContext& ctx) const {
   return json.str();
 }
 
-std::string OVTelemetry::SerializeReshapeInputConfig(const SessionContext& ctx) const {
+std::string OVTracing::SerializeReshapeInputConfig(const SessionContext& ctx) const {
   if (ctx.reshape.empty()) return "{}";
 
   std::ostringstream json;
@@ -233,7 +233,7 @@ std::string OVTelemetry::SerializeReshapeInputConfig(const SessionContext& ctx) 
   return json.str();
 }
 
-std::string OVTelemetry::SerializeLayoutConfig(const SessionContext& ctx) const {
+std::string OVTracing::SerializeLayoutConfig(const SessionContext& ctx) const {
   if (ctx.layout.empty()) return "{}";
 
   std::ostringstream json;
@@ -253,7 +253,7 @@ std::string OVTelemetry::SerializeLayoutConfig(const SessionContext& ctx) const 
   return json.str();
 }
 
-void OVTelemetry::LogAllProviderOptions(uint32_t session_id, const SessionContext& ctx) const {
+void OVTracing::LogAllProviderOptions(uint32_t session_id, const SessionContext& ctx) const {
   if (!IsEnabled()) return;
 
   std::ostringstream opts;
@@ -301,7 +301,7 @@ void OVTelemetry::LogAllProviderOptions(uint32_t session_id, const SessionContex
 
   // Log only if there are provider options available
   if (opts.str() != "{}") {
-    TraceLoggingWrite(ov_telemetry_provider_handle, "OVEPProviderOptions",
+    TraceLoggingWrite(ov_tracing_provider_handle, "OVEPProviderOptions",
                       TraceLoggingKeyword(ov_keywords::OV_PROVIDER | ov_keywords::OV_OPTIONS),
                       TraceLoggingLevel(5),
                       TraceLoggingUInt32(session_id, "session_id"),
@@ -309,7 +309,7 @@ void OVTelemetry::LogAllProviderOptions(uint32_t session_id, const SessionContex
   }
 }
 
-void OVTelemetry::LogAllSessionOptions(uint32_t session_id, const SessionContext& ctx) const {
+void OVTracing::LogAllSessionOptions(uint32_t session_id, const SessionContext& ctx) const {
   if (!IsEnabled()) return;
 
   std::ostringstream sopts;
@@ -330,19 +330,19 @@ void OVTelemetry::LogAllSessionOptions(uint32_t session_id, const SessionContext
 
   sopts << "}";
 
-  TraceLoggingWrite(ov_telemetry_provider_handle, "OVEPSessionOptions",
+  TraceLoggingWrite(ov_tracing_provider_handle, "OVEPSessionOptions",
                     TraceLoggingKeyword(ov_keywords::OV_SESSION | ov_keywords::OV_OPTIONS),
                     TraceLoggingLevel(5),
                     TraceLoggingUInt32(session_id, "session_id"),
                     TraceLoggingString(sopts.str().c_str(), "session_options"));
 }
 
-void OVTelemetry::RegisterInternalCallback(const EtwInternalCallback& callback) {
+void OVTracing::RegisterInternalCallback(const EtwInternalCallback& callback) {
   std::lock_guard<std::mutex> lock_callbacks(callbacks_mutex_);
   callbacks_.push_back(&callback);
 }
 
-void OVTelemetry::UnregisterInternalCallback(const EtwInternalCallback& callback) {
+void OVTracing::UnregisterInternalCallback(const EtwInternalCallback& callback) {
   std::lock_guard<std::mutex> lock_callbacks(callbacks_mutex_);
   auto new_end = std::remove_if(callbacks_.begin(), callbacks_.end(),
                                 [&callback](const EtwInternalCallback* ptr) {
@@ -351,7 +351,7 @@ void OVTelemetry::UnregisterInternalCallback(const EtwInternalCallback& callback
   callbacks_.erase(new_end, callbacks_.end());
 }
 
-void NTAPI OVTelemetry::ORT_TL_EtwEnableCallback(
+void NTAPI OVTracing::ORT_TL_EtwEnableCallback(
     _In_ LPCGUID SourceId, _In_ ULONG IsEnabled, _In_ UCHAR Level, _In_ ULONGLONG MatchAnyKeyword,
     _In_ ULONGLONG MatchAllKeyword, _In_opt_ PEVENT_FILTER_DESCRIPTOR FilterData, _In_opt_ PVOID CallbackContext) {
   std::lock_guard<std::mutex> lock(provider_change_mutex_);
@@ -361,7 +361,7 @@ void NTAPI OVTelemetry::ORT_TL_EtwEnableCallback(
   InvokeCallbacks(SourceId, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, FilterData, CallbackContext);
 }
 
-void OVTelemetry::InvokeCallbacks(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level, ULONGLONG MatchAnyKeyword,
+void OVTracing::InvokeCallbacks(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level, ULONGLONG MatchAnyKeyword,
                                   ULONGLONG MatchAllKeyword, PEVENT_FILTER_DESCRIPTOR FilterData, PVOID CallbackContext) {
   std::lock_guard<std::mutex> lock_callbacks(callbacks_mutex_);
   for (const auto& callback : callbacks_) {

@@ -17,7 +17,7 @@
 #include <algorithm>
 #include "core/providers/openvino/contexts.h"
 
-TRACELOGGING_DECLARE_PROVIDER(ov_telemetry_provider_handle);
+TRACELOGGING_DECLARE_PROVIDER(ov_tracing_provider_handle);
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -28,9 +28,9 @@ constexpr uint64_t OV_SESSION = 0x2;
 constexpr uint64_t OV_OPTIONS = 0x4;
 }  // namespace ov_keywords
 
-class OVTelemetry {
+class OVTracing {
  public:
-  static OVTelemetry& Instance();
+  static OVTracing& Instance();
   bool IsEnabled() const;
   unsigned char Level() const;
   UINT64 Keyword() const;
@@ -44,12 +44,12 @@ class OVTelemetry {
   static void UnregisterInternalCallback(const EtwInternalCallback& callback);
 
  private:
-  OVTelemetry();
-  ~OVTelemetry();
-  OVTelemetry(const OVTelemetry&) = delete;
-  OVTelemetry& operator=(const OVTelemetry&) = delete;
-  OVTelemetry(OVTelemetry&&) = delete;
-  OVTelemetry& operator=(OVTelemetry&&) = delete;
+  OVTracing();
+  ~OVTracing();
+  OVTracing(const OVTracing&) = delete;
+  OVTracing& operator=(const OVTracing&) = delete;
+  OVTracing(OVTracing&&) = delete;
+  OVTracing& operator=(OVTracing&&) = delete;
 
   // Helper functions for complex serialization
   std::string SerializeLoadConfig(const SessionContext& ctx) const;

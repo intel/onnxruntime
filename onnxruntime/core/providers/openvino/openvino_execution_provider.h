@@ -17,7 +17,7 @@
 #include "core/providers/openvino/contexts.h"
 
 #ifdef _WIN32
-#include "core/providers/openvino/ov_telemetry.h"
+#include "core/providers/openvino/ov_tracing.h"
 #endif
 
 namespace onnxruntime {
