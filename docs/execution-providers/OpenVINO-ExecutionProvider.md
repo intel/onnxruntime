@@ -30,7 +30,7 @@ ONNX Runtime OpenVINO™ Execution Provider is compatible with three latest rele
 
 |ONNX Runtime|OpenVINO™|Notes|
 |---|---|---| 
-|1.23.0|2025.3|[Details - Placeholder]()|
+|1.23.0|2025.3|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.8)|
 |1.22.0|2025.1|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.7)|
 |1.21.0|2025.0|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.6)|
 
@@ -131,7 +131,7 @@ Enables splitting inference among several devices automatically. If one device d
 
 Runs the same model on multiple devices in parallel to improve device utilization. MULTI automatically groups inference requests to improve throughput and performance consistency via load distribution.
 
-> **Note:**  Deprecated options `CPU_FP32`, `GPU_FP32`, `GPU_FP16`, `NPU_FP16` are no longer supported. Use `device_type` and `precision` separately.
+**Note:**   Deprecated options `CPU_FP32`, `GPU_FP32`, `GPU_FP16`, `NPU_FP16` are no longer supported. Use `device_type` and `precision` separately.
 
 ---
 
@@ -149,9 +149,9 @@ Runs the same model on multiple devices in parallel to improve device utilizatio
 
 - Maintains original model precision without conversion, ensuring maximum accuracy.
 
-> **Note 1:** `FP16` generally provides ~2x better performance on GPU/NPU with minimal accuracy loss.
+**Note 1:** `FP16` generally provides ~2x better performance on GPU/NPU with minimal accuracy loss.
 
-> **Note 2:** Can be configured via `load_config` using the `INFERENCE_PRECISION_HINT` property.
+**Note 2:** Can be configured via `load_config` using the `INFERENCE_PRECISION_HINT` property.
 
 
 ---
@@ -161,7 +161,7 @@ Runs the same model on multiple devices in parallel to improve device utilizatio
 
 - Controls the number of inference threads for CPU execution (default: `8`). OpenVINO EP provides thread-safe inference across all devices.
 
-> **Note:** Can be configured via `load_config` using the `INFERENCE_NUM_THREADS` property.
+**Note:** Can be configured via `load_config` using the `INFERENCE_NUM_THREADS` property.
 
 **Multi-Stream Execution**
 
@@ -170,7 +170,7 @@ Manages parallel inference streams for throughput optimization (default: `1` for
 - **Multiple streams:** Higher throughput for batch workloads
 - **Single stream:** Lower latency for real-time applications
 
-> **Note:** Can be configured via `load_config` using the `NUM_STREAMS` property.
+**Note:** Can be configured via `load_config` using the `NUM_STREAMS` property.
 
 ---
 
@@ -183,7 +183,7 @@ Enables model caching to significantly reduce subsequent load times. Supports CP
 - Eliminates recompilation overhead on subsequent runs
 - Particularly useful for complex models and frequent application restarts
 
-> **Note:** Can be configured via `load_config` using the `CACHE_DIR` property.
+**Note:** Can be configured via `load_config` using the `CACHE_DIR` property.
 
 ---
 
@@ -218,8 +218,6 @@ Enables model caching to significantly reduce subsequent load times. Supports CP
 **Property Precedence**: `load_config` properties override legacy provider options when both are specified.
 
 
----
-
 #### Popular OpenVINO Properties
 
 The following properties are commonly used for optimizing inference performance. For complete property definitions and all possible values, refer to the [OpenVINO properties](https://github.com/openvinotoolkit/openvino/blob/master/src/inference/include/openvino/runtime/properties.hpp) header file.
@@ -245,7 +243,11 @@ The following properties are commonly used for optimizing inference performance.
 - `"f32"`: FP32 precision - highest accuracy
 - `"bf16"`: BF16 precision - balance between f16 and f32
 
-> **Note:** CPU accepts `"f16"` hint in configuration but will upscale to FP32 during execution, as CPU only supports FP32 precision natively.
+**Important:** Use either `EXECUTION_MODE_HINT` OR `INFERENCE_PRECISION_HINT`, not both. These properties control similar behavior and should not be combined.
+
+**Note:** CPU accepts `"f16"` hint in configuration but will upscale to FP32 during execution, as CPU only supports FP32 precision natively.
+
+
 ##### Threading & Streams
 
 | Property | Valid Values | Description |
@@ -279,7 +281,8 @@ The following properties are commonly used for optimizing inference performance.
 | Property | Valid Values | Description | 
 |----------|-------------|-------------|
 | `LOG_LEVEL` | `"LOG_NONE"`, `"LOG_ERROR"`, `"LOG_WARNING"`, `"LOG_INFO"`, `"LOG_DEBUG"`, `"LOG_TRACE"` | Logging verbosity level | 
-> **Note:** `LOG_LEVEL` is not supported on GPU devices. Use with CPU or NPU for debugging purposes.
+
+**Note:** `LOG_LEVEL` is not supported on GPU devices. Use with CPU or NPU for debugging purposes.
 
 ##### AUTO Device Properties
 
