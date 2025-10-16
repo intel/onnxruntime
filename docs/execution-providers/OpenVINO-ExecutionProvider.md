@@ -66,12 +66,6 @@ $ source <openvino_install_directory>/setupvars.sh
 
 To use csharp api for openvino execution provider create a custom nuget package. Follow the instructions [here](../build/inferencing.md#build-nuget-packages) to install prerequisites for nuget creation. Once prerequisites are installed follow the instructions to [build openvino execution provider](../build/eps.md#openvino) and add an extra flag `--build_nuget` to create nuget packages. Two nuget packages will be created Microsoft.ML.OnnxRuntime.Managed and Intel.ML.OnnxRuntime.Openvino.
 
-# OpenVINO Execution Provider Configuration
-
-## Table of Contents
-- [Provider Options](#configuration-options)
-- [Provider Descriptions](#configuration-descriptions)
-- [Examples](#examples)
 
 ## Configuration Options
 
@@ -195,23 +189,146 @@ Enables model caching to significantly reduce subsequent load times. Supports CP
 
 ### `load_config`
 
-- Loads custom OpenVINO properties from JSON configuration file during runtime.
+**Recommended Configuration Method** for setting OpenVINO runtime properties. Provides direct access to OpenVINO properties through a JSON configuration file during runtime.
 
-**JSON Format:**
+#### Overview
 
+`load_config` enables fine-grained control over OpenVINO inference behavior by loading properties from a JSON file. This is the **preferred method** for configuring advanced OpenVINO features, offering:
+
+- Direct access to OpenVINO runtime properties
+- Device-specific configuration
+- Better compatibility with future OpenVINO releases
+- No property name translation required
+
+#### JSON Configuration Format
 ```json
 {
-    "DEVICE_KEY": {"PROPERTY": "PROPERTY_VALUE"}
+  "DEVICE_NAME": {
+    "PROPERTY_KEY": "value"
+  }
 }
 ```
 
-**Validation**
+**Supported Device Names:**
+- `"CPU"` - Intel CPU
+- `"GPU"` - Intel integrated/discrete GPU
+- `"NPU"` - Intel Neural Processing Unit
+- `"AUTO"` - Automatic device selection
 
-- Invalid property keys are ignored with warnings. Invalid values cause execution exceptions. Immutable properties are skipped.
+**Property Precedence**: `load_config` properties override legacy provider options when both are specified.
 
-**Common Properties:**
 
-`PERFORMANCE_HINT`, `EXECUTION_MODE_HINT`, `LOG_LEVEL`, `CACHE_DIR`, `INFERENCE_PRECISION_HINT`
+---
+
+#### Popular OpenVINO Properties
+
+The following properties are commonly used for optimizing inference performance. For complete property definitions and all possible values, refer to the [OpenVINO properties](https://github.com/openvinotoolkit/openvino/blob/master/src/inference/include/openvino/runtime/properties.hpp) header file.
+##### Performance & Execution Hints
+
+| Property | Valid Values | Description |
+|----------|-------------|-------------|
+| `PERFORMANCE_HINT` | `"LATENCY"`, `"THROUGHPUT"` | High-level performance optimization goal |
+| `EXECUTION_MODE_HINT` | `"ACCURACY"`, `"PERFORMANCE"` | Accuracy vs performance trade-off |
+| `INFERENCE_PRECISION_HINT` | `"f32"`, `"f16"`, `"bf16"` | Explicit inference precision |
+| `MODEL_PRIORITY` | `"LOW"`, `"MEDIUM"`, `"HIGH"`, `"DEFAULT"` | Model resource allocation priority |
+
+**PERFORMANCE_HINT:**
+- `"LATENCY"`: Optimizes for low latency, single-stream inference
+- `"THROUGHPUT"`: Optimizes for high throughput, multi-stream inference
+
+**EXECUTION_MODE_HINT:**
+- `"ACCURACY"`: Maintains model precision, dynamic precision selection
+- `"PERFORMANCE"`: Optimizes for speed, may use lower precision
+
+**INFERENCE_PRECISION_HINT:**
+- `"f16"`: FP16 precision - recommended for GPU/NPU performance
+- `"f32"`: FP32 precision - highest accuracy
+- `"bf16"`: BF16 precision - balance between f16 and f32
+
+> **Note:** CPU accepts `"f16"` hint in configuration but will upscale to FP32 during execution, as CPU only supports FP32 precision natively.
+##### Threading & Streams
+
+| Property | Valid Values | Description |
+|----------|-------------|-------------|
+| `NUM_STREAMS` | Positive integer (e.g., `"1"`, `"4"`, `"8"`) | Number of parallel execution streams |
+| `INFERENCE_NUM_THREADS` | Integer | Maximum number of inference threads |
+| `COMPILATION_NUM_THREADS` | Integer  | Maximum number of compilation threads | 
+
+**NUM_STREAMS:**
+- Controls parallel execution streams for throughput optimization
+- Higher values increase throughput for batch processing
+- Lower values optimize latency for real-time inference
+
+**INFERENCE_NUM_THREADS:**
+- Controls CPU thread count for inference execution
+- Explicit value: Fixed thread count (e.g., `"4"` limits to 4 threads)
+
+##### Caching Properties
+
+| Property | Valid Values | Description |
+|----------|-------------|-------------|
+| `CACHE_DIR` | File path string | Model cache directory |
+| `CACHE_MODE` | `"OPTIMIZE_SIZE"`, `"OPTIMIZE_SPEED"` | Cache optimization strategy |
+
+**CACHE_MODE:**
+- `"OPTIMIZE_SPEED"`: Faster model loading, larger cache files
+- `"OPTIMIZE_SIZE"`: Smaller cache files, slower loading
+
+##### Logging Properties
+
+| Property | Valid Values | Description | 
+|----------|-------------|-------------|
+| `LOG_LEVEL` | `"LOG_NONE"`, `"LOG_ERROR"`, `"LOG_WARNING"`, `"LOG_INFO"`, `"LOG_DEBUG"`, `"LOG_TRACE"` | Logging verbosity level | 
+> **Note:** `LOG_LEVEL` is not supported on GPU devices. Use with CPU or NPU for debugging purposes.
+
+##### AUTO Device Properties
+
+| Property | Valid Values | Description |
+|----------|-------------|-------------|
+| `ENABLE_STARTUP_FALLBACK` | `"YES"`, `"NO"` | Enable device fallback during model loading |
+| `ENABLE_RUNTIME_FALLBACK` | `"YES"`, `"NO"` | Enable device fallback during inference runtime |
+| `DEVICE_PROPERTIES` | Nested JSON string | Device-specific property configuration |
+
+**DEVICE_PROPERTIES Syntax:**
+
+Used to configure properties for individual devices when using AUTO mode.
+```json
+{
+  "AUTO": {
+    "DEVICE_PROPERTIES": "{CPU:{PROPERTY:value},GPU:{PROPERTY:value}}"
+  }
+}
+```
+
+**Syntax Rules:**
+- Entire value is a single JSON string (enclosed in quotes)
+- No spaces between properties
+- No quotes around property names/values inside the nested structure
+- Device names are uppercase (CPU, GPU, NPU)
+
+
+#### Property Reference Documentation
+
+For complete property definitions and advanced options, refer to the official OpenVINO properties header:
+
+**[OpenVINO Runtime Properties](https://github.com/openvinotoolkit/openvino/blob/master/src/inference/include/openvino/runtime/properties.hpp)**
+
+Property keys used in `load_config` JSON must match the string literal defined in the properties header file.
+
+#### Migration from Legacy Provider Options
+
+**Deprecation Notice**
+
+The following provider options are **deprecated** and should be migrated to `load_config` for better compatibility with future releases.
+
+| Deprecated Provider Option | `load_config` Equivalent | Recommended Migration |
+|---------------------------|------------------------|----------------------|
+| `precision="FP16"` | `INFERENCE_PRECISION_HINT` | `{"GPU": {"INFERENCE_PRECISION_HINT": "f16"}}` |
+| `precision="FP32"` | `INFERENCE_PRECISION_HINT` | `{"GPU": {"INFERENCE_PRECISION_HINT": "f32"}}` |
+| `precision="ACCURACY"` | `EXECUTION_MODE_HINT` | `{"GPU": {"EXECUTION_MODE_HINT": "ACCURACY"}}` |
+| `num_of_threads=8` | `INFERENCE_NUM_THREADS` | `{"CPU": {"INFERENCE_NUM_THREADS": "8"}}` |
+| `num_streams=4` | `NUM_STREAMS` | `{"GPU": {"NUM_STREAMS": "4"}}` |
+
 
 ---
   
