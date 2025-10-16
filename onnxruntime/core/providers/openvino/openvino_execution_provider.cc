@@ -286,6 +286,68 @@ common::Status OpenVINOExecutionProvider::SetEpDynamicOptions(gsl::span<const ch
           LOGS_DEFAULT(WARNING) << "kvcache_rewind index is < 0:\t" << index;
         }
       }
+    } else if (key == "kvcache_reorder") {
+    // Convert kvcache_reorder value format "1,2,3;4,5,6" into two vectors
+      // src_indices = [1,2,3], dst_indices = [4,5,6]
+      size_t delimiter_pos = value.find(';');
+      if (delimiter_pos == std::string::npos) {
+        LOGS_DEFAULT(WARNING) << "kvcache_reorder value format is incorrect, expected format is 'x1,x2,x3;y1,y2,y3' where x and y are comma-separated int64_t lists";
+        return Status::OK();
+      }
+
+      std::string src_string = value.substr(0, delimiter_pos);
+      std::string dst_string = value.substr(delimiter_pos + 1);
+
+      std::vector<size_t> src_indices;
+      std::vector<size_t> dst_indices;
+
+      try {
+        // Parse source indices from comma-separated string
+        std::stringstream src_stream(src_string);
+        std::string src_token;
+        while (std::getline(src_stream, src_token, ',')) {
+          // Trim whitespace
+          src_token.erase(0, src_token.find_first_not_of(" \t"));
+          src_token.erase(src_token.find_last_not_of(" \t") + 1);
+
+          if (!src_token.empty()) {
+            int64_t index = std::stoll(src_token);
+            if (index >= 0) {
+              src_indices.push_back(static_cast<size_t>(index));
+            } else {
+              LOGS_DEFAULT(WARNING) << "kvcache_reorder src_index is < 0: " << index;
+            }
+          }
+        }
+
+        // Parse destination indices from comma-separated string
+        std::stringstream dst_stream(dst_string);
+        std::string dst_token;
+        while (std::getline(dst_stream, dst_token, ',')) {
+          // Trim whitespace
+          dst_token.erase(0, dst_token.find_first_not_of(" \t"));
+          dst_token.erase(dst_token.find_last_not_of(" \t") + 1);
+
+          if (!dst_token.empty()) {
+            int64_t index = std::stoll(dst_token);
+            if (index >= 0) {
+              dst_indices.push_back(static_cast<size_t>(index));
+            } else {
+              LOGS_DEFAULT(WARNING) << "kvcache_reorder dst_index is < 0: " << index;
+            }
+          }
+        }
+
+      } catch (const std::exception& e) {
+        LOGS_DEFAULT(WARNING) << "Conversion for kvcache_reorder string value to int64_t indices failed. "
+                              << "Exception: " << e.what();
+        return Status::OK();
+      }
+
+      // Trigger KVCache Reorder for target Backend with vector arguments
+      for (auto& backend : backend_managers_) {
+        backend.ReorderKVCache(src_indices, dst_indices);
+      }
     } else {
       // Handle unknown options
       LOGS_DEFAULT(WARNING) << "Unknown key/value pair - ignoring " << key << "/" << value;
