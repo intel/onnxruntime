@@ -81,11 +81,8 @@ class OpenVINOExecutionProvider : public IExecutionProvider {
   EPCtxHandler ep_ctx_handle_;
 
   // Telemetry and session tracking
-  mutable uint32_t session_id_;
+  uint32_t session_id_{0};
   static std::atomic<uint32_t> global_session_counter_;
-#ifdef _WIN32
-  onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_etw_;
-#endif
 };
 
 }  // namespace openvino_ep

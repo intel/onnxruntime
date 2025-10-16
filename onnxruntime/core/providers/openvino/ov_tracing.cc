@@ -89,9 +89,9 @@ OVTracing::OVTracing() {
   }
 }
 
-OVTracing::~OVTracing() {
+OVTracing::~OVTracing() noexcept {
   // Clean up TraceLogging, only hold mutex_
-  {
+  try {
     std::lock_guard<std::mutex> lock(mutex_);
     if (global_register_count_ > 0) {
       global_register_count_ -= 1;
@@ -99,12 +99,16 @@ OVTracing::~OVTracing() {
         TraceLoggingUnregister(ov_tracing_provider_handle);
       }
     }
+  } catch (...) {
+    // Suppress exceptions in destructor
   }
 
   // Clean up callbacks, only hold callbacks_mutex_
-  {
+  try {
     std::lock_guard<std::mutex> lock_callbacks(callbacks_mutex_);
     callbacks_.clear();
+  } catch (...) {
+    // Suppress exceptions in destructor
   }
 }
 
@@ -173,10 +177,13 @@ void OVTracing::UnregisterInternalCallback(const EtwInternalCallback& callback) 
 void NTAPI OVTracing::ORT_TL_EtwEnableCallback(
     _In_ LPCGUID SourceId, _In_ ULONG IsEnabled, _In_ UCHAR Level, _In_ ULONGLONG MatchAnyKeyword,
     _In_ ULONGLONG MatchAllKeyword, _In_opt_ PEVENT_FILTER_DESCRIPTOR FilterData, _In_opt_ PVOID CallbackContext) {
-  std::lock_guard<std::mutex> lock(provider_change_mutex_);
-  enabled_ = (IsEnabled != 0);
-  level_ = Level;
-  keyword_ = MatchAnyKeyword;
+  {
+    std::lock_guard<std::mutex> lock(provider_change_mutex_);
+    enabled_ = (IsEnabled != 0);
+    level_ = Level;
+    keyword_ = MatchAnyKeyword;
+  }
+  // Release lock before invoking callbacks to prevent deadlock
   InvokeCallbacks(SourceId, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, FilterData, CallbackContext);
 }
 
