@@ -152,7 +152,7 @@ void OVTracing::LogAllRuntimeOptions(uint32_t session_id, const SessionContext& 
 
   // Segregate options based on prefix
   for (const auto& [key, value] : ctx.runtime_config.options) {
-    if (!key.empty() && !value.empty()) {
+    if (!value.empty()) {
       if (key.starts_with(provider_prefix)) {
         // Provider option
         if (!provider_first) provider_opts << ",";
