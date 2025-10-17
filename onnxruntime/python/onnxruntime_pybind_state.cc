@@ -2811,7 +2811,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 #endif
       })
       .def(
-          "set_ep_dynamic_options", [](PyInferenceSession* sess, const py::dict& options) -> void {
+          "set_ep_dynamic_options", [](PyInferenceSession* sess, const py::dict& options) {
             std::vector<const char*> keys;
             std::vector<const char*> values;
             std::vector<std::string> key_strings;
@@ -2832,16 +2832,15 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             }
 
             if (keys.empty()) {
-              throw std::runtime_error("No options were provided");
+              ORT_THROW("No options were provided");
             }
 
-            // Call the underlying C++ method
             auto status = sess->GetSessionHandle()->SetEpDynamicOptions(
                 gsl::make_span(keys.data(), keys.size()),
                 gsl::make_span(values.data(), values.size()));
 
             if (!status.IsOK()) {
-              throw std::runtime_error("Failed to set EP dynamic options: " + status.ErrorMessage());
+              ORT_THROW("Failed to set EP dynamic options for KV rewinds" + status.ErrorMessage());
             }
           },
           R"pbdoc(Set dynamic options for execution providers.
