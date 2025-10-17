@@ -386,6 +386,9 @@ def generate_build_tree(
             "-Donnxruntime_ENABLE_PIX_FOR_WEBGPU_EP=" + ("ON" if args.enable_pix_capture else "OFF"),
         ]
 
+        if 1: #args.dump_node_input_output:
+            cmake_args.append("-Donnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=ON")
+
         if args.caller_framework:
             cmake_args.append("-Donnxruntime_CALLER_FRAMEWORK=" + args.caller_framework)
         if args.winml_root_namespace_override:
