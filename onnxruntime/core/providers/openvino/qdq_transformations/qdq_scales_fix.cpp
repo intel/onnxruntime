@@ -463,11 +463,32 @@ struct CustomGraph {
       }
 
       if (!is_prev_input) {
-        for (const auto& edge : output_edges) {
+        if (prev.node_ptr->OutputDefs()[0]->Type() != dq_node_ref.OutputDefs()[0]->Type()) {
+          NodeArg& output = original_graph.GetOrCreateNodeArg(prev.node_name + "_cast_0", dq_node_ref.OutputDefs()[0]->TypeAsProto());
+          std::string cast_node_name = prev.node_ptr->OutputDefs()[0]->Name() + "_cast";
+          InlinedVector<NodeArg*> input_args = {(NodeArg*)(prev.node_ptr->OutputDefs()[0])};
+          InlinedVector<NodeArg*> output_args = {&output};
+          Node& cast_node = original_graph.AddNode(cast_node_name, "Cast", "", input_args, output_args, nullptr, "");
+          auto type_dummy = dq_node_ref.OutputDefs()[0]->Type();
+          auto type_final = type_dummy->find("tensor(float)") != std::string::npos ? onnx::TensorProto_DataType_FLOAT : onnx::TensorProto_DataType_FLOAT16;
+          cast_node.AddAttribute("to", int64_t(type_final));
           original_graph.AddEdge(prev.node_ptr->Index(),
-                                 std::get<0>(edge),
+                                 cast_node.Index(),
                                  prev_output_index,
-                                 std::get<2>(edge));
+                                 0);
+          for (const auto& edge : output_edges) {
+            original_graph.AddEdge(cast_node.Index(),
+                                   std::get<0>(edge),
+                                   0,
+                                   std::get<2>(edge));
+          }
+        } else {
+          for (const auto& edge : output_edges) {
+            original_graph.AddEdge(prev.node_ptr->Index(),
+                                   std::get<0>(edge),
+                                   prev_output_index,
+                                   std::get<2>(edge));
+          }
         }
       }
     }
