@@ -459,7 +459,7 @@ void CreateOVTensors(const std::string& device_name,
       void* mmapped_offset = static_cast<void*>(mmaped_weights + value.data_offset);
       tensor = ov::Tensor(ov_elementType, value.dimensions, mmapped_offset);
     } else {
-      ORT_ENFORCE(opt_remote_ctx, "Unexpected: Don't have remote context and memory mapped weights is null!");
+      ORT_ENFORCE(opt_remote_ctx, "Expected either memory-mapped weights or a valid remote context, but neither is available for device: ", device_name);
       // Can't mmap the file to device tensor, create a host tensor and copy the data
       tensor = opt_remote_ctx->create_host_tensor(ov_elementType, value.dimensions);
       ORT_ENFORCE(tensor.get_byte_size() == value.size, "Remote tensor size mismatch");
