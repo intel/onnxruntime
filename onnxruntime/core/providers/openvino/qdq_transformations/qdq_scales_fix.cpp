@@ -468,10 +468,33 @@ struct CustomGraph {
           std::string cast_node_name = prev.node_ptr->OutputDefs()[0]->Name() + "_cast";
           InlinedVector<NodeArg*> input_args = {(NodeArg*)(prev.node_ptr->OutputDefs()[0])};
           InlinedVector<NodeArg*> output_args = {&output};
+          std::unordered_map<std::string, int> type_str_to_tensor_data_type_;
+          type_str_to_tensor_data_type_["tensor(float)"] = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+          type_str_to_tensor_data_type_["tensor(float16)"] = ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+          type_str_to_tensor_data_type_["tensor(bfloat16)"] = ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
+          type_str_to_tensor_data_type_["tensor(double)"] = ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
+          type_str_to_tensor_data_type_["tensor(int8)"] = ONNX_NAMESPACE::TensorProto_DataType_INT8;
+          type_str_to_tensor_data_type_["tensor(int16)"] = ONNX_NAMESPACE::TensorProto_DataType_INT16;
+          type_str_to_tensor_data_type_["tensor(int32)"] = ONNX_NAMESPACE::TensorProto_DataType_INT32;
+          type_str_to_tensor_data_type_["tensor(int64)"] = ONNX_NAMESPACE::TensorProto_DataType_INT64;
+          type_str_to_tensor_data_type_["tensor(uint8)"] = ONNX_NAMESPACE::TensorProto_DataType_UINT8;
+          type_str_to_tensor_data_type_["tensor(uint16)"] = ONNX_NAMESPACE::TensorProto_DataType_UINT16;
+          type_str_to_tensor_data_type_["tensor(uint32)"] = ONNX_NAMESPACE::TensorProto_DataType_UINT32;
+          type_str_to_tensor_data_type_["tensor(uint64)"] = ONNX_NAMESPACE::TensorProto_DataType_UINT64;
+          type_str_to_tensor_data_type_["tensor(complex64)"] = ONNX_NAMESPACE::TensorProto_DataType_COMPLEX64;
+          type_str_to_tensor_data_type_["tensor(complex128)"] = ONNX_NAMESPACE::TensorProto_DataType_COMPLEX128;
+          type_str_to_tensor_data_type_["tensor(string)"] = ONNX_NAMESPACE::TensorProto_DataType_STRING;
+          type_str_to_tensor_data_type_["tensor(bool)"] = ONNX_NAMESPACE::TensorProto_DataType_BOOL;
+          type_str_to_tensor_data_type_["tensor(float8e4m3fn)"] = ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN;
+          type_str_to_tensor_data_type_["tensor(float8e4m3fnuz)"] = ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FNUZ;
+          type_str_to_tensor_data_type_["tensor(float8e5m2)"] = ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2;
+          type_str_to_tensor_data_type_["tensor(float8e5m2fnuz)"] = ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2FNUZ;
+          type_str_to_tensor_data_type_["tensor(uint4)"] = ONNX_NAMESPACE::TensorProto_DataType_UINT4;
+          type_str_to_tensor_data_type_["tensor(int4)"] = ONNX_NAMESPACE::TensorProto_DataType_INT4;
+          type_str_to_tensor_data_type_["tensor(float4e2m1)"] = ONNX_NAMESPACE::TensorProto_DataType_FLOAT4E2M1;
           Node& cast_node = original_graph.AddNode(cast_node_name, "Cast", "", input_args, output_args, nullptr, "");
-          auto type_dummy = dq_node_ref.OutputDefs()[0]->Type();
-          auto type_final = type_dummy->find("tensor(float)") != std::string::npos ? onnx::TensorProto_DataType_FLOAT : onnx::TensorProto_DataType_FLOAT16;
-          cast_node.AddAttribute("to", int64_t(type_final));
+          auto type_cast = type_str_to_tensor_data_type_[*dq_node_ref.OutputDefs()[0]->Type()];
+          cast_node.AddAttribute("to", static_cast<int64_t>(type_cast));
           original_graph.AddEdge(prev.node_ptr->Index(),
                                  cast_node.Index(),
                                  prev_output_index,
