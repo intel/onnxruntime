@@ -24,7 +24,7 @@ SharedContext::SharedWeights::WeightsFile::WeightsFile(std::filesystem::path fil
   try {
     file_.exceptions(std::ifstream::failbit | std::ifstream::badbit);
     weights_size_ = std::filesystem::file_size(filename);
-  } catch (std::exception& e) {
+  } catch (const std::exception& e) {
     ORT_THROW("Error: Failed to open weight file at ", filename.string(), " ", e.what());
   }
 }
