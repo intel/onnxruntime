@@ -81,10 +81,21 @@ Runtime parameters set during OpenVINO Execution Provider initialization to cont
 | [**cache_dir**](#cache_dir) | string | Valid filesystem path | string | Enable openvino model caching for improved latency  |
 | [**load_config**](#load_config) | string | JSON file path | string | Load and set custom/HW specific OpenVINO properties from JSON |
 | [**enable_qdq_optimizer**](#enable_qdq_optimizer) | string | True/False | boolean | Enable QDQ optimization for NPU |
-| [**disable_dynamic_shapes**](#disable_dynamic_shapes--reshape_input) | string | True/False | boolean | Convert dynamic models to static shapes |
-| [**model_priority**](#model_priority) | string | LOW, MEDIUM, HIGH, DEFAULT | string | Configure model resource allocation priority |
-| [**reshape_input**](#disable_dynamic_shapes--reshape_input) | string | input_name[shape_bounds] | string | Specify upper and lower bound for dynamic shaped inputs for improved performance with NPU |
+| [**disable_dynamic_shapes**](#disable_dynamic_shapes) | string | True/False | boolean | Convert dynamic models to static shapes |
+| [**reshape_input**](#reshape_input) | string | input_name[shape_bounds] | string | Specify upper and lower bound for dynamic shaped inputs for improved performance with NPU |
 | [**layout**](#layout) | string | input_name[layout_format] | string | Specify input/output tensor layout format |
+
+**Deprecation Notice**
+
+The following provider options are **deprecated** and should be migrated to `load_config` for better compatibility with future releases.
+
+| Deprecated Provider Option | `load_config` Equivalent | Recommended Migration |
+|---------------------------|------------------------|----------------------|
+| `precision="FP16"` | `INFERENCE_PRECISION_HINT` | `{"GPU": {"INFERENCE_PRECISION_HINT": "f16"}}` |
+| `precision="FP32"` | `INFERENCE_PRECISION_HINT` | `{"GPU": {"INFERENCE_PRECISION_HINT": "f32"}}` |
+| `precision="ACCURACY"` | `EXECUTION_MODE_HINT` | `{"GPU": {"EXECUTION_MODE_HINT": "ACCURACY"}}` |
+| `num_of_threads=8` | `INFERENCE_NUM_THREADS` | `{"CPU": {"INFERENCE_NUM_THREADS": "8"}}` |
+| `num_streams=4` | `NUM_STREAMS` | `{"GPU": {"NUM_STREAMS": "4"}}` |
 
 Refer to [Examples](#examples) for usage.
 
@@ -136,7 +147,7 @@ Runs the same model on multiple devices in parallel to improve device utilizatio
 ---
 
 ### `precision`
-
+**DEPRECATED:** This option is deprecated and can be set via `load_config` using the `INFERENCE_PRECISION_HINT` property.
 - Controls numerical precision during inference, balancing **performance** and **accuracy**.
 
 **Precision Support on Devices:**
@@ -151,17 +162,16 @@ Runs the same model on multiple devices in parallel to improve device utilizatio
 
 **Note 1:** `FP16` generally provides ~2x better performance on GPU/NPU with minimal accuracy loss.
 
-**Note 2:** Can be configured via `load_config` using the `INFERENCE_PRECISION_HINT` property.
 
 
 ---
 ### `num_of_threads` & `num_streams`
 
+**DEPRECATED:** These options are deprecated and can be set via `load_config` using the `INFERENCE_NUM_THREADS` and `NUM_STREAMS` properties respectively.
+
 **Multi-Threading**
 
 - Controls the number of inference threads for CPU execution (default: `8`). OpenVINO EP provides thread-safe inference across all devices.
-
-**Note:** Can be configured via `load_config` using the `INFERENCE_NUM_THREADS` property.
 
 **Multi-Stream Execution**
 
@@ -170,11 +180,12 @@ Manages parallel inference streams for throughput optimization (default: `1` for
 - **Multiple streams:** Higher throughput for batch workloads
 - **Single stream:** Lower latency for real-time applications
 
-**Note:** Can be configured via `load_config` using the `NUM_STREAMS` property.
 
 ---
 
 ### `cache_dir`
+
+**DEPRECATED:** This option is deprecated and can be set via `load_config` using the `CACHE_DIR` property.
 
 Enables model caching to significantly reduce subsequent load times. Supports CPU, NPU, and GPU devices with kernel caching on iGPU/dGPU.
 
@@ -183,7 +194,6 @@ Enables model caching to significantly reduce subsequent load times. Supports CP
 - Eliminates recompilation overhead on subsequent runs
 - Particularly useful for complex models and frequent application restarts
 
-**Note:** Can be configured via `load_config` using the `CACHE_DIR` property.
 
 ---
 
@@ -226,7 +236,7 @@ The following properties are commonly used for optimizing inference performance.
 | `PERFORMANCE_HINT` | `"LATENCY"`, `"THROUGHPUT"` | High-level performance optimization goal |
 | `EXECUTION_MODE_HINT` | `"ACCURACY"`, `"PERFORMANCE"` | Accuracy vs performance trade-off |
 | `INFERENCE_PRECISION_HINT` | `"f32"`, `"f16"`, `"bf16"` | Explicit inference precision |
-| `MODEL_PRIORITY` | `"LOW"`, `"MEDIUM"`, `"HIGH"`, `"DEFAULT"` | Model resource allocation priority |
+
 
 **PERFORMANCE_HINT:**
 - `"LATENCY"`: Optimizes for low latency
@@ -308,25 +318,16 @@ For complete property definitions and advanced options, refer to the official Op
 
 Property keys used in `load_config` JSON must match the string literal defined in the properties header file.
 
-#### Migration from Legacy Provider Options
 
-**Deprecation Notice**
 
-The following provider options are **deprecated** and should be migrated to `load_config` for better compatibility with future releases.
-
-| Deprecated Provider Option | `load_config` Equivalent | Recommended Migration |
-|---------------------------|------------------------|----------------------|
-| `precision="FP16"` | `INFERENCE_PRECISION_HINT` | `{"GPU": {"INFERENCE_PRECISION_HINT": "f16"}}` |
-| `precision="FP32"` | `INFERENCE_PRECISION_HINT` | `{"GPU": {"INFERENCE_PRECISION_HINT": "f32"}}` |
-| `precision="ACCURACY"` | `EXECUTION_MODE_HINT` | `{"GPU": {"EXECUTION_MODE_HINT": "ACCURACY"}}` |
-| `num_of_threads=8` | `INFERENCE_NUM_THREADS` | `{"CPU": {"INFERENCE_NUM_THREADS": "8"}}` |
-| `num_streams=4` | `NUM_STREAMS` | `{"GPU": {"NUM_STREAMS": "4"}}` |
 
 
 ---
   
 
 ### `enable_qdq_optimizer`
+
+**DEPRECATED:** This option is deprecated and can be set via `load_config`.
 
 NPU-specific optimization for Quantize-Dequantize (QDQ) operations in the inference graph. This optimizer enhances ORT quantized models by:
 
@@ -336,12 +337,14 @@ NPU-specific optimization for Quantize-Dequantize (QDQ) operations in the infere
 
 ---
 
-### `disable_dynamic_shapes` & `reshape_input`
+### `disable_dynamic_shapes` 
 
 **Dynamic Shape Management**
 
 - Handles models with variable input dimensions. 
 - Provides the option to convert dynamic shapes to static shapes when beneficial for performance optimization.
+
+### `reshape_input`
 
 **NPU Shape Bounds Configuration**
 
@@ -357,6 +360,8 @@ This configuration is required for optimal NPU memory allocation and management.
 
 ### `model_priority`
 
+**DEPRECATED:** This option is deprecated and can be set via `load_config` using the `MODEL_PRIORITY` property.
+
 Configures resource allocation priority for multi-model deployment scenarios.
 
 **Priority Levels:**
@@ -368,7 +373,6 @@ Configures resource allocation priority for multi-model deployment scenarios.
 | **LOW** | Minimal allocation, yields resources to higher priority models |
 | **DEFAULT** | System-determined priority based on workload |
 
-**Note:** Can be configured via `load_config` using the `MODEL_PRIORITY` property.
 
 ---
 
@@ -399,62 +403,83 @@ Configures resource allocation priority for multi-model deployment scenarios.
 
 ## Examples
 
-### Example 1
+### Python
 
+#### Basic Usage
 ```python
 import onnxruntime as ort
 
-# Multi-device with caching and threading optimization
-session = ort.InferenceSession(
-    "model.onnx",
-    providers=['OpenVINOExecutionProvider'],
-    provider_options=[{
-        'device_type': 'AUTO:GPU,NPU,CPU',
-        'precision': 'FP16',
-        'num_of_threads': '8',
-        'num_streams': '4',
-        'cache_dir': './ov_cache'
-    }]
-)
-
-# Command line equivalent
-# onnxruntime_perf_test.exe -e openvino -i "device_type|AUTO:GPU,NPU,CPU precision|FP16 num_of_threads|8 num_streams|4 cache_dir|./ov_cache" model.onnx
+# Create session with OpenVINO EP
+session = ort.InferenceSession("model.onnx", providers=["OpenVINOExecutionProvider"])
 ```
 
-### Example 2
-
-```python 
+#### Using load_config with JSON file
+```python
 import onnxruntime as ort
+import json
 
-# NPU-optimized with custom config and shape management
-session = ort.InferenceSession(
-    "model.onnx",
-    providers=['OpenVINOExecutionProvider'],
-    provider_options=[{
-        'device_type': 'HETERO:NPU,CPU',
-        'load_config': 'custom_config.json',
-        'enable_qdq_optimizer': 'True',
-        'disable_dynamic_shapes': 'True',
-        'model_priority': 'HIGH',
-        'reshape_input': 'data[1,3,224,224..448]',
-        'layout': 'data[NCHW],output[NC]'
-    }]
-)
-
-# Example custom_config.json
-{
-    "NPU": {
-        "LOG_LEVEL": "LOG_DEBUG",
-        "PERFORMANCE_HINT": "THROUGHPUT"
-    },
-    "CPU": {
-        "EXECUTION_MODE_HINT": "ACCURACY"
+# Create config file
+config = {
+    "AUTO": {
+        "PERFORMANCE_HINT": "THROUGHPUT",
+        "PERF_COUNT": "NO",
+        "DEVICE_PROPERTIES": "{CPU:{INFERENCE_PRECISION_HINT:f32,NUM_STREAMS:3},GPU:{INFERENCE_PRECISION_HINT:f32,NUM_STREAMS:5}}"
     }
 }
 
-# Command line equivalent
-# onnxruntime_perf_test.exe -e openvino -i "device_type|HETERO:NPU,CPU load_config|custom_config.json enable_qdq_optimizer|True disable_dynamic_shapes|True model_priority|HIGH reshape_input|data[1,3,224,224..448] layout|data[NCHW],output[NC]" model.onnx
+with open("ov_config.json", "w") as f:
+    json.dump(config, f)
+
+# Use config with session
+options = {"device_type": "AUTO", "load_config": "ov_config.json"}
+session = ort.InferenceSession("model.onnx", 
+                                providers=[("OpenVINOExecutionProvider", options)])
 ```
+
+#### Using load_config for CPU
+```python
+import onnxruntime as ort
+import json
+
+# Create CPU config
+config = {
+    "CPU": {
+        "INFERENCE_PRECISION_HINT": "f32",
+        "NUM_STREAMS": "3",
+        "INFERENCE_NUM_THREADS": "8"
+    }
+}
+
+with open("cpu_config.json", "w") as f:
+    json.dump(config, f)
+
+options = {"device_type": "CPU", "load_config": "cpu_config.json"}
+session = ort.InferenceSession("model.onnx", 
+                                providers=[("OpenVINOExecutionProvider", options)])
+```
+
+#### Using load_config for GPU
+```python
+import onnxruntime as ort
+import json
+
+# Create GPU config with caching
+config = {
+    "GPU": {
+        "INFERENCE_PRECISION_HINT": "f16",
+        "CACHE_DIR": "./model_cache",
+        "PERFORMANCE_HINT": "LATENCY"
+    }
+}
+
+with open("gpu_config.json", "w") as f:
+    json.dump(config, f)
+
+options = {"device_type": "GPU", "load_config": "gpu_config.json"}
+session = ort.InferenceSession("model.onnx", 
+                                providers=[("OpenVINOExecutionProvider", options)])
+```
+
 
 --- 
 ### Python API
@@ -489,7 +514,7 @@ The session configuration options are passed to SessionOptionsAppendExecutionPro
 
 ```
 OrtOpenVINOProviderOptions options;
-options.device_type = "GPU_FP32";
+options.device_type = "GPU";
 options.num_of_threads = 8;
 options.cache_dir = "";
 options.context = 0x123456ff;
@@ -795,10 +820,6 @@ In order to showcase what you can do with the OpenVINO™ Execution Provider for
 ### Overview of OpenVINO Execution Provider for ONNX Runtime
 
 [OpenVINO Execution Provider](https://www.intel.com/content/www/us/en/artificial-intelligence/posts/faster-inferencing-with-one-line-of-code.html) - Learn about faster inferencing with one line of code
-
-### Docker Containers
-
-[Tutorial: Using OpenVINO™ Execution Provider for ONNX Runtime Docker Containers](https://www.intel.com/content/www/us/en/artificial-intelligence/posts/openvino-execution-provider-docker-container.html)
 
 ### Python Pip Wheel Packages
 
