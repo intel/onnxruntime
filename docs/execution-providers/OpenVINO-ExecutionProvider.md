@@ -344,6 +344,8 @@ NPU-specific optimization for Quantize-Dequantize (QDQ) operations in the infere
 - Handles models with variable input dimensions. 
 - Provides the option to convert dynamic shapes to static shapes when beneficial for performance optimization.
 
+---
+
 ### `reshape_input`
 
 **NPU Shape Bounds Configuration**
@@ -404,14 +406,6 @@ Configures resource allocation priority for multi-model deployment scenarios.
 ## Examples
 
 ### Python
-
-#### Basic Usage
-```python
-import onnxruntime as ort
-
-# Create session with OpenVINO EP
-session = ort.InferenceSession("model.onnx", providers=["OpenVINOExecutionProvider"])
-```
 
 #### Using load_config with JSON file
 ```python
@@ -514,7 +508,6 @@ The session configuration options are passed to SessionOptionsAppendExecutionPro
 
 ```
 OrtOpenVINOProviderOptions options;
-options.device_type = "GPU";
 options.num_of_threads = 8;
 options.cache_dir = "";
 options.context = 0x123456ff;
