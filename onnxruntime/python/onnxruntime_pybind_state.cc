@@ -2840,7 +2840,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                 gsl::make_span(values.data(), values.size()));
 
             if (!status.IsOK()) {
-              ORT_THROW("Failed to set EP dynamic options for KV rewinds" + status.ErrorMessage());
+              ORT_THROW("Failed to set EP dynamic options: " + status.ErrorMessage());
             }
           },
           R"pbdoc(Set dynamic options for execution providers.
