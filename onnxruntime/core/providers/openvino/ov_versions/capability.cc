@@ -127,9 +127,6 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
       }
     }
 
-    // Initializers need to be part of meta_def->inputs
-    Iterable2String(inputs, ng_required_initializers);
-
     // Fill outputs with names
     Iterable2String(outputs, graph_viewer_.GetOutputs());
 
@@ -184,6 +181,9 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
           bool append_node = false;
           while (j < total_clusters && !append_node) {
             j = j + 1;
+            if (j >= total_clusters) {
+              break;
+            }
             append_node = AddTrivialClusterToNextClusterIfConnected(graph_viewer_, index, connected_clusters[j]);
           }
           if (append_node) {
