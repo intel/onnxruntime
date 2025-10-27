@@ -30,20 +30,39 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
                            SharedContext& shared_context,
                            ptr_stream_t& model_stream)
     : session_context_{session_context}, subgraph_context_{subgraph_context}, shared_context_{shared_context} {
+
+  LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: BasicBackend constructor ENTRY POINT";
+  LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: Device type: " << session_context.device_type;
+  LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: Subgraph name: " << subgraph_context.subgraph_name;
+
   std::string& hw_target = session_context_.device_type;
   bool enable_causallm = session_context_.enable_causallm;
 
-  if (ValidateSubgraph(const_outputs_map_))
+  LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: hw_target = " << hw_target;
+  LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: enable_causallm = " << enable_causallm;
+  LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: Calling ValidateSubgraph";
+
+  if (ValidateSubgraph(const_outputs_map_)) {
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: ValidateSubgraph returned true, early return";
     return;
+  }
+
+  LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: ValidateSubgraph returned false, continuing";
+  LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: Creating device_config";
 
   ov::AnyMap device_config;
+
+  LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: Calling SetOVDeviceConfiguration";
   SetOVDeviceConfiguration(device_config);
+  LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: SetOVDeviceConfiguration completed";
+
+  LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: is_ep_ctx_graph = " << subgraph_context_.is_ep_ctx_graph;
+
   if (subgraph_context_.is_ep_ctx_graph) {
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: Entering EP context graph path";
     try {
       if (subgraph_context_.is_ep_ctx_ovir_encapsulated) {
-        // model_file_path will use so_context_file_path if the onnx_model_path_name is not available,
-        // especially in case of CreateSessionFormArray() where user must explicitly
-        // specify absolute path for so_context_file_path.
+        LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: EP context OVIR encapsulated path";
         auto model_file_path = [this]() -> const std::filesystem::path& {
           if (!session_context_.onnx_model_path_name.empty() &&
               std::filesystem::exists(session_context_.onnx_model_path_name)) return session_context_.onnx_model_path_name;
@@ -54,45 +73,63 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
                       log_tag +
                           "Context file path must be non-empty & absolute, when using CreateSessionFormArray() API explicitly."
                           " Please set a valid absolute path for ep.context_file_path in session options.");
-          // Return absolute context file path as input to ImportEPCtxOVIREncapsulation() function.
           return session_context_.so_context_file_path;
         };
-        // If the EPContext node with OVIR Encapsulation, then create
-        // an executable network from EP_CACHE_CONTEXT using read_model() & compile_model()
+
+        LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: Calling ImportEPCtxOVIREncapsulation";
         exe_network_ = OVCore::Get()->ImportEPCtxOVIREncapsulation(*model_stream->stream_,
                                                                    hw_target,
                                                                    device_config,
                                                                    enable_causallm,
                                                                    model_file_path());
+        LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: ImportEPCtxOVIREncapsulation completed";
       } else {
-        // If the blob is held in an EPContext node, then skip FE+Compile
-        // and directly move on to creating a backend with the executable blob
+        LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: EP context blob import path";
+        LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: Calling ImportModel";
         exe_network_ = OVCore::Get()->ImportModel(*model_stream,
                                                   hw_target,
                                                   device_config,
                                                   subgraph_context_.subgraph_name);
+        LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: ImportModel completed";
       }
+      LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: Resetting model_stream";
       model_stream.reset();
+      LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: model_stream reset complete";
     } catch (const char* msg) {
+      LOGS_DEFAULT(ERROR) << "[OpenVINO-EP] DEBUG: Caught const char* exception: " << msg;
       ORT_THROW(msg);
-    }  // Delete stream after it is no longer needed
+    } catch (const std::exception& ex) {
+      LOGS_DEFAULT(ERROR) << "[OpenVINO-EP] DEBUG: Caught std::exception: " << ex.what();
+      throw;
+    } catch (...) {
+      LOGS_DEFAULT(ERROR) << "[OpenVINO-EP] DEBUG: Caught unknown exception in EP context path";
+      throw;
+    }
   } else {
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: Entering regular model compilation path";
+
     std::shared_ptr<const onnxruntime::openvino_ep::OVNetwork> ov_model;
+
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: Serializing model_proto";
     std::string model = model_proto->SerializeAsString();
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: Model serialized, size: " << model.size() << " bytes";
+
     if (!subgraph_context.has_dynamic_input_shape) {
+      LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: Resetting model_proto (static shape)";
       model_proto.reset();
     }
+
     bool eligible_for_cpu_fallback = session_context_.device_type.find("NPU") != std::string::npos &&
                                      !session_context_.so_disable_cpu_ep_fallback &&
                                      !subgraph_context_.is_ep_ctx_graph;
 #if defined(OPENVINO_DISABLE_NPU_FALLBACK)
     eligible_for_cpu_fallback = false;
 #endif
-    auto auto_unified_compile = (hw_target.find("AUTO") == std::string::npos);
 
-    // Unified compile is efficient with cahce_dir cached model loading that bypass Read Model
-    // Does not support model with exteral weights, dynamic input shape, Epctx onnx cached model,
-    // reshape, enable_causallm, and for NPU CPU fallback
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: eligible_for_cpu_fallback = " << eligible_for_cpu_fallback;
+
+    auto auto_unified_compile = (hw_target.find("AUTO") == std::string::npos);
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: auto_unified_compile = " << auto_unified_compile;
 
     auto is_unified_compile = (!session_context_.has_external_weights &&
                                !subgraph_context_.has_dynamic_input_shape &&
@@ -102,44 +139,85 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
                                !enable_causallm &&
                                !eligible_for_cpu_fallback &&
                                auto_unified_compile);
+
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: is_unified_compile = " << is_unified_compile;
+
     try {
       if (is_unified_compile) {
+        LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: Using unified compile path";
+        LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: Calling OVCore::Get()->CompileModel (unified)";
+
         exe_network_ = OVCore::Get()->CompileModel(model,
                                                    hw_target,
                                                    device_config,
                                                    subgraph_context_.subgraph_name);
-      } else {  // For all other types use ov::ov_core read_model() to generate OV IR
-                // followed by ov::ov_core compile_model()
+
+        LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: OVCore::CompileModel (unified) completed";
+      } else {
+        LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: Using standard compile path (read + compile)";
+        LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: Calling CreateOVModel";
+
         ov_model = CreateOVModel(std::move(model), session_context_, const_outputs_map_);
+
+        LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: CreateOVModel completed";
+        LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: Calling OVCore::Get()->CompileModel (standard)";
+
         exe_network_ = OVCore::Get()->CompileModel(
             ov_model, hw_target, device_config, enable_causallm, subgraph_context_.subgraph_name);
+
+        LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: OVCore::CompileModel (standard) completed";
       }
+
       LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
+
     } catch (const OnnxRuntimeException& ex) {
+      LOGS_DEFAULT(ERROR) << "[OpenVINO-EP] DEBUG: Caught OnnxRuntimeException during model compilation: " << ex.what();
       std::string exception_str = ex.what();
 
       if (eligible_for_cpu_fallback) {
         LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU."
                               << "Falling back to OV CPU for execution";
+        LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: Attempting CPU fallback";
+
         session_context_.device_type = "CPU";
         session_context_.precision = "FP32";
         device_config.clear();
         SetOVDeviceConfiguration(device_config);
+
         try {
+          LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: Calling OVCore::CompileModel for CPU fallback";
           exe_network_ = OVCore::Get()->CompileModel(
               ov_model, hw_target, device_config, enable_causallm, subgraph_context_.subgraph_name);
+          LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: CPU fallback compilation successful";
         } catch (std::string const& msg) {
+          LOGS_DEFAULT(ERROR) << "[OpenVINO-EP] DEBUG: CPU fallback also failed: " << msg;
           ORT_THROW(msg);
         }
       } else {
+        LOGS_DEFAULT(ERROR) << "[OpenVINO-EP] DEBUG: Not eligible for CPU fallback, rethrowing";
         ORT_THROW(ex.what());
       }
+    } catch (const std::exception& ex) {
+      LOGS_DEFAULT(ERROR) << "[OpenVINO-EP] DEBUG: Caught std::exception during model compilation: " << ex.what();
+      throw;
+    } catch (...) {
+      LOGS_DEFAULT(ERROR) << "[OpenVINO-EP] DEBUG: Caught unknown exception during model compilation";
+      throw;
     }
   }
+
+  LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: Model compilation phase completed, creating inference request pool";
+
   int num_infer_req = (session_context_.num_of_threads > 0) ? session_context_.num_of_threads : 1;
+  LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: num_infer_req = " << num_infer_req;
+
+  LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: Creating initializer function";
   std::function<void(OVInferRequestPtr)> initializer = [](OVInferRequestPtr) {};
+
   auto metadata = shared_context_.shared_weights.metadata;
+
   if (session_context_.so_share_ep_contexts) {
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: Shared EP contexts enabled, using custom initializer";
     initializer = [&metadata](OVInferRequestPtr ir_ptr) {
       const auto input_count = ir_ptr->GetNumInputs();
       for (auto i = 0u; i < input_count; i++) {
@@ -152,8 +230,16 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
       }
     };
   }
+
+  LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: Creating InferRequestPool";
   infer_req_pool_ = std::make_unique<InferRequestPool>(exe_network_, num_infer_req, std::move(initializer));
+  LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: InferRequestPool created successfully";
+
+  LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: Creating OnnxToOvNetworkBindings";
   bindings_ = std::make_unique<OnnxToOvNetworkBindings>(exe_network_, subgraph_context_, session_context_);
+  LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: OnnxToOvNetworkBindings created successfully";
+
+  LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: BasicBackend constructor EXIT POINT - SUCCESS";
 }
 
 bool BasicBackend::ValidateSubgraph(std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map) {

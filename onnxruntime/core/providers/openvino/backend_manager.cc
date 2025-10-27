@@ -155,27 +155,41 @@ BackendManager::BackendManager(SessionContext& session_context,
                        << "Initializing backend for graph "
                        << subgraph_context_.subgraph_name;
 
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: Setting has_dynamic_input_shape to false";
     subgraph_context_.has_dynamic_input_shape = false;
+
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: About to enter try block for BackendFactory::MakeBackend";
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: Device type: " << session_context_.device_type;
 
     // OV NPU plugin is supported with fallback to OV CPU upon compilation failures.
     try {
+      LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: Calling BackendFactory::MakeBackend - BEFORE";
+
       concrete_backend_ = BackendFactory::MakeBackend(model_proto,
                                                       session_context_,
                                                       subgraph_context_,
                                                       shared_context_,
                                                       model_stream);
+
+      LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: Calling BackendFactory::MakeBackend - AFTER SUCCESS";
+
     } catch (const OnnxRuntimeException& ex) {
+      LOGS_DEFAULT(ERROR) << "[OpenVINO-EP] DEBUG: Caught OnnxRuntimeException: " << ex.what();
+
       std::string exception_str = ex.what();
 
       if (session_context_.device_type.find("NPU") != std::string::npos &&
           exception_str.find("intel_npu") != std::string::npos) {
+        LOGS_DEFAULT(ERROR) << "[OpenVINO-EP] DEBUG: NPU error handling path";
         // Handle NPU device related errors
 #ifndef NDEBUG
+        LOGS_DEFAULT(ERROR) << "[OpenVINO-EP] DEBUG: Using NDEBUG path (debug build)";
         std::string suffix = session_context_.so_disable_cpu_ep_fallback ?
           "\nModel failed to compile on NPU. Enable CPU fallback or try another device.\n" :
           "\nModel needs to be recompiled\n";
         ORT_THROW(exception_str + suffix);
 #else
+        LOGS_DEFAULT(ERROR) << "[OpenVINO-EP] DEBUG: Using release build path";
         std::string error_message = "UNKNOWN NPU ERROR";
         std::string error_code = "code 0x0";
         std::regex error_message_pattern(R"(\bZE_\w*\b)");
@@ -193,9 +207,18 @@ BackendManager::BackendManager(SessionContext& session_context,
         throw std::runtime_error(error_message + ", " + error_code + suffix);
 #endif
       } else {
+        LOGS_DEFAULT(ERROR) << "[OpenVINO-EP] DEBUG: Non-NPU error path, rethrowing";
         ORT_THROW(exception_str);
       }
+    } catch (const std::exception& ex) {
+      LOGS_DEFAULT(ERROR) << "[OpenVINO-EP] DEBUG: Caught std::exception: " << ex.what();
+      throw;
+    } catch (...) {
+      LOGS_DEFAULT(ERROR) << "[OpenVINO-EP] DEBUG: Caught unknown exception type";
+      throw;
     }
+
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DEBUG: Successfully exited try-catch block";
   }
   if (session_context_.so_context_enable &&
       (subgraph_context_.is_ep_ctx_ovir_encapsulated || !subgraph_context_.is_ep_ctx_graph)) {
