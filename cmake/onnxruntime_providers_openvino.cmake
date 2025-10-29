@@ -22,9 +22,12 @@
   endif()
 
   # If building RelWithDebInfo and OV package does not have that configuration map to Release
-  get_target_property(ov_rt_implib_rwdi openvino::runtime IMPORTED_IMPLIB_RELWITHDEBINFO)
-  if ((CMAKE_BUILD_TYPE STREQUAL RelWithDebInfo) AND NOT ov_rt_implib_rwdi)
+  get_target_property(ov_rt_imploc_rwdi openvino::runtime IMPORTED_LOCATION_RELWITHDEBINFO)
+  if ((CMAKE_BUILD_TYPE STREQUAL RelWithDebInfo) AND NOT ov_rt_imploc_rwdi)
     set_target_properties(openvino::runtime PROPERTIES
+      MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release
+    )
+    set_target_properties(openvino::frontend::onnx PROPERTIES
       MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release
     )
   endif()
