@@ -470,6 +470,7 @@ struct CustomGraph {
           InlinedVector<NodeArg*> output_args = {&output};
           Node& cast_node = original_graph.AddNode(cast_node_name, "Cast", "", input_args, output_args, nullptr, "");
           auto type_str = dq_node_ref.OutputDefs()[0]->Type();
+          ORT_ENFORCE(type_str != nullptr, "Type string is null in QDQ scales fix.");
           auto type_cast = type_str->find("tensor(float)") != std::string::npos ? onnx::TensorProto_DataType_FLOAT : onnx::TensorProto_DataType_FLOAT16;
           ORT_ENFORCE((type_cast == onnx::TensorProto_DataType_FLOAT) || (type_str->find("tensor(float16)") != std::string::npos),
               "QDQ type misalignment, expected float32 or float16 output");
