@@ -161,6 +161,8 @@ class StatefulOVInferRequest : public OVInferRequest {
 
   bool IsNPULogitsSliceRequired();
   bool _npu_logits_slice_required = false;
+  std::vector<int64_t> src_idx_val;
+  std::vector<int64_t> dst_idx_val;
 };
 
 }  // namespace openvino_ep

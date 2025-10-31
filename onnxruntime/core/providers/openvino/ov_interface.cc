@@ -463,6 +463,26 @@ void StatefulOVInferRequest::PreProcessInferRequest() {
   // TODO(ankit): Address this issue and implement the fix at the appropriate layer.
   FillTensor("beam_idx", ov::element::i32, {1}, 0);
 
+  if (src_idx_val.size() > 0) {
+    ov::Tensor src_idx_tensor = ov::Tensor(ov::element::i32, {src_idx_val.size()});
+    for (int i = 0; i < src_idx_val.size(); ++i) {
+      src_idx_tensor.data<int32_t>()[i] = int32_t(src_idx_val[i]);
+    }
+    ovInfReq.set_tensor("src_idx", src_idx_tensor);
+    ov::Tensor dst_idx_tensor = ov::Tensor(ov::element::i32, {1, 32, dst_idx_val.size(), 96});
+    for (int i = 0; i < dst_idx_val.size(); ++i) {
+      for (int j = 0; j < 32; ++j) {
+        for (int k = 0; k < 96; ++k) {
+          dst_idx_tensor.data<int32_t>()[(j * dst_idx_val.size() + i) * 96 + k] = int32_t(dst_idx_val[i]);
+        }
+      }
+    }
+    ovInfReq.set_tensor("dst_idx", dst_idx_tensor);
+  } else {
+    FillTensor("src_idx", ov::element::i32, {0}, 0);
+    FillTensor("dst_idx", ov::element::i32, {1, 32, 0, 96}, 0);
+  }
+
   // If 'prefill use full chat history' mode is enabled, we need to cache input_ids and position_ids.
   if (prefill_use_full_chat_history) {
     auto input_ids_tensor = ovInfReq.get_tensor("input_ids");
@@ -499,6 +519,38 @@ void StatefulOVInferRequest::PreProcessInferRequest() {
 void StatefulOVInferRequest::Infer() {
   PreProcessInferRequest();
   OVInferRequest::Infer();
+}
+
+void StatefulOVInferRequest::ReorderKVCache(const std::vector<size_t>& src_indices, const std::vector<size_t>& dst_indices) {
+  // Validate input parameters
+  if (src_indices.size() != dst_indices.size()) {
+    ORT_THROW(log_tag + "ReorderKVCache: src_indices and dst_indices must have the same size. "
+              "Got src_indices.size()=" + std::to_string(src_indices.size()) +
+              ", dst_indices.size()=" + std::to_string(dst_indices.size()));
+  }
+
+  LOGS_DEFAULT(INFO) << log_tag << "ReorderKVCache: Reordering OpenVINO-internal KVCache state with "
+                     << src_indices.size() << " index pairs";
+
+  // set beam_idx and dst_idx based on provided values
+  src_idx_val.clear();
+  dst_idx_val.clear();
+  for (int i = 0; i < src_indices.size(); ++i) {
+    src_idx_val.emplace_back(src_indices[i]);
+    dst_idx_val.emplace_back(dst_indices[i]);
+  }
+  /*
+  // Retrieve KVCache states and reorder them based on the provided indices
+  auto states = ovInfReq.query_state();
+
+  for (auto& state : states) {
+    auto start_time = std::chrono::high_resolution_clock::now();
+    state.gather_by_axis(src_indices, dst_indices);
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
+    LOGS_DEFAULT(INFO) << log_tag << "gather_by_axis: " << duration << " microseconds";
+  }
+  */
 }
 
 void StatefulOVInferRequest::RewindKVCache(size_t index) {
