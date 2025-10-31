@@ -598,7 +598,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     DumpOpenVINOEPModel(onnx_model_path_name, model_proto.get(), fused_node);
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     return model_proto;
-  } else if (IsModelBF16(subgraph)) {
+  } else if (IsModelBF16(subgraph) && subgraph.GetNodesInTopologicalOrder().size() > 1) {  // don't apply conversion when single cast node graph (unit test case)
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] OVEP bfloat16->float16 optimization pass is enabled";
     std::unique_ptr<onnxruntime::Model> model;
     Status status = bfloat16_fix::Transform(subgraph, logger, model);
