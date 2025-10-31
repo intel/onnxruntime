@@ -507,6 +507,29 @@ void StatefulOVInferRequest::Infer() {
   OVInferRequest::Infer();
 }
 
+void StatefulOVInferRequest::ReorderKVCache(const std::vector<size_t>& src_indices, const std::vector<size_t>& dst_indices) {
+  // Validate input parameters
+  if (src_indices.size() != dst_indices.size()) {
+    ORT_THROW(log_tag + "ReorderKVCache: src_indices and dst_indices must have the same size. "
+              "Got src_indices.size()=" + std::to_string(src_indices.size()) +
+              ", dst_indices.size()=" + std::to_string(dst_indices.size()));
+  }
+
+  LOGS_DEFAULT(INFO) << log_tag << "ReorderKVCache: Reordering OpenVINO-internal KVCache state with "
+                     << src_indices.size() << " index pairs";
+
+  // Retrieve KVCache states and reorder them based on the provided indices
+  auto states = ovInfReq.query_state();
+
+  for (auto& state : states) {
+    auto start_time = std::chrono::high_resolution_clock::now();
+    state.gather_by_axis(src_indices, dst_indices);
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
+    LOGS_DEFAULT(INFO) << log_tag << "gather_by_axis: " << duration << " microseconds";
+  }
+}
+
 void StatefulOVInferRequest::RewindKVCache(size_t index) {
   LOGS_DEFAULT(INFO) << log_tag << "RewindKVCache: Rewinding OpenVINO-internal KVCache state to index=" << index;
 
