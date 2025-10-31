@@ -5,6 +5,7 @@
 #include <string>
 #include <memory>
 #include <vector>
+#include <charconv>
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/openvino_execution_provider.h"
 #include "core/providers/openvino/contexts.h"
@@ -159,12 +160,19 @@ common::Status OpenVINOExecutionProvider::Compile(
           return 0;
         };
 
-    compute_info.compute_func = [](FunctionState state, const OrtApi* /* api */, OrtKernelContext* context) {
+    compute_info.compute_func = [](FunctionState state, const OrtApi* /* api */, OrtKernelContext* context) -> Status {
       auto function_state = static_cast<OpenVINOEPFunctionState*>(state);
       try {
         function_state->backend_manager.Compute(context);
       } catch (const std::exception& ex) {
-        return common::Status(common::ONNXRUNTIME, common::FAIL, ex.what());
+        // Extract error code from message with pattern: "<code>|message"
+        auto get_error_code = [](std::string_view msg) {
+          if (auto pos = msg.find('|'); pos != std::string_view::npos)
+            if (int code = 0; std::from_chars(msg.data(), msg.data() + pos, code).ec == std::errc{})
+              return code;
+          return static_cast<int>(common::EP_FAIL);
+        };
+        return common::Status(common::ONNXRUNTIME, get_error_code(ex.what()), ex.what());
       }
       return Status::OK();
     };

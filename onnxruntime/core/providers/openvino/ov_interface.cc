@@ -18,12 +18,23 @@ namespace openvino_ep {
 
 template <typename Func, typename... Args>
 inline auto OvExceptionBoundary(Func&& func, std::format_string<Args...>&& fmt, Args&&... args) {
+  return OvExceptionBoundary(func, ORT_EP_FAIL, std::forward<std::format_string<Args...>>(fmt), std::forward<Args>(args)...);
+}
+
+template <typename Func, typename... Args>
+inline auto OvExceptionBoundary(Func&& func, OrtErrorCode error_code, std::format_string<Args...>&& fmt, Args&&... args) {
   try {
     return func();
   } catch (const ov::Exception& e) {
-    ORT_THROW(log_tag + std::vformat(fmt.get(), std::make_format_args(args...)) + ": " + std::string(e.what()));
+    // Encode error code as prefix: "<code>|message"
+    auto msg = std::format("{}|{}{}: {}", static_cast<int>(error_code), log_tag,
+                          std::vformat(fmt.get(), std::make_format_args(args...)), e.what());
+    ORT_THROW(msg);
   } catch (...) {
-    ORT_THROW(log_tag + std::vformat(fmt.get(), std::make_format_args(args...)));
+    // Encode error code as prefix: "<code>|message"
+    auto msg = std::format("{}|{}{}", static_cast<int>(error_code), log_tag,
+                          std::vformat(fmt.get(), std::make_format_args(args...)));
+    ORT_THROW(msg);
   }
 }
 
@@ -214,7 +225,8 @@ OVExeNetwork OVCore::ImportModel(ModelBlobWrapper& model_blob,
 #endif
     return exe;
   },
-                             "Exception while Loading Network for graph {}", name);
+                             ORT_INVALID_GRAPH,
+                             "Exception while importing model for graph {}", name);
 }
 
 OVExeNetwork OVCore::ImportEPCtxOVIREncapsulation(std::istream& model_stream,
