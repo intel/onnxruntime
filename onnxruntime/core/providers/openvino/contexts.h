@@ -87,7 +87,12 @@ class SharedContext : public WeakSingleton<SharedContext> {
   std::list<SharedWeights> shared_weight_set;
 
   void clear(){
+    printf("[OVEP] Clearing shared context\n");
     shared_weight_set.clear();
+  }
+
+  ~SharedContext() {
+    clear();
   }
 };
 
