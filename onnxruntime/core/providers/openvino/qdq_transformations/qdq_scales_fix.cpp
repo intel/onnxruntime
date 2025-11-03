@@ -958,47 +958,7 @@ Status Transform(const GraphViewer& src_graph_viewer,
 
 namespace bfloat16_fix {
 void replace_bf16_with_fp16(qdq_scales_fix::CustomGraph& gen_graph) {
-  auto& graph = gen_graph.original_graph;
-  std::unordered_set<NodeIndex> protected_nodes;
-
-  // To keep the BF16 output, insert a Cast node before it.
-  // Add the inserted Cast node and the Identity node to protected_nodes.
-  // The data flow becomes: Modified Internal Graph (FP16) -> Cast(to BF16) -> Identity -> Output(BF16).
-  for (const auto* output_arg : graph.GetOutputs()) {
-    if (output_arg->TypeAsProto() &&
-        output_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) {
-      const Node* identity_node = graph.GetProducerNode(output_arg->Name());
-      if (!identity_node || identity_node->OpType() != "Identity") {
-        continue;
-      }
-      protected_nodes.insert(identity_node->Index());
-
-      // Create the new Cast node to keep bf16 output.
-      std::string cast_node_name = "InsertCastToBf16_" + output_arg->Name();
-      const NodeArg* cast_input_arg = identity_node->InputDefs()[0];
-      auto& cast_output_arg = graph.GetOrCreateNodeArg(cast_input_arg->Name() + "_bf16", output_arg->TypeAsProto());
-      InlinedVector<NodeArg*> cast_inputs = {const_cast<NodeArg*>(cast_input_arg)};
-      InlinedVector<NodeArg*> cast_outputs = {&cast_output_arg};
-      Node& cast_node = graph.AddNode(cast_node_name, "Cast", "Cast internal FP16 to BF16 output", cast_inputs, cast_outputs, nullptr, "");
-      cast_node.AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16));
-      protected_nodes.insert(cast_node.Index());
-
-      // Reroute the graph edges.
-      auto edge_it = identity_node->InputEdgesBegin();
-      if (edge_it != identity_node->InputEdgesEnd()) {
-        const Node& producer_node = edge_it->GetNode();
-        int producer_arg_index = edge_it->GetSrcArgIndex();
-        graph.RemoveEdge(producer_node.Index(), identity_node->Index(), producer_arg_index, 0);
-        graph.AddEdge(producer_node.Index(), cast_node.Index(), producer_arg_index, 0);
-        graph.AddEdge(cast_node.Index(), identity_node->Index(), 0, 0);
-      }
-    }
-  }
-
   for (auto& const_node : gen_graph.original_graph.Nodes()) {
-    if (protected_nodes.count(const_node->Index())) {
-      continue;
-    }
     auto node = const_cast<ONNX_NAMESPACE::Node*>(const_node);
     if (node->OpType() == "Cast") {
       for (auto& [name, const_attribute] : node->GetAttributes()) {
