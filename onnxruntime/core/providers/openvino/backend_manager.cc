@@ -38,17 +38,29 @@ ov::CompiledModel BackendManager::GetOVCompiledModel() {
 }
 
 BackendManager::BackendManager(SessionContext& session_context,
-                               SharedContext& shared_context,
+                               SharedResources& shared_resources,
                                const onnxruntime::Node& fused_node,
                                const onnxruntime::GraphViewer& subgraph,
                                const logging::Logger& logger,
                                EPCtxHandler& ep_ctx_handle) : ep_ctx_handle_(ep_ctx_handle),
                                                               session_context_(session_context),
-                                                              shared_context_{shared_context} {
+                                                              shared_res_(shared_resources) {
   subgraph_context_.is_ep_ctx_graph = ep_ctx_handle_.CheckForOVEPCtxNodeInGraph(subgraph);
   // If the graph contains a OVIR wrapped node, we check if it has matching xml file name attribute
   subgraph_context_.is_ep_ctx_ovir_encapsulated = ep_ctx_handle_.CheckEPCacheContextAttribute(subgraph,
                                                                                               session_context_.onnx_model_path_name.filename().replace_extension("xml").string());
+
+  auto& shared_context = shared_context_;
+  if (subgraph_context_.is_ep_ctx_graph) {
+    shared_context = ep_ctx_handle.GetSharedContextForEpContextSubgraph(subgraph,
+                                                                        session_context_.GetModelPath());
+  } else if (session_context_.so_share_ep_contexts && !session_context_.so_context_embed_mode) {
+    shared_context = shared_res_.shared_context_manager.GetOrCreateActiveSharedContext(session_context_.GetOutputBinPath());
+  } else {
+    // looks a bit funky but we want a shared context even if we may not to use it.
+    shared_context = shared_res_.shared_context_manager.GetOrCreateActiveSharedContext("");
+  }
+  ORT_ENFORCE(shared_context, "Could not create a shared context.");
 
   subgraph_context_.model_precision = [&](const GraphViewer& graph_viewer) {
     // return empty if graph has no inputs or if types are not one of FP32/FP16
@@ -107,23 +119,6 @@ BackendManager::BackendManager(SessionContext& session_context,
   }
   std::string device_type = session_context_.device_type;
 
-  auto& sw = shared_context_.shared_weights;
-  if (session_context_.so_share_ep_contexts && !sw.metadata.empty()) {
-    std::filesystem::path weight_filename = session_context_.onnx_model_path_name.parent_path();
-    if (sw.external_weight_filename.empty()) {
-      // Reasonable assumption that all metadata entries have the same external file location
-      sw.external_weight_filename = sw.metadata.begin()->second.location;
-    }
-    weight_filename /= sw.external_weight_filename;
-    std::ifstream weight_file(weight_filename);
-
-    ORT_ENFORCE(weight_file, "Initializer file not found: ", weight_filename.string());
-    if (!sw.mapped_weights) {
-      sw.mapped_weights = std::make_unique<SharedContext::SharedWeights::WeightsFile>(weight_filename);
-    }
-    backend_utils::CreateOVTensors(session_context_.device_type, sw.metadata, *sw.mapped_weights);
-  }
-
   if (subgraph_context_.has_dynamic_input_shape) {
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims";
     if ((!session_context_.disable_dynamic_shapes &&
@@ -138,7 +133,7 @@ BackendManager::BackendManager(SessionContext& session_context,
         concrete_backend_ = BackendFactory::MakeBackend(model_proto,
                                                         session_context_,
                                                         subgraph_context_,
-                                                        shared_context_,
+                                                        *shared_context,
                                                         model_stream);
       } catch (std::string const& msg) {
         ORT_THROW(msg);
@@ -162,7 +157,7 @@ BackendManager::BackendManager(SessionContext& session_context,
       concrete_backend_ = BackendFactory::MakeBackend(model_proto,
                                                       session_context_,
                                                       subgraph_context_,
-                                                      shared_context_,
+                                                      *shared_context,
                                                       model_stream);
     } catch (const OnnxRuntimeException& ex) {
       std::string exception_str = ex.what();
@@ -193,24 +188,24 @@ BackendManager::BackendManager(SessionContext& session_context,
       }
     }
   }
-  if (session_context_.so_context_enable &&
-      (subgraph_context_.is_ep_ctx_ovir_encapsulated || !subgraph_context_.is_ep_ctx_graph)) {
-    if (concrete_backend_) {
-      auto status = onnxruntime::openvino_ep::BackendManager::ExportCompiledBlobAsEPCtxNode(subgraph);
-      if (!status.IsOK()) {
-        ORT_THROW(status);
-      }
-    } else {
-      ORT_THROW("[OpenVINO-EP] Cannot export compiled blob as EPCtx Node: Backend not initialized.");
-    }
-  }
 }
 
 // Call EPContext model exporter here if the provider option for exporting
 // precompiled blob is set. If that's the case:
 // By default, create model in embed mode where the blob stream is exported as data within
 // the EPContext node.
-Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphViewer& graph_body_viewer) {
+void BackendManager::TryExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphViewer& graph_body_viewer, bool include_embed_data) {
+  bool should_export = session_context_.so_context_enable && (subgraph_context_.is_ep_ctx_ovir_encapsulated || !subgraph_context_.is_ep_ctx_graph);
+
+  if (!should_export) {
+    // skip exporting.
+    return;
+  }
+
+  if (!concrete_backend_) {
+    ORT_THROW("[OpenVINO-EP] Cannot export compiled blob as EPCtx Node: Backend not initialized.");
+  }
+
   if (session_context_.disable_dynamic_shapes && subgraph_context_.has_dynamic_input_shape) {
     std::string exception_str =
         "Exporting dynamically compiled models at runtime is not supported. "
@@ -224,11 +219,12 @@ Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVie
   std::string model_blob_str;
   auto compiled_model = concrete_backend_->GetOVCompiledModel();
   if (session_context_.so_context_embed_mode) {  // Internal blob
-    std::ostringstream model_blob_stream;
-    compiled_model.export_model(model_blob_stream);
-    model_blob_str = std::move(model_blob_stream).str();
-    if (model_blob_str.empty()) {
-      ORT_THROW("Model blob stream is empty after exporting the compiled model.");
+    auto bin_manager = shared_res_.shared_bin_manager.GetOrCreateBinManager("");
+    bin_manager->AddNativeBlob(subgraph_context_.subgraph_name, compiled_model);
+    if (include_embed_data) {
+      std::stringstream ss;
+      bin_manager->Serialize(ss);
+      model_blob_str = ss.str();
     }
   } else {  // External blob
     // Build name by combining EpCtx model name (if available) and subgraph name. Model
@@ -238,30 +234,20 @@ Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVie
       name = graph_body_viewer.ModelPath().stem().string();
     }
     ORT_ENFORCE(!name.empty());
-    name += "_" + subgraph_context_.subgraph_name;
 
-    std::filesystem::path blob_filename = session_context_.so_context_file_path;
-    if (blob_filename.empty()) {
-      blob_filename = session_context_.onnx_model_path_name;
-    }
-    blob_filename = blob_filename.parent_path() / (name + ".blob");
-    std::ofstream blob_file(blob_filename,
-                            std::ios::out | std::ios::trunc | std::ios::binary);
-    if (!blob_file) {
-      std::ostringstream err_msg;
-      err_msg << "Unable to open file for epctx model dump: " << blob_filename;
-      ORT_THROW(err_msg.str());
-    }
-    compiled_model.export_model(blob_file);
-    model_blob_str = blob_filename.filename().string();
+    auto bin_filename = session_context_.GetOutputBinPath();
+    auto bin_manager = shared_res_.shared_bin_manager.GetOrCreateBinManager(bin_filename);
+    bin_manager->AddNativeBlob(subgraph_context_.subgraph_name, compiled_model);
+    model_blob_str = bin_filename.filename().string();
   }
 
-  ORT_RETURN_IF_ERROR(ep_ctx_handle_.AddOVEPCtxNodeToGraph(graph_body_viewer,
-                                                           subgraph_context_.subgraph_name,
-                                                           session_context_.so_context_embed_mode,
-                                                           std::move(model_blob_str)));
-
-  return Status::OK();
+  auto status = ep_ctx_handle_.AddOVEPCtxNodeToGraph(graph_body_viewer,
+                                                     subgraph_context_.subgraph_name,
+                                                     session_context_.so_context_embed_mode,
+                                                     std::move(model_blob_str));
+  if (!status.IsOK()) {
+    ORT_THROW("[OpenVINO-EP] Failed to add OVEP EPContext node to the graph: " + status.ErrorMessage());
+  }
 }
 
 bool BackendManager::ModelHasBatchedInputs(const ONNX_NAMESPACE::ModelProto& model_proto) const {
@@ -580,7 +566,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
   if ((session_context_.device_type.find("NPU") != std::string::npos) &&
       (enable_ovep_qdq_optimizer || session_context_.so_share_ep_contexts)) {
     std::unique_ptr<onnxruntime::Model> model;
-    Status status = CreateModelWithStrippedQDQNodes(subgraph, logger, session_context_.so_share_ep_contexts, enable_ovep_qdq_optimizer, model, shared_context_.shared_weights);
+    Status status = CreateModelWithStrippedQDQNodes(subgraph, logger, session_context_.so_share_ep_contexts, enable_ovep_qdq_optimizer, model, *shared_context_);
     auto model_proto = model->ToProto();
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
     print_model_proto_duration();
@@ -857,7 +843,7 @@ void BackendManager::Compute(OrtKernelContext* context) {
         dynamic_backend = BackendFactory::MakeBackend(modelproto_with_concrete_shapes,
                                                       session_context_,
                                                       subgraph_context_,
-                                                      shared_context_,
+                                                      *shared_context_,
                                                       model_stream);
       } catch (const OnnxRuntimeException& ex) {
         // Build option disables fallback to CPU on compilation failures with NPU.
@@ -877,7 +863,7 @@ void BackendManager::Compute(OrtKernelContext* context) {
             dynamic_backend = BackendFactory::MakeBackend(modelproto_with_concrete_shapes,
                                                           session_context_,
                                                           subgraph_context_,
-                                                          shared_context_,
+                                                          *shared_context_,
                                                           model_stream);
           } catch (std::string const& msg) {
             ORT_THROW(msg);
