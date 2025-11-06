@@ -167,7 +167,7 @@ std::pair<std::vector<std::string>, std::vector<std::string>> ExtractKVPatternsF
 
 // Main function to extract KV tensors using dynamic pattern matching
 std::pair<std::vector<std::string>, std::vector<std::string>> ExtractInputKVTensors(
-    const std::shared_ptr<ov::Model>& model, std::vector<std::string> patterns) {
+    const std::shared_ptr<ov::Model>& model, const std::vector<std::string>& patterns) {
 
   std::vector<std::string> key_value_input_names;
   std::vector<std::string> not_kv_inputs;
@@ -200,7 +200,7 @@ std::pair<std::vector<std::string>, std::vector<std::string>> ExtractInputKVTens
   std::set<std::string> found_kv_inputs;
 
   for (const ov::Output<ov::Node>& input : model->inputs()) {
-    const auto& names = input.get_names();
+    auto& names = input.get_names();
 
     bool found = false;
 
