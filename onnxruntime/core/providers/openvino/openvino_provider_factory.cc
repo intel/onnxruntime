@@ -188,9 +188,9 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
 
 void ParseProviderOptions([[maybe_unused]] ProviderInfo& result, [[maybe_unused]] const ProviderOptions& config_options) {}
 
-static void ParseInnerMap(const nlohmann::json& json_map, ov::AnyMap& inner_map, int level = 0) {
-  const int max_levels = 8;
-  if (level > max_levels) {
+static void ParseInnerMap(const nlohmann::json& json_map, ov::AnyMap& inner_map, size_t level = 0) {
+  const size_t max_levels = 8;
+  if (level >= max_levels) {
     ORT_THROW("ParseInnerMap: load_config can have only up to " + std::to_string(max_levels) +
         " levels of nested maps. Current level = " + std::to_string(level));
   }
