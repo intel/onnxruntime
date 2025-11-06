@@ -214,6 +214,7 @@ static void ParseInnerMap(const nlohmann::json& json_map, ov::AnyMap& inner_map,
       inner_map[inner_key] = std::move(inner_inner_map);
     } else {
       LOGS_DEFAULT(WARNING) << "Unsupported JSON value type for key: " << inner_key << ". Skipping key.";
+      LOGS_DEFAULT(WARNING) << "This will become an error in a future OpenVINO Execution Provider release.";
     }
   }
 }
