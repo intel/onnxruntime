@@ -220,9 +220,9 @@ bool EPCtxHandler::CheckEPCacheContextAttribute(const GraphViewer& graph_viewer,
 }
 
 void EPCtxHandler::Initialize(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes, const std::filesystem::path& ep_context_dir) {
-
   bool has_embed_nodes = false;
   bool has_non_embed_nodes = false;
+  bool has_main_context = false;
   for (const auto& fused_node_graph : fused_nodes) {
     const GraphViewer& graph_viewer = fused_node_graph.filtered_graph;
 
@@ -245,17 +245,21 @@ void EPCtxHandler::Initialize(const std::vector<IExecutionProvider::FusedNodeAnd
     has_embed_nodes |= embed_mode;
     has_non_embed_nodes |= !embed_mode;
 
-    uint64_t main_context = 1;
+    bool main_context = true;
     if (attrs.count(MAIN_CONTEXT) == 1) {
-      main_context = static_cast<uint64_t>(attrs.at(MAIN_CONTEXT).i());
+      main_context = static_cast<bool>(attrs.at(MAIN_CONTEXT).i());
     }
+    has_main_context |= main_context;
 
     const std::string& ep_cache_context = attrs.at(EP_CACHE_CONTEXT).s();
     if (embed_mode) {
       std::filesystem::path dummy_path{};
       auto bin_manager = shared_bin_manager_->GetOrCreateBinManager(dummy_path);
-      std::istringstream ss(ep_cache_context);
-      bin_manager->Deserialize(ss, shared_context_manager_->GetOrCreateSharedContext(dummy_path));
+      if (main_context) {
+        ORT_ENFORCE(!ep_cache_context.empty(), "Embedded EP context is indicated but EP_CACHE_CONTEXT attribute is empty.");
+        std::istringstream ss(ep_cache_context);
+        bin_manager->Deserialize(ss, shared_context_manager_->GetOrCreateSharedContext(dummy_path));
+      }
     } else {
       std::filesystem::path ep_context_path = ep_context_dir / ep_cache_context;
       if (ep_context_path.extension() != ".xml") {
@@ -267,7 +271,8 @@ void EPCtxHandler::Initialize(const std::vector<IExecutionProvider::FusedNodeAnd
 
   ORT_ENFORCE(!(has_embed_nodes && has_non_embed_nodes),
               "Mixed embed and non-embed EP context nodes are not supported in a single model.");
-
+  ORT_ENFORCE(!(has_embed_nodes && !has_main_context),
+              "Expected at least one main context node when embedded EP context nodes are present.");
 }
 
 }  // namespace openvino_ep
