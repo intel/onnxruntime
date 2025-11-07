@@ -2,7 +2,6 @@
 // Licensed under the MIT License
 
 #include "core/providers/openvino/ov_stateful_patch_utils.h"
-#include "regex"
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -140,26 +139,27 @@ std::pair<std::vector<std::string>, std::vector<std::string>> ExtractKVPatternsF
   std::set<std::string> unique_patterns;
   std::vector<std::string> key_value_output_names;
 
-  // Regex to match "present_" prefix and numeric suffix
-  std::regex present_pattern(R"(present_(.+)_(\d+))");
-
-  // Scan all outputs with "present" in the name
+  const std::string prefix = "present_";
+  const size_t prefix_len = prefix.length();
   for (const ov::Output<ov::Node>& output : model->outputs()) {
     const auto& names = output.get_names();
     for (const auto& name : names) {
-      if (name.starts_with("present")) {
+      if (name.find(prefix) == 0 && name.length() > prefix_len) {
         key_value_output_names.push_back(name);
-        std::smatch match;
-        if (std::regex_match(name, match, present_pattern)) {
-          // Extract the middle part (between "present_" and "_number")
-          std::string pattern = match[1].str();
-          unique_patterns.insert(pattern);            
+        size_t last_underscore_pos = name.rfind('_');
+
+        // Extract pattern between "present_" and the last underscore
+        if (last_underscore_pos != std::string::npos && last_underscore_pos > prefix_len) {
+          std::string pattern = name.substr(prefix_len, last_underscore_pos - prefix_len);
+
+          if (!pattern.empty()) {
+            unique_patterns.insert(pattern);
+          }
         }
         break;
       }
     }
   }
-
   std::vector<std::string> extracted_patterns(unique_patterns.begin(), unique_patterns.end());
 
   return std::make_pair(key_value_output_names, extracted_patterns);
@@ -204,7 +204,7 @@ std::pair<std::vector<std::string>, std::vector<std::string>> ExtractInputKVTens
 
     bool found = false;
 
-    // Check each input name against potential patterns
+    // Check if any input name contains the extracted patterns
     for (const auto& name : names) {
       for (const auto& pattern : patterns) {
         if (name.find(pattern) != std::string::npos){
@@ -230,8 +230,14 @@ void PatchStatefulDecoder(std::shared_ptr<ov::Model> model) {
   auto [key_value_output_names, extracted_patterns] = ExtractKVPatternsFromOutputs(model);
   auto [key_value_input_names, not_kv_inputs] = ExtractInputKVTensors(model, extracted_patterns);
 
+  std::cout << key_value_input_names.size() << ";" << key_value_output_names.size() << std::endl;
   if (key_value_input_names.empty() || key_value_output_names.empty()) {
     std::cout << "no key_value_input_names or key_value_output_names found" << std::endl;
+    return;
+  }
+
+  if (key_value_input_names.size() != key_value_output_names.size()) {
+    std::cout << "found different sizes btween key_value_input_names and key_value_output_names, they couldn't be paired" << std::endl;
     return;
   }
 
