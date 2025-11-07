@@ -2,6 +2,7 @@
 // Licensed under the MIT License
 
 #include "core/providers/openvino/ov_stateful_patch_utils.h"
+#include "core/common/common.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -230,15 +231,16 @@ void PatchStatefulDecoder(std::shared_ptr<ov::Model> model) {
   auto [key_value_output_names, extracted_patterns] = ExtractKVPatternsFromOutputs(model);
   auto [key_value_input_names, not_kv_inputs] = ExtractInputKVTensors(model, extracted_patterns);
 
-  std::cout << key_value_input_names.size() << ";" << key_value_output_names.size() << std::endl;
   if (key_value_input_names.empty() || key_value_output_names.empty()) {
-    std::cout << "no key_value_input_names or key_value_output_names found" << std::endl;
-    return;
+    ORT_THROW("No key_value_input_names or key_value_output_names found");
   }
 
   if (key_value_input_names.size() != key_value_output_names.size()) {
-    std::cout << "found different sizes btween key_value_input_names and key_value_output_names, they couldn't be paired" << std::endl;
-    return;
+    ORT_THROW("Found different sizes between key_value_input_names (", 
+    key_value_input_names.size(), 
+    ") and key_value_output_names (", 
+    key_value_output_names.size(), 
+    "). They couldn't be paired.");
   }
 
   // By default, batch is the 0 - th but chatglm uses 1 - st dimension as batch
