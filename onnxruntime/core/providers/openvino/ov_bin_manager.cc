@@ -89,15 +89,15 @@ class TensorStream : public std::istream {
       "weights_metadata_map": {               // Map of ONNX tensor names to external weight file metadata
         "<tensor_name>": {
           "location": <string>,               // Relative path to external weights file
-          "data_offset": <uint64>,            // Offset within external weights file
-          "size": <uint64>                    // Size of weight data in bytes
+          "data_offset": <int64>,            // Offset within external weights file
+          "size": <int64>                    // Size of weight data in bytes
         },
         ...
       },
       "blob_metadata_map": {                  // Map of blob names to compiled model blob metadata
         "<blob_name>": {
-          "data_offset": <uint64>,            // Absolute file offset to blob data (64K aligned)
-          "size": <uint64>                    // Actual blob data size (excluding padding)
+          "data_offset": <int64>,            // Absolute file offset to blob data (64K aligned)
+          "size": <int64>                    // Actual blob data size (excluding padding)
         },
         ...
       }
@@ -279,8 +279,10 @@ void BinManager::Serialize(std::ostream& stream, std::shared_ptr<SharedContext> 
   nlohmann::json blob_map = nlohmann::json::object();
   for (const auto& [key, value] : native_blobs_) {
     nlohmann::json blob_entry;
-    blob_entry[BSONFields::kDataOffset] = 0;  // Placeholder
-    blob_entry[BSONFields::kSize] = 0;        // Placeholder
+    auto max_val = std::numeric_limits<int64_t>::max();
+    // Placehold max size since we don't know actual offsets/sizes yet, and if they aren't max they might serialize smaller.
+    blob_entry[BSONFields::kDataOffset] = max_val;
+    blob_entry[BSONFields::kSize] = max_val;
     blob_map[key] = blob_entry;
   }
   j[BSONFields::kBlobMetadata] = blob_map;
@@ -296,7 +298,6 @@ void BinManager::Serialize(std::ostream& stream, std::shared_ptr<SharedContext> 
     ORT_ENFORCE(stream.good(), "Error: Failed to write BSON data.");
   }
   uint64_t bson_end = stream.tellp();
-  header.bson_size = bson_end - header.bson_start_offset;
 
   write_alignment_padding(bson_end, kBlobAlignment);
 
@@ -321,13 +322,15 @@ void BinManager::Serialize(std::ostream& stream, std::shared_ptr<SharedContext> 
 
   // Rewrite BSON metadata with correct blob info
   std::vector<uint8_t> updated_bson_data = nlohmann::json::to_bson(j);
-  ORT_ENFORCE(updated_bson_data.size() == orig_bson_size,
-              "Error: BSON size changed after updating blob info. Original: ", orig_bson_size,
+  ORT_ENFORCE(updated_bson_data.size() <= orig_bson_size,
+              "Error: BSON size larger after updating blob info. Original: ", orig_bson_size,
               " Updated: ", updated_bson_data.size());
 
   stream.seekp(header.bson_start_offset);
   stream.write(reinterpret_cast<const char*>(updated_bson_data.data()), updated_bson_data.size());
   ORT_ENFORCE(stream.good(), "Error: Failed to rewrite BSON data.");
+  bson_end = stream.tellp();
+  header.bson_size = bson_end - header.bson_start_offset;
 
   // Update header with BSON offsets
   stream.seekp(stream_start);
