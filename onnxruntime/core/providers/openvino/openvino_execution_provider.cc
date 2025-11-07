@@ -104,6 +104,11 @@ common::Status OpenVINOExecutionProvider::Compile(
   auto& logger = *GetLogger();
   Status status = Status::OK();
 
+  if (session_context_.so_context_embed_mode && session_context_.so_share_ep_contexts) {
+    return Status(common::StatusCategory::ONNXRUNTIME, common::EP_FAIL,
+                  std::string("Invalid EP context configuration: ") + kOrtSessionOptionEpContextEmbedMode + " must be 0 if " + kOrtSessionOptionShareEpContexts + " is 1.");
+  }
+
   bool is_epctx_model = false;
   if (!fused_nodes.empty()) {
     // Assume these properties are constant for all the model subgraphs, otherwise move to SubGraphContext
