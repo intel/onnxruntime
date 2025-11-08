@@ -238,7 +238,7 @@ void BackendManager::TryExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVi
     auto bin_filename = session_context_.GetOutputBinPath();
     auto bin_manager = shared_res_.shared_bin_manager.GetOrCreateActiveBinManager(bin_filename);
     bin_manager->AddNativeBlob(subgraph_context_.subgraph_name, compiled_model);
-    model_blob_str = bin_filename.filename().string();
+    model_blob_str = bin_manager->GetExternalBinPath().filename().string();
   }
 
   auto status = ep_ctx_handle_.AddOVEPCtxNodeToGraph(graph_body_viewer,
