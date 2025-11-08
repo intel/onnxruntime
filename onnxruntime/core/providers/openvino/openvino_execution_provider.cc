@@ -104,9 +104,9 @@ common::Status OpenVINOExecutionProvider::Compile(
   auto& logger = *GetLogger();
   Status status = Status::OK();
 
-  if (session_context_.so_context_embed_mode && session_context_.so_share_ep_contexts) {
+  if (session_context_.so_context_enable && session_context_.so_context_embed_mode && session_context_.so_share_ep_contexts) {
     return Status(common::StatusCategory::ONNXRUNTIME, common::EP_FAIL,
-                  std::string("Invalid EP context configuration: ") + kOrtSessionOptionEpContextEmbedMode + " must be 0 if " + kOrtSessionOptionShareEpContexts + " is 1.");
+                  std::string(" Invalid EP context configuration: ") + kOrtSessionOptionEpContextEmbedMode + " must be 0 if " + kOrtSessionOptionShareEpContexts + " is 1.");
   }
 
   bool is_epctx_model = false;
@@ -202,11 +202,12 @@ common::Status OpenVINOExecutionProvider::Compile(
 
     // bit clunky ideally we should try to fold this into ep context handler
     if (!session_context_.so_context_embed_mode) {
-      auto bin_manager = shared_bin_manager_->GetOrCreateBinManager(session_context_.GetOutputBinPath());
+      auto bin_manager = shared_bin_manager_->GetOrCreateActiveBinManager(session_context_.GetOutputBinPath());
       auto shared_context = shared_context_manager_->GetOrCreateActiveSharedContext(session_context_.GetOutputBinPath());
       bin_manager->Serialize(shared_context);
       if (session_context_.so_stop_share_ep_contexts) {
         shared_context_manager_->ClearActiveSharedContext();
+        shared_bin_manager_->ClearActiveBinManager();
         bin_manager->Clear();
       }
     }
