@@ -84,6 +84,17 @@ class SharedBinManager : public WeakSingleton<SharedBinManager> {
     return manager_.GetOrCreateResource(model_path, model_path);
   }
 
+  std::shared_ptr<BinManager> GetOrCreateActiveBinManager(const std::filesystem::path& model_path) {
+    if (model_path.empty()) {
+      return manager_.GetActiveResourceOrCreate(model_path);
+    }
+    return manager_.GetActiveResourceOrCreate(model_path, model_path);
+  }
+
+  void ClearActiveBinManager() {
+    manager_.ClearActiveResource();
+  }
+
  private:
   SharedResourceManager<std::filesystem::path, BinManager> manager_;
 };

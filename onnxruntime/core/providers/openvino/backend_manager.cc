@@ -219,7 +219,7 @@ void BackendManager::TryExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVi
   std::string model_blob_str;
   auto compiled_model = concrete_backend_->GetOVCompiledModel();
   if (session_context_.so_context_embed_mode) {  // Internal blob
-    auto bin_manager = shared_res_.shared_bin_manager.GetOrCreateBinManager("");
+    auto bin_manager = shared_res_.shared_bin_manager.GetOrCreateActiveBinManager("");
     bin_manager->AddNativeBlob(subgraph_context_.subgraph_name, compiled_model);
     if (include_embed_data) {
       std::stringstream ss;
@@ -236,7 +236,7 @@ void BackendManager::TryExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVi
     ORT_ENFORCE(!name.empty());
 
     auto bin_filename = session_context_.GetOutputBinPath();
-    auto bin_manager = shared_res_.shared_bin_manager.GetOrCreateBinManager(bin_filename);
+    auto bin_manager = shared_res_.shared_bin_manager.GetOrCreateActiveBinManager(bin_filename);
     bin_manager->AddNativeBlob(subgraph_context_.subgraph_name, compiled_model);
     model_blob_str = bin_filename.filename().string();
   }
