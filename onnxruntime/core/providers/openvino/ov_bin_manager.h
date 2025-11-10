@@ -70,7 +70,6 @@ class BinManager {
 
   mutable std::shared_mutex mutex_;
   std::optional<std::filesystem::path> external_bin_path_;
-  bool initialized_{false};
   ov::Tensor mapped_bin_;
   std::unordered_map<std::string, BlobContainer> native_blobs_;
 };

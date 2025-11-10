@@ -193,7 +193,6 @@ void BinManager::Clear() {
   std::unique_lock lock(mutex_);
   native_blobs_.clear();
   mapped_bin_ = {};
-  initialized_ = false;
   external_bin_path_.reset();
 }
 
@@ -435,8 +434,6 @@ void BinManager::Deserialize(std::istream& stream, std::shared_ptr<SharedContext
 
     native_blobs_[blob_name] = std::move(container);
   }
-
-  initialized_ = true;
 }
 
 }  // namespace openvino_ep
