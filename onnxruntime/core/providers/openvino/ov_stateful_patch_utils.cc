@@ -2,6 +2,7 @@
 // Licensed under the MIT License
 
 #include "core/providers/openvino/ov_stateful_patch_utils.h"
+#include "core/providers/shared_library/provider_api.h"
 #include "core/common/common.h"
 
 namespace onnxruntime {
@@ -136,12 +137,15 @@ void MakeStateful(std::shared_ptr<ov::Model>& ov_model,
 // Converted to C++ from below reference URL:
 // https://github.com/huggingface/optimum-intel/blob/main/optimum/exporters/openvino/stateful.py#L281
 // Helper function to extract KV patterns from output names dynamically
-std::pair<std::vector<std::string>, std::vector<std::string>> ExtractKVPatternsFromOutputs(const std::shared_ptr<ov::Model>& model) {
-  std::set<std::string> unique_patterns;
+std::pair<std::vector<std::string>, std::optional<std::pair<std::string, std::string>>> ExtractKVPatternsFromOutputs(const std::shared_ptr<ov::Model>& model) {
   std::vector<std::string> key_value_output_names;
+  std::string key_pattern;
+  std::string value_pattern;
+  std::optional<std::pair<std::string, std::string>> pattern_pair;
 
   const std::string prefix = "present_";
   const size_t prefix_len = prefix.length();
+  std::unordered_set<std::string> unique_patterns;
   for (const ov::Output<ov::Node>& output : model->outputs()) {
     const auto& names = output.get_names();
     for (const auto& name : names) {
@@ -161,19 +165,41 @@ std::pair<std::vector<std::string>, std::vector<std::string>> ExtractKVPatternsF
       }
     }
   }
-  std::vector<std::string> extracted_patterns(unique_patterns.begin(), unique_patterns.end());
 
-  return std::make_pair(key_value_output_names, extracted_patterns);
+  if (unique_patterns.size() > 2) {
+    ORT_THROW("More than two unique KV patterns found in output names.");
+  }
+
+   // Traverse unique patterns and assign them based on "key" or "value" substring
+  for (const auto& pattern : unique_patterns) {
+    std::string pattern_lower = pattern;
+    std::transform(pattern_lower.begin(), pattern_lower.end(), pattern_lower.begin(), ::tolower);
+    if (pattern_lower.find("key") != std::string::npos) {
+      key_pattern = pattern;
+    } else if (pattern_lower.find("value") != std::string::npos) {
+      value_pattern = pattern;
+    }
+  }
+
+  if (key_pattern.empty() || value_pattern.empty()) {
+    ORT_THROW("Could not find both key and value patterns in output names.");
+  }
+  else
+  {
+    LOGS_DEFAULT(INFO) << "Extracted key pattern: " << key_pattern << ", value pattern: " << value_pattern;
+  }
+  pattern_pair = std::make_pair(key_pattern, value_pattern);
+  return std::make_pair(key_value_output_names, pattern_pair);
 }
 
 // Main function to extract KV tensors using dynamic pattern matching
 std::pair<std::vector<std::string>, std::vector<std::string>> ExtractInputKVTensors(
-    const std::shared_ptr<ov::Model>& model, const std::vector<std::string>& patterns) {
+    const std::shared_ptr<ov::Model>& model, const std::optional<std::pair<std::string, std::string>>& kv_pattern) {
 
   std::vector<std::string> key_value_input_names;
   std::vector<std::string> not_kv_inputs;
 
-  if (patterns.empty()) {
+  if (!kv_pattern.has_value()) {
     // Fallback: use original substring matching
     for (const ov::Output<ov::Node>& input : model->inputs()) {
       const auto& names = input.get_names();
@@ -198,23 +224,36 @@ std::pair<std::vector<std::string>, std::vector<std::string>> ExtractInputKVTens
     return std::make_pair(key_value_input_names, not_kv_inputs);
   }
 
-  std::set<std::string> found_kv_inputs;
+  // Extract the key and value patterns from the pair
+  const auto& [key_pattern, value_pattern] = kv_pattern.value();
+
+  // Inline helper function to check if name is matched with provided pattern followed by "_%d"
+  auto matches_pattern = [](const std::string& name, const std::string& pattern) -> bool {
+    size_t pos = name.find(pattern);
+    if (pos == std::string::npos) {
+      return false;
+    }
+
+    size_t after_pattern = pos + pattern.length();
+    if (after_pattern >= name.length() || name[after_pattern] != '_') {
+      return false;
+    }
+
+    std::string suffix = name.substr(after_pattern + 1);
+    return !suffix.empty() && std::all_of(suffix.begin(), suffix.end(), ::isdigit);
+  };
 
   for (const ov::Output<ov::Node>& input : model->inputs()) {
     auto& names = input.get_names();
-
     bool found = false;
 
-    // Check if any input name contains the extracted patterns
+    // Check if any input name contains either key or value pattern
     for (const auto& name : names) {
-      for (const auto& pattern : patterns) {
-        if (name.find(pattern) != std::string::npos){
-          key_value_input_names.push_back(name);
-          found = true;
-          break;
-        }
+      if (matches_pattern(name, key_pattern) || matches_pattern(name, value_pattern)) {
+        key_value_input_names.push_back(name);
+        found = true;
+        break;
       }
-      if (found) break;
     }
 
     if (!found) {
