@@ -59,7 +59,7 @@ struct OnnxToOvNetworkBindings {
       "present",
   };
 
-  OnnxToOvNetworkBindings(OVExeNetwork& exec_network, SubGraphContext& subgraph_context, SessionContext& session_context) {
+  OnnxToOvNetworkBindings(std::shared_ptr<OVExeNetwork>& exec_network, SubGraphContext& subgraph_context, SessionContext& session_context) {
     auto populate = [&](auto& input_output_map, const SubGraphContext::string_index_map_t& onnx_input_map, const auto& ov_parameters) {
       for (const auto& [onnx_name, onnx_param_index] : onnx_input_map) {
         auto it = std::find_if(ov_parameters.begin(), ov_parameters.end(),
@@ -118,8 +118,8 @@ struct OnnxToOvNetworkBindings {
     };
 
     // Populate inputs and outputs
-    populate(network_inputs_, subgraph_context.input_names, exec_network.Get().inputs());
-    populate(network_outputs_, subgraph_context.output_names, exec_network.Get().outputs());
+    populate(network_inputs_, subgraph_context.input_names, exec_network->Get().inputs());
+    populate(network_outputs_, subgraph_context.output_names, exec_network->Get().outputs());
   }
 };
 
@@ -135,7 +135,7 @@ class BasicBackend : public IBackend {
   void Infer(OrtKernelContext* context) const override;
   ~BasicBackend() override = default;
   ov::CompiledModel GetOVCompiledModel() override {
-    return exe_network_.Get();
+    return exe_network_->Get();
   }
   void RewindKVCache(size_t index) override;
 
@@ -153,7 +153,7 @@ class BasicBackend : public IBackend {
   SessionContext& session_context_;
   SubGraphContext subgraph_context_;
   SharedContext& shared_context_;
-  OVExeNetwork exe_network_;
+  std::shared_ptr<OVExeNetwork> exe_network_;
   std::map<std::string, std::shared_ptr<ov::Node>> const_outputs_map_;
   std::unique_ptr<InferRequestPool> infer_req_pool_;
 
@@ -178,7 +178,7 @@ class InferRequestPool {
     friend class InferRequestPool;
   };
 
-  InferRequestPool(OVExeNetwork& net, size_t initial_size, std::function<void(OVInferRequestPtr)> initializer) : exe_network_(net), initializer_(std::move(initializer)) {
+  InferRequestPool(std::shared_ptr<OVExeNetwork>& net, size_t initial_size, std::function<void(OVInferRequestPtr)> initializer) : exe_network_(net), initializer_(std::move(initializer)) {
     for (size_t id = 0; id < initial_size; id++) {
       infer_requests_.emplace_back(createInferRequest());
     }
@@ -212,7 +212,7 @@ class InferRequestPool {
   }
 
   OVInferRequestPtr createInferRequest() {
-    auto infer_request = exe_network_.CreateInferRequest();
+    auto infer_request = exe_network_->CreateInferRequest();
     initializer_(infer_request);
     return infer_request;
   }
@@ -220,7 +220,7 @@ class InferRequestPool {
  private:
   std::mutex _mutex;
   std::vector<OVInferRequestPtr> infer_requests_;
-  OVExeNetwork& exe_network_;
+  std::shared_ptr<OVExeNetwork>& exe_network_;
   std::function<void(OVInferRequestPtr)> initializer_;
 };
 

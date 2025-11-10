@@ -68,26 +68,26 @@ struct OVCore : WeakSingleton<OVCore> {
   // OV Interface For Reading Model
   std::shared_ptr<OVNetwork> ReadModel(std::string&& model_stream, const std::string& model_path);
 
-  OVExeNetwork StatefulCompileModel(std::shared_ptr<OVNetwork>& model,
+  std::shared_ptr<OVExeNetwork> StatefulCompileModel(std::shared_ptr<OVNetwork>& model,
                                     std::string& hw_target,
                                     const ov::AnyMap& device_config);
   // OV Interface for Compiling OV Model Type
-  OVExeNetwork CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_network,
+  std::shared_ptr<OVExeNetwork> CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_network,
                             std::string& hw_target,
                             ov::AnyMap& device_config,
                             bool enable_causallm,
                             const std::string& name);
   // OV Interface for Fast Compile
-  OVExeNetwork CompileModel(const std::string& onnx_model,
+  std::shared_ptr<OVExeNetwork> CompileModel(const std::string& onnx_model,
                             std::string& hw_target,
                             ov::AnyMap& device_config,
                             const std::string& name);
   // OV Interface for Import model Stream
-  OVExeNetwork ImportModel(ModelBlobWrapper& model_blob,
+  std::shared_ptr<OVExeNetwork> ImportModel(ModelBlobWrapper& model_blob,
                            std::string hw_target,
                            const ov::AnyMap& device_config,
                            std::string name);
-  OVExeNetwork ImportEPCtxOVIREncapsulation(std::istream& model_stream,
+  std::shared_ptr<OVExeNetwork> ImportEPCtxOVIREncapsulation(std::istream& model_stream,
                                             std::string& hw_target,
                                             const ov::AnyMap& device_config,
                                             bool enable_causallm,
@@ -105,10 +105,9 @@ class OVExeNetwork {
   bool is_stateful_causallm;
 
  public:
-  explicit OVExeNetwork(ov::CompiledModel compiled_model, std::string device, bool stateful_causallm = false)
-      : compiled_model_obj(std::move(compiled_model)), target_device(std::move(device)), is_stateful_causallm(stateful_causallm) {}
-  OVExeNetwork() : compiled_model_obj(ov::CompiledModel()), is_stateful_causallm(false) {}
-  ov::CompiledModel& Get() { return compiled_model_obj; }
+  OVExeNetwork(ov::CompiledModel compiled_model, std::string device, bool stateful_causallm)
+      : compiled_model_obj(compiled_model), target_device(std::move(device)), is_stateful_causallm(stateful_causallm) {}
+  ov::CompiledModel Get() { return compiled_model_obj; }
   std::shared_ptr<OVInferRequest> CreateInferRequest();
 };
 
@@ -131,10 +130,17 @@ class OVInferRequest {
   void SetTensor(const std::string& name, const ov::element::Type& type, const ov::Shape& shape, void* ort_ptr) {
     auto& cached_binding = bindings_cache_[name];
     if (cached_binding.ort_ptr != ort_ptr ||
-        !cached_binding.tensor_ptr ||
+        cached_binding.tensor_ptr != nullptr ||
         cached_binding.tensor_ptr->get_shape() != shape) {
       cached_binding.tensor_ptr.reset();
-      auto ov_tensor = std::make_shared<ov::Tensor>(type, shape, const_cast<void*>(ort_ptr));
+      void* ort_tensor = const_cast<void*>(ort_ptr);
+  
+      #ifndef NDEBUG
+      ov::Strides* stride = new ov::Strides();
+      std::shared_ptr<ov::Tensor> ov_tensor = std::make_shared<ov::Tensor>(type, shape, ort_tensor, *stride);
+      #else
+      std::shared_ptr<ov::Tensor> ov_tensor = std::make_shared<ov::Tensor>(type, shape, ort_tensor);
+      #endif
       ovInfReq.set_tensor(name, *ov_tensor);
       cached_binding = {std::move(ov_tensor), ort_ptr};
     }

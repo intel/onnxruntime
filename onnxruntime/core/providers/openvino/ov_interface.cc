@@ -71,15 +71,19 @@ std::optional<bool> queryOVProperty(const std::string& property, const std::stri
 
 std::shared_ptr<OVNetwork> OVCore::ReadModel(std::string&& model, const std::string& model_path) {
   return OvExceptionBoundary([&]() {
+    
+    #ifndef NDEBUG
+        ORT_UNUSED_PARAMETER(model);
+        return core.read_model(model_path);
+    #else
     std::istringstream modelStringStream(std::move(model));
     std::istream& modelStream = modelStringStream;
     // Try to load with FrontEndManager
     ov::frontend::FrontEndManager manager;
     ov::frontend::FrontEnd::Ptr FE;
     ov::frontend::InputModel::Ptr inputModel;
-
-    ov::AnyVector params{&modelStream, model_path};
-
+    ov::AnyVector params{&modelStringStream, model_path};
+    
     FE = manager.load_by_model(params);
     if (FE) {
       inputModel = FE->load(params);
@@ -87,14 +91,14 @@ std::shared_ptr<OVNetwork> OVCore::ReadModel(std::string&& model, const std::str
     } else {
       ORT_THROW(log_tag + "Unknown exception while Reading network");
     }
+    #endif
   },
                              "Exception while Reading network");
 }
 
-OVExeNetwork OVCore::StatefulCompileModel(std::shared_ptr<OVNetwork>& model,
+std::shared_ptr<OVExeNetwork> OVCore::StatefulCompileModel(std::shared_ptr<OVNetwork>& model,
                                           std::string& hw_target,
                                           const ov::AnyMap& device_config) {
-  ov::CompiledModel compiled_model;
   ov::AnyMap config = device_config;
 
   if (onnxruntime::openvino_ep::backend_utils::IsDebugEnabled()) {
@@ -146,36 +150,36 @@ OVExeNetwork OVCore::StatefulCompileModel(std::shared_ptr<OVNetwork>& model,
   }
 
   LOGS_DEFAULT(INFO) << log_tag << "Compiling OV Model using Stateful Transformation flow";
-  compiled_model = OVCore::Get()->core.compile_model(model, hw_target, config);
-  OVExeNetwork exe(compiled_model, hw_target, true);
+  auto obj = OVCore::Get()->core.compile_model(model, hw_target, config);
+  std::shared_ptr<OVExeNetwork> exe = std::make_shared<OVExeNetwork>(obj, hw_target, true);
   return exe;
 }
 
-OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_network,
+std::shared_ptr<OVExeNetwork> OVCore::CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_network,
                                   std::string& hw_target,
                                   ov::AnyMap& device_config,
                                   bool enable_causallm,
                                   const std::string& name) {
   return OvExceptionBoundary([&]() {
-    OVExeNetwork exe;
     if (enable_causallm) {
       auto mutable_model = ie_cnn_network->clone();
-      exe = OVCore::Get()->StatefulCompileModel(mutable_model, hw_target, device_config);
+      return OVCore::Get()->StatefulCompileModel(mutable_model, hw_target, device_config);
     } else {
-      auto obj = core.compile_model(ie_cnn_network, hw_target, device_config);
-      exe = OVExeNetwork(obj, hw_target);
+      ov::CompiledModel obj = core.compile_model(ie_cnn_network, hw_target, device_config);
+      std::shared_ptr<OVExeNetwork> exe = std::make_shared<OVExeNetwork>(obj, hw_target, false);
+#ifndef NDEBUG
+      printDebugInfo(exe->Get());
+#endif
+      return exe;
     }
 
-#ifndef NDEBUG
-    printDebugInfo(exe.Get());
-#endif
 
-    return exe;
+
   },
                              "Exception while Loading Network for graph {}", name);
 }
 
-OVExeNetwork OVCore::CompileModel(const std::string& onnx_model,
+std::shared_ptr<OVExeNetwork>  OVCore::CompileModel(const std::string& onnx_model,
                                   std::string& hw_target,
                                   ov::AnyMap& device_config,
                                   const std::string& name) {
@@ -186,17 +190,18 @@ OVExeNetwork OVCore::CompileModel(const std::string& onnx_model,
 #ifndef NDEBUG
     printDebugInfo(obj);
 #endif
-    OVExeNetwork exe(obj, hw_target);
+    std::shared_ptr<OVExeNetwork> exe = std::make_shared<OVExeNetwork>(obj, hw_target, false);
     return exe;
   },
                              "Exception while Loading Network for graph {}", name);
 }
 
-OVExeNetwork OVCore::ImportModel(ModelBlobWrapper& model_blob,
+std::shared_ptr<OVExeNetwork> OVCore::ImportModel(ModelBlobWrapper& model_blob,
                                  std::string hw_target,
                                  const ov::AnyMap& device_config,
                                  std::string name) {
   return OvExceptionBoundary([&]() {
+    std::cout << "ImportModel\n";
     ov::CompiledModel obj;
 #if (OPENVINO_VERSION_MAJOR > 2025 || (OPENVINO_VERSION_MAJOR == 2025 && OPENVINO_VERSION_MINOR >= 3))
     if (!model_blob.maybe_native_blob_path_.empty()) {
@@ -207,23 +212,23 @@ OVExeNetwork OVCore::ImportModel(ModelBlobWrapper& model_blob,
 #else
     obj = core.import_model(*model_blob.stream_, hw_target, device_config);
 #endif
-    OVExeNetwork exe(obj, hw_target);
+    std::shared_ptr<OVExeNetwork> exe = std::make_shared<OVExeNetwork>(obj, hw_target, false);
 
 #ifndef NDEBUG
-    printDebugInfo(exe.Get());
+    printDebugInfo(exe->Get());
 #endif
     return exe;
   },
                              "Exception while Loading Network for graph {}", name);
 }
 
-OVExeNetwork OVCore::ImportEPCtxOVIREncapsulation(std::istream& model_stream,
+std::shared_ptr<OVExeNetwork> OVCore::ImportEPCtxOVIREncapsulation(std::istream& model_stream,
                                                   std::string& hw_target,
                                                   const ov::AnyMap& device_config,
                                                   bool enable_causallm,
                                                   std::filesystem::path model_file_path) {
   return OvExceptionBoundary([&]() {
-    OVExeNetwork exe;
+    std::shared_ptr<OVExeNetwork> exe;
 
     bool isXML = backend_utils::IsModelStreamXML(model_stream);
 
@@ -255,16 +260,18 @@ OVExeNetwork OVCore::ImportEPCtxOVIREncapsulation(std::istream& model_stream,
       std::shared_ptr<ov::Model> model = core.read_model(xml_file_path.string());
 
       if (enable_causallm) {
-        exe = OVCore::Get()->StatefulCompileModel(model, hw_target, device_config);
+        return OVCore::Get()->StatefulCompileModel(model, hw_target, device_config);
       } else {
         auto obj = core.compile_model(model, hw_target, device_config);
-        exe = OVExeNetwork(obj, hw_target);
+        exe = std::make_shared<OVExeNetwork>(obj, hw_target, false);
+#ifndef NDEBUG
+        printDebugInfo(exe->Get());
+#endif
+        return exe;
       }
     }
 
-#ifndef NDEBUG
-    printDebugInfo(exe.Get());
-#endif
+
     return exe;
   },
                              "Exception while Loading Network from OVIR model file: {}", model_file_path.string());

@@ -22,16 +22,17 @@ BackendFactory::MakeBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_p
       type.find("HETERO") != std::string::npos ||
       type.find("MULTI") != std::string::npos ||
       type.find("AUTO") != std::string::npos) {
-    std::shared_ptr<IBackend> concrete_backend_;
+    //std::shared_ptr<IBackend> concrete_backend_;
     try {
-      concrete_backend_ = std::make_shared<BasicBackend>(model_proto, session_context, subgraph_context, shared_context, model_stream);
+      std::shared_ptr<IBackend> concrete_backend_ (new  BasicBackend(model_proto, session_context, subgraph_context, shared_context, model_stream));
+      return concrete_backend_;
     } catch (std::string const& msg) {
       ORT_THROW(msg);
     }
-    return concrete_backend_;
   } else {
     ORT_THROW("[OpenVINO-EP] Backend factory error: Unknown backend type: " + type);
   }
+  //return nullptr;
 }
 
 }  // namespace openvino_ep

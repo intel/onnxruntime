@@ -29,6 +29,10 @@
     )
   endif()
 
+  set_target_properties(openvino::runtime PROPERTIES
+      MAP_IMPORTED_CONFIG_DEBUG Debug
+    )
+
   list(APPEND OPENVINO_LIB_LIST openvino::frontend::onnx openvino::runtime ${PYTHON_LIBRARIES})
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_openvino_cc_srcs})
   onnxruntime_add_shared_library_module(onnxruntime_providers_openvino ${onnxruntime_providers_openvino_cc_srcs} "${ONNXRUNTIME_ROOT}/core/dll/onnxruntime.rc")
@@ -86,5 +90,5 @@
 
 set_target_properties(onnxruntime_providers_openvino PROPERTIES
   MAP_IMPORTED_CONFIG_RELEASE RelWithDebInfo
-  MAP_IMPORTED_CONFIG_DEBUG RelWithDebInfo
+  MAP_IMPORTED_CONFIG_DEBUG Debug
   )

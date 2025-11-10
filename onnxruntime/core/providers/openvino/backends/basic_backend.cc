@@ -65,6 +65,7 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
                                                                    enable_causallm,
                                                                    model_file_path());
       } else {
+        std::cout << "Before Import Model\n";
         // If the blob is held in an EPContext node, then skip FE+Compile
         // and directly move on to creating a backend with the executable blob
         exe_network_ = OVCore::Get()->ImportModel(*model_stream,
@@ -363,6 +364,7 @@ void BasicBackend::Infer(OrtKernelContext* ctx) const {
     if (IsCILogEnabled()) {
       std::cout << "Inference successful" << std::endl;
     }
+    std::cout << "We are Inside the subgraph\n";
     return;
   }
 
@@ -413,10 +415,11 @@ void BasicBackend::Infer(OrtKernelContext* ctx) const {
 
     // Bind inputs
     for (const auto& input_info : bindings_->network_inputs_) {
+      auto tensor = context.GetInput(input_info.onnx_index);
       infer_request->SetTensor(input_info.name,
                                input_info.type,
                                input_info.shape,
-                               const_cast<void*>(context.GetInput(input_info.onnx_index).GetTensorRawData()));
+                               const_cast<void*>(tensor.GetTensorRawData()));
     }
 
     // Bind outputs
@@ -442,16 +445,15 @@ void BasicBackend::Infer(OrtKernelContext* ctx) const {
 
   LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
   if (IsCILogEnabled()) {
-    std::cout << "Inference successful" << std::endl;
   }
 
-#ifndef NDEBUG
+  #ifndef NDEBUG
   // Print performance counts before releasing the infer_request for thread safety
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
     std::string& hw_target = session_context_.device_type;
     printPerformanceCounts(infer_request, std::cout, hw_target);
   }
-#endif
+  #endif
 }
 
 }  // namespace openvino_ep
