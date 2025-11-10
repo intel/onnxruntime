@@ -3,7 +3,9 @@
 
 #include "core/providers/openvino/ov_interface.h"
 
+#include <charconv>
 #include <format>
+#include <regex>
 
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
@@ -16,6 +18,40 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
+namespace {
+// Helper to extract Level Zero error codes from NPU driver exceptions
+struct ZEErrorInfo {
+  uint32_t code{0};
+  std::string name{"UNKNOWN_NPU_ERROR"};
+
+  static ZEErrorInfo ExtractFromMessage(std::string_view ov_exception_msg) {
+    ZEErrorInfo info;
+
+    // Extract hex error code: "code 0x([0-9a-fA-F]+)"
+    std::regex code_pattern("code 0x([0-9a-fA-F]+)");
+    std::string msg_str(ov_exception_msg);
+    std::smatch matches;
+    if (std::regex_search(msg_str, matches, code_pattern) && matches.size() > 1) {
+      const auto& code_str = matches[1].str();
+      std::from_chars(code_str.data(), code_str.data() + code_str.size(), info.code, 16);
+    }
+
+    // Extract ZE error name: R"(\bZE_\w*\b)"
+    std::regex name_pattern(R"(\bZE_\w*\b)");
+    if (std::regex_search(msg_str, matches, name_pattern)) {
+      info.name = matches[0];
+    }
+
+    return info;
+  }
+
+  // Check if this is ZE_RESULT_ERROR_INVALID_NATIVE_BINARY (driver/binary mismatch)
+  bool IsInvalidNativeBinary() const {
+    return code == 0x7800000f;
+  }
+};
+}  // namespace
+
 template <typename Func, typename... Args>
 inline auto OvExceptionBoundary(Func&& func, std::format_string<Args...>&& fmt, Args&&... args) {
   return OvExceptionBoundary(func, ORT_EP_FAIL, std::forward<std::format_string<Args...>>(fmt), std::forward<Args>(args)...);
@@ -26,9 +62,25 @@ inline auto OvExceptionBoundary(Func&& func, OrtErrorCode error_code, std::forma
   try {
     return func();
   } catch (const ov::Exception& e) {
+    std::string ov_msg = e.what();
+
+    // For import failures, extract and report ZE error codes for better NPU diagnostics
+    if (error_code == ORT_INVALID_GRAPH) {
+      auto ze_info = ZEErrorInfo::ExtractFromMessage(ov_msg);
+      if (ze_info.IsInvalidNativeBinary()) {
+        // Enhance message for binary incompatibility (most common import failure)
+        ov_msg = std::format("{}, code 0x{:x}\nModel needs to be recompiled\n",
+                            ze_info.name, ze_info.code);
+      } else if (ze_info.code != 0) {
+        // Include ZE error details for other NPU failures
+        ov_msg = std::format("{}, code 0x{:x}: {}",
+                            ze_info.name, ze_info.code, ov_msg);
+      }
+    }
+
     // Encode error code as prefix: "<code>|message"
     auto msg = std::format("{}|{}{}: {}", static_cast<int>(error_code), log_tag,
-                          std::vformat(fmt.get(), std::make_format_args(args...)), e.what());
+                          std::vformat(fmt.get(), std::make_format_args(args...)), ov_msg);
     ORT_THROW(msg);
   } catch (...) {
     // Encode error code as prefix: "<code>|message"
