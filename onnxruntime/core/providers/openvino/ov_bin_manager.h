@@ -12,7 +12,6 @@
 #include <shared_mutex>
 
 #include "openvino/runtime/core.hpp"
-#include "ov_shared_resource_manager.h"
 #include "weak_singleton.h"
 
 namespace onnxruntime {
@@ -72,30 +71,6 @@ class BinManager {
   std::optional<std::filesystem::path> external_bin_path_;
   ov::Tensor mapped_bin_;
   std::unordered_map<std::string, BlobContainer> native_blobs_;
-};
-
-class SharedBinManager : public WeakSingleton<SharedBinManager> {
- public:
-  std::shared_ptr<BinManager> GetOrCreateBinManager(const std::filesystem::path& model_path) {
-    if (model_path.empty()) {
-      return manager_.GetOrCreateResource(model_path);
-    }
-    return manager_.GetOrCreateResource(model_path, model_path);
-  }
-
-  std::shared_ptr<BinManager> GetOrCreateActiveBinManager(const std::filesystem::path& model_path) {
-    if (model_path.empty()) {
-      return manager_.GetActiveResourceOrCreate(model_path);
-    }
-    return manager_.GetActiveResourceOrCreate(model_path, model_path);
-  }
-
-  void ClearActiveBinManager() {
-    manager_.ClearActiveResource();
-  }
-
- private:
-  SharedResourceManager<std::filesystem::path, BinManager> manager_;
 };
 
 }  // namespace openvino_ep

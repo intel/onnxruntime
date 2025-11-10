@@ -19,14 +19,12 @@
 #include "ov_bin_manager.h"
 #include "ov_interface.h"
 
-
 #ifdef _WIN32
 #include "core/providers/openvino/ov_tracing.h"
 #endif
 
 namespace onnxruntime {
 namespace openvino_ep {
-
 
 static void print_build_options() {
   std::cout << "[ERROR] INVALID DEVICE BUILD TYPE SPECIFIED" << std::endl;
@@ -83,7 +81,6 @@ class OpenVINOExecutionProvider : public IExecutionProvider {
   SessionContext session_context_;
   std::shared_ptr<OVCore> ov_core_;
   std::shared_ptr<SharedContextManager> shared_context_manager_;
-  std::shared_ptr<SharedBinManager> shared_bin_manager_;
 
   std::list<BackendManager> backend_managers_;  // EP session owns the backend objects
   EPCtxHandler ep_ctx_handle_;

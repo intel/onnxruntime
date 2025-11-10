@@ -60,8 +60,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const ProviderInfo& info)
       session_context_(info),
       ov_core_(OVCore::Get()),
       shared_context_manager_(SharedContextManager::Get()),
-      shared_bin_manager_(SharedBinManager::Get()),
-      ep_ctx_handle_{session_context_.openvino_sdk_version, *GetLogger(), shared_bin_manager_, shared_context_manager_} {
+      ep_ctx_handle_{session_context_.openvino_sdk_version, *GetLogger(), shared_context_manager_} {
   InitProviderOrtApi();
 #ifdef _WIN32
   session_id_ = global_session_counter_.fetch_add(1) + 1;
@@ -133,10 +132,6 @@ common::Status OpenVINOExecutionProvider::Compile(
     BackendManager& backend_manager;
   };
 
-  SharedResources shared_resources{
-      .shared_context_manager = *shared_context_manager_,
-      .shared_bin_manager = *shared_bin_manager_};
-
   for (const FusedNodeAndGraph& fused_node_graph : fused_nodes) {
     const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
     const Node& fused_node = fused_node_graph.fused_node;
@@ -148,7 +143,7 @@ common::Status OpenVINOExecutionProvider::Compile(
     // For original model, check if the user wants to export a model with pre-compiled blob
 
     auto& backend_manager = backend_managers_.emplace_back(session_context_,
-                                                           shared_resources,
+                                                           *shared_context_manager_,
                                                            fused_node,
                                                            graph_body_viewer,
                                                            logger,
@@ -202,13 +197,11 @@ common::Status OpenVINOExecutionProvider::Compile(
 
     // bit clunky ideally we should try to fold this into ep context handler
     if (!session_context_.so_context_embed_mode) {
-      auto bin_manager = shared_bin_manager_->GetOrCreateActiveBinManager(session_context_.GetOutputBinPath());
       auto shared_context = shared_context_manager_->GetOrCreateActiveSharedContext(session_context_.GetOutputBinPath());
-      bin_manager->Serialize(shared_context);
+      shared_context->Serialize();
       if (session_context_.so_stop_share_ep_contexts) {
         shared_context_manager_->ClearActiveSharedContext();
-        shared_bin_manager_->ClearActiveBinManager();
-        bin_manager->Clear();
+        shared_context->Clear();
       }
     }
   }

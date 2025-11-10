@@ -16,16 +16,11 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
-struct SharedResources {
-  SharedContextManager& shared_context_manager;
-  SharedBinManager& shared_bin_manager;
-};
-
 // Singleton class that manages all the backends
 class BackendManager {
  public:
   BackendManager(SessionContext& session_context,
-                 SharedResources& shared_resources,
+                 SharedContextManager& shared_context_manager,
                  const onnxruntime::Node& fused_node,
                  const onnxruntime::GraphViewer& subgraph,
                  const logging::Logger& logger,
@@ -64,7 +59,7 @@ class BackendManager {
   SubGraphContext subgraph_context_;
   EPCtxHandler& ep_ctx_handle_;
   SessionContext& session_context_;
-  SharedResources& shared_res_;
+  SharedContextManager& shared_context_manager_;
   std::shared_ptr<SharedContext> shared_context_;
 };
 

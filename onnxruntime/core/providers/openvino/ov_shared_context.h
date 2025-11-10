@@ -13,15 +13,16 @@
 #include <mutex>
 
 #include "openvino/runtime/core.hpp"
-#include "ov_shared_resource_manager.h"
+#include "ov_bin_manager.h"
 #include "weak_singleton.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
 
-class SharedContext {
+class SharedContext : public std::enable_shared_from_this<SharedContext> {
  public:
-  SharedContext() = default;
+  explicit SharedContext(std::filesystem::path bin_path);
+  SharedContext() : SharedContext("") {}
 
   struct Metadata {
     struct Value {
@@ -57,6 +58,33 @@ class SharedContext {
 
   void SetSharedWeightsOnInferRequest(ov::InferRequest& ir, const std::filesystem::path& model_dir);
 
+  void AddNativeBlob(const std::string& name, const ov::CompiledModel& compiled_model) {
+    bin_manager_.AddNativeBlob(name, compiled_model);
+  }
+
+  ov::Tensor GetNativeBlob(const std::string& blob_name) {
+    return bin_manager_.GetNativeBlob(blob_name);
+  }
+
+  std::unique_ptr<std::istream> GetNativeBlobAsStream(const std::string& blob_name) {
+    return bin_manager_.GetNativeBlobAsStream(blob_name);
+  }
+
+  void Serialize(std::ostream& stream);
+  void Deserialize(std::istream& stream);
+  void Serialize();
+  void Deserialize();
+
+  void Clear();
+
+  std::filesystem::path GetBinPath() const {
+    return bin_manager_.GetExternalBinPath();
+  }
+
+  static std::filesystem::path GetBinPathForModel(const std::filesystem::path& model_path) {
+    return BinManager::GetBinPathForModel(model_path);
+  }
+
  private:
   struct WeightsFile {
     ORT_DISALLOW_COPY_AND_ASSIGNMENT(WeightsFile);
@@ -86,6 +114,8 @@ class SharedContext {
       const ov::Shape& dimensions);
 
   mutable std::shared_mutex mutex_;
+  std::filesystem::path bin_path_;
+  BinManager bin_manager_;
   std::unordered_map<std::filesystem::path, std::unique_ptr<WeightsFile>> weight_files_;
   Metadata::Map metadata_;
 };
@@ -93,19 +123,36 @@ class SharedContext {
 class SharedContextManager : public WeakSingleton<SharedContextManager> {
  public:
   std::shared_ptr<SharedContext> GetOrCreateActiveSharedContext(const std::filesystem::path& model_path) {
-    return manager_.GetActiveResourceOrCreate(model_path);
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (active_context_) {
+      return active_context_;
+    }
+    auto [it, inserted] = contexts_.try_emplace(model_path, nullptr);
+    if (inserted) {
+      it->second = std::make_shared<SharedContext>(model_path);
+    }
+    active_context_ = it->second;
+    return it->second;
   }
 
   std::shared_ptr<SharedContext> GetOrCreateSharedContext(const std::filesystem::path& model_path) {
-    return manager_.GetOrCreateResource(model_path);
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto [it, inserted] = contexts_.try_emplace(model_path, nullptr);
+    if (inserted) {
+      it->second = std::make_shared<SharedContext>(model_path);
+    }
+    return it->second;
   }
 
   void ClearActiveSharedContext() {
-    manager_.ClearActiveResource();
+    std::lock_guard<std::mutex> lock(mutex_);
+    active_context_ = nullptr;
   }
 
  private:
-  SharedResourceManager<std::filesystem::path, SharedContext> manager_;
+  mutable std::mutex mutex_;
+  std::unordered_map<std::filesystem::path, std::shared_ptr<SharedContext>> contexts_;
+  std::shared_ptr<SharedContext> active_context_;
 };
 
 }  // namespace openvino_ep

@@ -12,9 +12,8 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
-EPCtxHandler::EPCtxHandler(std::string ov_sdk_version, const logging::Logger& logger, std::shared_ptr<SharedBinManager> shared_bin_manager, std::shared_ptr<SharedContextManager> shared_context)
-    : openvino_sdk_version_(std::move(ov_sdk_version)), logger_(logger), shared_bin_manager_(std::move(shared_bin_manager)), shared_context_manager_(std::move(shared_context)) {
-  ORT_ENFORCE(shared_bin_manager_ != nullptr, "SharedBinManager pointer is null in EPCtxHandler constructor.");
+EPCtxHandler::EPCtxHandler(std::string ov_sdk_version, const logging::Logger& logger, std::shared_ptr<SharedContextManager> shared_context_manager)
+    : openvino_sdk_version_(std::move(ov_sdk_version)), logger_(logger), shared_context_manager_(std::move(shared_context_manager)) {
   ORT_ENFORCE(shared_context_manager_ != nullptr, "SharedContextManager pointer is null in EPCtxHandler constructor.");
 
   epctx_model_ = Model::Create("ovep_context_model", false, logger_);
@@ -156,9 +155,9 @@ std::unique_ptr<ModelBlobWrapper> EPCtxHandler::GetModelBlobStream(const std::fi
                 "EPCtx blob was exported / is compatible with OpenVINO SDK version " + attrs.at(EP_SDK_VER).s() +
                     ", but OpenVINO SDK version currently in use is " + openvino_sdk_version_);
 
-    result.reset();  // Release the stream as we will get the native blob from BinManager
-    auto bin_manager = shared_bin_manager_->GetOrCreateBinManager(native_blob_path);
-    return std::make_unique<ModelBlobWrapper>(bin_manager->GetNativeBlobAsStream(partition_name), bin_manager->GetNativeBlob(partition_name));
+    result.reset();  // Release the stream as we will get the native blob from SharedContext
+    auto shared_context = shared_context_manager_->GetOrCreateSharedContext(native_blob_path);
+    return std::make_unique<ModelBlobWrapper>(shared_context->GetNativeBlobAsStream(partition_name), shared_context->GetNativeBlob(partition_name));
   }
 
   LOGS_DEFAULT(VERBOSE) << "[OpenVINO EP] Read blob from EPContext Node";
@@ -254,17 +253,17 @@ void EPCtxHandler::Initialize(const std::vector<IExecutionProvider::FusedNodeAnd
     const std::string& ep_cache_context = attrs.at(EP_CACHE_CONTEXT).s();
     if (embed_mode) {
       std::filesystem::path dummy_path{};
-      auto bin_manager = shared_bin_manager_->GetOrCreateBinManager(dummy_path);
+      auto shared_context = shared_context_manager_->GetOrCreateSharedContext(dummy_path);
       if (main_context) {
         ORT_ENFORCE(!ep_cache_context.empty(), "Embedded EP context is indicated but EP_CACHE_CONTEXT attribute is empty.");
         std::istringstream ss(ep_cache_context);
-        bin_manager->Deserialize(ss, shared_context_manager_->GetOrCreateSharedContext(dummy_path));
+        shared_context->Deserialize(ss);
       }
     } else {
       std::filesystem::path ep_context_path = ep_context_dir / ep_cache_context;
       if (ep_context_path.extension() != ".xml") {
-        auto bin_manager = shared_bin_manager_->GetOrCreateBinManager(ep_context_path);
-        bin_manager->Deserialize(shared_context_manager_->GetOrCreateSharedContext(ep_context_path));
+        auto shared_context = shared_context_manager_->GetOrCreateSharedContext(ep_context_path);
+        shared_context->Deserialize();
       }
     }
   }

@@ -38,29 +38,28 @@ ov::CompiledModel BackendManager::GetOVCompiledModel() {
 }
 
 BackendManager::BackendManager(SessionContext& session_context,
-                               SharedResources& shared_resources,
+                               SharedContextManager& shared_context_manager,
                                const onnxruntime::Node& fused_node,
                                const onnxruntime::GraphViewer& subgraph,
                                const logging::Logger& logger,
                                EPCtxHandler& ep_ctx_handle) : ep_ctx_handle_(ep_ctx_handle),
                                                               session_context_(session_context),
-                                                              shared_res_(shared_resources) {
+                                                              shared_context_manager_(shared_context_manager) {
   subgraph_context_.is_ep_ctx_graph = ep_ctx_handle_.CheckForOVEPCtxNodeInGraph(subgraph);
   // If the graph contains a OVIR wrapped node, we check if it has matching xml file name attribute
   subgraph_context_.is_ep_ctx_ovir_encapsulated = ep_ctx_handle_.CheckEPCacheContextAttribute(subgraph,
                                                                                               session_context_.onnx_model_path_name.filename().replace_extension("xml").string());
 
-  auto& shared_context = shared_context_;
   if (subgraph_context_.is_ep_ctx_graph) {
-    shared_context = ep_ctx_handle.GetSharedContextForEpContextSubgraph(subgraph,
+    shared_context_ = ep_ctx_handle.GetSharedContextForEpContextSubgraph(subgraph,
                                                                         session_context_.GetModelPath());
-  } else if (session_context_.so_share_ep_contexts && !session_context_.so_context_embed_mode) {
-    shared_context = shared_res_.shared_context_manager.GetOrCreateActiveSharedContext(session_context_.GetOutputBinPath());
+  } else if (session_context_.so_context_enable && !session_context_.so_context_embed_mode) {
+    shared_context_ = shared_context_manager_.GetOrCreateActiveSharedContext(session_context_.GetOutputBinPath());
   } else {
-    // looks a bit funky but we want a shared context even if we may not to use it.
-    shared_context = shared_res_.shared_context_manager.GetOrCreateActiveSharedContext("");
+    shared_context_ = shared_context_manager_.GetOrCreateActiveSharedContext({});
   }
-  ORT_ENFORCE(shared_context, "Could not create a shared context.");
+  // We always want a shared context even though we might not be sharing weights.
+  ORT_ENFORCE(shared_context_, "Could not create a shared context.");
 
   subgraph_context_.model_precision = [&](const GraphViewer& graph_viewer) {
     // return empty if graph has no inputs or if types are not one of FP32/FP16
@@ -133,7 +132,7 @@ BackendManager::BackendManager(SessionContext& session_context,
         concrete_backend_ = BackendFactory::MakeBackend(model_proto,
                                                         session_context_,
                                                         subgraph_context_,
-                                                        *shared_context,
+                                                        *shared_context_,
                                                         model_stream);
       } catch (std::string const& msg) {
         ORT_THROW(msg);
@@ -157,7 +156,7 @@ BackendManager::BackendManager(SessionContext& session_context,
       concrete_backend_ = BackendFactory::MakeBackend(model_proto,
                                                       session_context_,
                                                       subgraph_context_,
-                                                      *shared_context,
+                                                      *shared_context_,
                                                       model_stream);
     } catch (const OnnxRuntimeException& ex) {
       std::string exception_str = ex.what();
@@ -219,11 +218,11 @@ void BackendManager::TryExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVi
   std::string model_blob_str;
   auto compiled_model = concrete_backend_->GetOVCompiledModel();
   if (session_context_.so_context_embed_mode) {  // Internal blob
-    auto bin_manager = shared_res_.shared_bin_manager.GetOrCreateActiveBinManager("");
-    bin_manager->AddNativeBlob(subgraph_context_.subgraph_name, compiled_model);
+    auto shared_context = shared_context_manager_.GetOrCreateActiveSharedContext("");
+    shared_context->AddNativeBlob(subgraph_context_.subgraph_name, compiled_model);
     if (include_embed_data) {
       std::stringstream ss;
-      bin_manager->Serialize(ss);
+      shared_context->Serialize(ss);
       model_blob_str = ss.str();
     }
   } else {  // External blob
@@ -236,9 +235,9 @@ void BackendManager::TryExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVi
     ORT_ENFORCE(!name.empty());
 
     auto bin_filename = session_context_.GetOutputBinPath();
-    auto bin_manager = shared_res_.shared_bin_manager.GetOrCreateActiveBinManager(bin_filename);
-    bin_manager->AddNativeBlob(subgraph_context_.subgraph_name, compiled_model);
-    model_blob_str = bin_manager->GetExternalBinPath().filename().string();
+    auto shared_context = shared_context_manager_.GetOrCreateActiveSharedContext(bin_filename);
+    shared_context->AddNativeBlob(subgraph_context_.subgraph_name, compiled_model);
+    model_blob_str = shared_context->GetBinPath().filename().string();
   }
 
   auto status = ep_ctx_handle_.AddOVEPCtxNodeToGraph(graph_body_viewer,

@@ -18,7 +18,7 @@ namespace openvino_ep {
 class SharedBinManager;
 
 struct ModelBlobWrapper {
-  ModelBlobWrapper(std::unique_ptr<std::istream> stream, const ov::Tensor &tensor) : stream_(std::move(stream)), tensor_(tensor) {}
+  ModelBlobWrapper(std::unique_ptr<std::istream> stream, const ov::Tensor& tensor) : stream_(std::move(stream)), tensor_(tensor) {}
   std::unique_ptr<std::istream> stream_;
   ov::Tensor tensor_;  // May be empty if model blob is provided as stream only.
 };
@@ -35,7 +35,7 @@ static const char SOURCE[] = "source";
 
 class EPCtxHandler {
  public:
-  EPCtxHandler(std::string ov_sdk_version, const logging::Logger& logger, std::shared_ptr<SharedBinManager> shared_bin_manager, std::shared_ptr<SharedContextManager> shared_context);
+  EPCtxHandler(std::string ov_sdk_version, const logging::Logger& logger, std::shared_ptr<SharedContextManager> shared_context_manager);
   EPCtxHandler(const EPCtxHandler&) = delete;  // No copy constructor
   bool CheckForOVEPCtxNodeInGraph(const GraphViewer& subgraph_view) const;
   std::shared_ptr<SharedContext> GetSharedContextForEpContextSubgraph(const GraphViewer& subgraph_view, const std::filesystem::path& ep_context_path) const;
@@ -53,7 +53,6 @@ class EPCtxHandler {
   const std::string openvino_sdk_version_;
   std::unique_ptr<Model> epctx_model_;
   const logging::Logger& logger_;
-  std::shared_ptr<SharedBinManager> shared_bin_manager_;
   std::shared_ptr<SharedContextManager> shared_context_manager_;
 };
 

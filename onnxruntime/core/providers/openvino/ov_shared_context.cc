@@ -10,6 +10,11 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
+SharedContext::SharedContext(std::filesystem::path bin_path)
+    : bin_path_(std::move(bin_path)),
+      bin_manager_(bin_path_) {
+}
+
 static bool InRange(size_t offset, size_t size, size_t total_size) {
   return (offset < total_size) && (size <= total_size) && (offset <= total_size - size);
 }
@@ -109,6 +114,29 @@ void SharedContext::SetSharedWeightsOnInferRequest(ov::InferRequest& ir, const s
     }
     ir.set_tensor(tensor_name, *value.tensor);
   }
+}
+
+void SharedContext::Serialize(std::ostream& stream) {
+  bin_manager_.Serialize(stream, shared_from_this());
+}
+
+void SharedContext::Deserialize(std::istream& stream) {
+  bin_manager_.Deserialize(stream, shared_from_this());
+}
+
+void SharedContext::Serialize() {
+  bin_manager_.Serialize(shared_from_this());
+}
+
+void SharedContext::Deserialize() {
+  bin_manager_.Deserialize(shared_from_this());
+}
+
+void SharedContext::Clear() {
+  std::unique_lock lock(mutex_);
+  weight_files_.clear();
+  metadata_.clear();
+  bin_manager_.Clear();
 }
 
 }  // namespace openvino_ep
