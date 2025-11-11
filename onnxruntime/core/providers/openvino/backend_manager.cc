@@ -50,15 +50,16 @@ BackendManager::BackendManager(SessionContext& session_context,
   subgraph_context_.is_ep_ctx_ovir_encapsulated = ep_ctx_handle_.CheckEPCacheContextAttribute(subgraph,
                                                                                               session_context_.onnx_model_path_name.filename().replace_extension("xml").string());
 
-  if (subgraph_context_.is_ep_ctx_graph) {
+  if (subgraph_context_.is_ep_ctx_graph && !subgraph_context_.is_ep_ctx_ovir_encapsulated) {
     shared_context_ = ep_ctx_handle.GetSharedContextForEpContextSubgraph(subgraph,
-                                                                        session_context_.GetModelPath());
-  } else if (session_context_.so_context_enable && !session_context_.so_context_embed_mode) {
+                                                                         session_context_.GetModelPath());
+  } else if (session_context_.so_context_enable && session_context_.so_share_ep_contexts) {
     shared_context_ = shared_context_manager_.GetOrCreateActiveSharedContext(session_context_.GetOutputBinPath());
   } else {
-    shared_context_ = shared_context_manager_.GetOrCreateActiveSharedContext({});
+    // Creating a shared context to satisfy backend. It won't be used for weight sharing.
+    // Don't make it the active share context since we don't actually want to share it.
+    shared_context_ = shared_context_manager_.GetOrCreateSharedContext(session_context_.GetOutputBinPath());
   }
-  // We always want a shared context even though we might not be sharing weights.
   ORT_ENFORCE(shared_context_, "Could not create a shared context.");
 
   subgraph_context_.model_precision = [&](const GraphViewer& graph_viewer) {

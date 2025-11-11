@@ -102,6 +102,9 @@ struct SessionContext : ProviderInfo {
     if (bin_file_name.empty()) {
       bin_file_name = onnx_model_path_name;
     }
+    if (bin_file_name.empty()) {
+      return {};
+    }
     return BinManager::GetBinPathForModel(bin_file_name);
   }
 
