@@ -37,6 +37,10 @@ ov::CompiledModel BackendManager::GetOVCompiledModel() {
   return ov::CompiledModel();
 }
 
+static bool ShouldExportEpContext(const SessionContext& session_context, const SubGraphContext& subgraph_context) {
+  return session_context.so_context_enable && (subgraph_context.is_ep_ctx_ovir_encapsulated || !subgraph_context.is_ep_ctx_graph);
+}
+
 BackendManager::BackendManager(SessionContext& session_context,
                                SharedContextManager& shared_context_manager,
                                const onnxruntime::Node& fused_node,
@@ -188,6 +192,17 @@ BackendManager::BackendManager(SessionContext& session_context,
       }
     }
   }
+
+  if (ShouldExportEpContext(session_context_, subgraph_context_)) {
+    if (concrete_backend_) {
+      shared_context_->AddNativeBlob(subgraph_context_.subgraph_name, concrete_backend_->GetOVCompiledModel());
+    } else {
+      ORT_THROW(
+          "Exporting dynamically compiled models at runtime is not supported. "
+          "Cannot export blobs of dynamic models that request static shape inference. "
+          "To export this model, set disable_dynamic_shapes to False");
+    }
+  }
 }
 
 // Call EPContext model exporter here if the provider option for exporting
@@ -195,23 +210,8 @@ BackendManager::BackendManager(SessionContext& session_context,
 // By default, create model in embed mode where the blob stream is exported as data within
 // the EPContext node.
 void BackendManager::TryExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphViewer& graph_body_viewer, bool include_embed_data) {
-  bool should_export = session_context_.so_context_enable && (subgraph_context_.is_ep_ctx_ovir_encapsulated || !subgraph_context_.is_ep_ctx_graph);
-
-  if (!should_export) {
-    // skip exporting.
+  if (!ShouldExportEpContext(session_context_, subgraph_context_) || !concrete_backend_) {
     return;
-  }
-
-  if (!concrete_backend_) {
-    ORT_THROW("[OpenVINO-EP] Cannot export compiled blob as EPCtx Node: Backend not initialized.");
-  }
-
-  if (session_context_.disable_dynamic_shapes && subgraph_context_.has_dynamic_input_shape) {
-    std::string exception_str =
-        "Exporting dynamically compiled models at runtime is not supported. "
-        "Cannot export blobs of dynamic models that request static shape inference. "
-        "To export this model, set disable_dynamic_shapes to False";
-    ORT_THROW(exception_str);
   }
 
   // If embed_mode, then pass on the serialized blob
@@ -219,12 +219,10 @@ void BackendManager::TryExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVi
   std::string model_blob_str;
   auto compiled_model = concrete_backend_->GetOVCompiledModel();
   if (session_context_.so_context_embed_mode) {  // Internal blob
-    auto shared_context = shared_context_manager_.GetOrCreateActiveSharedContext("");
-    shared_context->AddNativeBlob(subgraph_context_.subgraph_name, compiled_model);
     if (include_embed_data) {
       std::stringstream ss;
-      shared_context->Serialize(ss);
-      model_blob_str = ss.str();
+      shared_context_->Serialize(ss);
+      model_blob_str = std::move(ss).str();
     }
   } else {  // External blob
     // Build name by combining EpCtx model name (if available) and subgraph name. Model
@@ -235,10 +233,7 @@ void BackendManager::TryExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVi
     }
     ORT_ENFORCE(!name.empty());
 
-    auto bin_filename = session_context_.GetOutputBinPath();
-    auto shared_context = shared_context_manager_.GetOrCreateActiveSharedContext(bin_filename);
-    shared_context->AddNativeBlob(subgraph_context_.subgraph_name, compiled_model);
-    model_blob_str = shared_context->GetBinPath().filename().string();
+    model_blob_str = shared_context_->GetBinPath().filename().string();
   }
 
   auto status = ep_ctx_handle_.AddOVEPCtxNodeToGraph(graph_body_viewer,
