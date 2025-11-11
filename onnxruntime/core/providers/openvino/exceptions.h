@@ -21,11 +21,17 @@ struct ovep_exception : public std::exception {
     unknown,
   };
 
-  ovep_exception(const std::string& message,
-                 enum class type type) : message_{message},
-                                         type_{type},
-                                         error_code_{ze_result_code_from_string(message)},
-                                         error_name_{ze_result_name_from_string(message)} {}
+  ovep_exception(const std::exception& ex, enum class type exception_type)
+      : message_{ex.what()},
+        type_{exception_type},
+        error_code_{ze_result_code_from_string(message_)},
+        error_name_{ze_result_name_from_string(message_)} {}
+
+  ovep_exception(const std::string& message, enum class type exception_type)
+      : message_{message},
+        type_{exception_type},
+        error_code_{ze_result_code_from_string(message)},
+        error_name_{ze_result_name_from_string(message)} {}
 
   const char* what() const noexcept override {
     return message_.data();
@@ -48,7 +54,7 @@ struct ovep_exception : public std::exception {
     }
 
     std::string error_message = "Unhandled exception type: " + std::to_string(static_cast<int>(type_));
-    return {category_ort, common::FAIL, error_message};
+    return {category_ort, common::EP_FAIL, error_message};
   }
 
  protected:

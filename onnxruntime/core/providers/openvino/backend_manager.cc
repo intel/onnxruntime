@@ -158,39 +158,11 @@ BackendManager::BackendManager(SessionContext& session_context,
     subgraph_context_.has_dynamic_input_shape = false;
 
     // OV NPU plugin is supported with fallback to OV CPU upon compilation failures.
-    try {
-      concrete_backend_ = BackendFactory::MakeBackend(model_proto,
-                                                      session_context_,
-                                                      subgraph_context_,
-                                                      *shared_context_,
-                                                      model_stream);
-    } catch (const ovep_exception& ex) {
-#ifndef OPENVINO_DISABLE_NPU_FALLBACK
-      bool eligible_for_cpu_fallback = session_context_.device_type.find("NPU") != std::string::npos &&
-                                       !session_context_.so_disable_cpu_ep_fallback &&
-                                       !subgraph_context_.is_ep_ctx_graph;
-      if (eligible_for_cpu_fallback) {
-        std::string exception_str = ex.what();
-        LOGS_DEFAULT(VERBOSE) << exception_str;
-        LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU."
-                              << "Falling back to OV CPU for execution";
-        session_context_.device_type = "CPU";
-        session_context_.precision = "FP32";
-        try {
-          concrete_backend_ = BackendFactory::MakeBackend(model_proto,
-                                                          session_context_,
-                                                          subgraph_context_,
-                                                          shared_context_,
-                                                          model_stream);
-        } catch (std::string const& msg) {
-          ORT_THROW(msg);
-        }
-      } else
-#endif
-      {
-        throw ex;
-      }
-    }
+    concrete_backend_ = BackendFactory::MakeBackend(model_proto,
+                                                    session_context_,
+                                                    subgraph_context_,
+                                                    *shared_context_,
+                                                    model_stream);
   }
 
   if (ShouldExportEpContext(session_context_, subgraph_context_)) {
