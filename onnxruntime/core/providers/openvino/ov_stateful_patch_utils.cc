@@ -147,15 +147,13 @@ std::pair<std::vector<std::string>, std::unordered_set<std::string>> ExtractKVPa
     const auto& names = output.get_names();
     for (const auto& name : names) {
       if (name.find(prefix) == 0 && name.length() > prefix_len) {
-        key_value_output_names.push_back(name);
         size_t last_underscore_pos = name.rfind('_');
-
         // Extract pattern between "present_" and the last underscore
         if (last_underscore_pos != std::string::npos && last_underscore_pos > prefix_len) {
           std::string pattern = name.substr(prefix_len, last_underscore_pos - prefix_len);
-
           if (!pattern.empty()) {
             unique_patterns.insert(pattern);
+            key_value_output_names.push_back(name);
           }
         }
         break;
