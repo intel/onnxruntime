@@ -134,8 +134,6 @@ void MakeStateful(std::shared_ptr<ov::Model>& ov_model,
   manager.run_passes(ov_model);
 }
 
-// Converted to C++ from below reference URL:
-// https://github.com/huggingface/optimum-intel/blob/main/optimum/exporters/openvino/stateful.py#L281
 // Helper function to extract KV patterns from output names dynamically
 std::pair<std::vector<std::string>, std::unordered_set<std::string>> ExtractKVPatternsFromOutputs(const std::shared_ptr<ov::Model>& model) {
   std::vector<std::string> key_value_output_names;
