@@ -179,11 +179,8 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
           omit_subgraph = false;
         } else if (j < total_clusters - 1) {
           bool append_node = false;
-          while (j < total_clusters && !append_node) {
+          while (j < total_clusters - 1 && !append_node) {
             j = j + 1;
-            if (j >= total_clusters) {
-              break;
-            }
             append_node = AddTrivialClusterToNextClusterIfConnected(graph_viewer_, index, connected_clusters[j]);
           }
           if (append_node) {
