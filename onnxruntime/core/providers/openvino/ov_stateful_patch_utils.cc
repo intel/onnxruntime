@@ -90,11 +90,9 @@ void FuseCacheReorder(std::shared_ptr<ov::Model> ov_model,
 
   std::string main_input_name = GetInputOutputName(ov_model, input_name_candidates);
 
-  auto input_batch = ov_model->input(main_input_name).get_partial_shape()[0];
   auto update_shape = ov_model->input(key_value_input_names[0]).get_partial_shape();
-  update_shape[2] = 3;
 
-  auto beam_idx = std::make_shared<ov::opset13::Parameter>(ov::element::i32, ov::PartialShape({3}));
+  auto beam_idx = std::make_shared<ov::opset13::Parameter>(ov::element::i32, ov::PartialShape({update_shape[2]}));
   beam_idx->set_friendly_name("beam_idx");
   beam_idx->output(0).get_tensor().add_names({"beam_idx"});
   ov_model->add_parameters({beam_idx});
