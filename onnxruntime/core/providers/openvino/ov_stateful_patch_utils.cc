@@ -135,6 +135,10 @@ void MakeStateful(std::shared_ptr<ov::Model>& ov_model,
 }
 
 // Helper function to extract KV patterns from output names dynamically
+//
+// Example: Given output names ["present_key_cross_0", "present_key_cross_1", "present_value_cross_0", "present_value_cross_1", "logits"]
+//   key_value_output_names = ["present_key_cross_0", "present_key_cross_1", "present_value_cross_0", "present_value_cross_1"]
+//   unique_patterns = {"key_cross", "value_cross"}
 std::pair<std::vector<std::string>, std::unordered_set<std::string>> ExtractKVPatternsFromOutputs(const std::shared_ptr<ov::Model>& model) {
   std::vector<std::string> key_value_output_names;
   std::unordered_set<std::string> unique_patterns;
@@ -166,6 +170,12 @@ std::pair<std::vector<std::string>, std::unordered_set<std::string>> ExtractKVPa
 }
 
 // Main function to extract KV tensors using dynamic pattern matching
+//
+// Example: Given input names ["input_ids", "attention_mask", "past_key_cross_0", "past_key_cross_1", "past_value_cross_0", "past_value_cross_1"]
+//   kv_patterns = {"key_cross", "value_cross"}
+//
+//   key_value_input_names = ["past_key_cross_0", "past_key_cross_1", "past_value_cross_0", "past_value_cross_1"]
+//   not_kv_inputs = ["input_ids", "attention_mask"]
 std::pair<std::vector<std::string>, std::vector<std::string>> ExtractInputKVTensors(
     const std::shared_ptr<ov::Model>& model, const std::unordered_set<std::string>& kv_patterns) {
 
