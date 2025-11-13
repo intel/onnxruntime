@@ -121,9 +121,9 @@ common::Status OpenVINOExecutionProvider::Compile(
     is_epctx_model = ep_ctx_handle_.CheckForOVEPCtxNodeInGraph(graph_body_viewer_0);
   }
 
-  if (is_epctx_model) {
-    ep_ctx_handle_.Initialize(fused_nodes, session_context_.GetOutputBinPath().parent_path());
-  }
+  shared_context_ = ep_ctx_handle_.Initialize(fused_nodes, session_context_);
+  ORT_ENFORCE(shared_context_,
+              "Failed to create or retrieve SharedContext");
 
   struct OpenVINOEPFunctionState {
     AllocateFunc allocate_func = nullptr;
@@ -143,7 +143,7 @@ common::Status OpenVINOExecutionProvider::Compile(
     // For original model, check if the user wants to export a model with pre-compiled blob
 
     auto& backend_manager = backend_managers_.emplace_back(session_context_,
-                                                           *shared_context_manager_,
+                                                           *shared_context_,
                                                            fused_node,
                                                            graph_body_viewer,
                                                            logger,
@@ -197,11 +197,9 @@ common::Status OpenVINOExecutionProvider::Compile(
 
     // bit clunky ideally we should try to fold this into ep context handler
     if (!session_context_.so_context_embed_mode) {
-      auto shared_context = shared_context_manager_->GetOrCreateActiveSharedContext(session_context_.GetOutputBinPath());
-      shared_context->Serialize();
+      shared_context_->Serialize();
       if (session_context_.so_stop_share_ep_contexts) {
         shared_context_manager_->ClearActiveSharedContext();
-        shared_context->Clear();
       }
     }
   }

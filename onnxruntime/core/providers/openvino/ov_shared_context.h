@@ -132,6 +132,7 @@ class SharedContextManager : public WeakSingleton<SharedContextManager> {
       it->second = std::make_shared<SharedContext>(model_path);
     }
     active_context_ = it->second;
+    active_context_path_ = model_path;
     return it->second;
   }
 
@@ -146,6 +147,10 @@ class SharedContextManager : public WeakSingleton<SharedContextManager> {
 
   void ClearActiveSharedContext() {
     std::lock_guard<std::mutex> lock(mutex_);
+    if (active_context_) {
+      contexts_.erase(active_context_path_);
+      active_context_path_.clear();
+    }
     active_context_ = nullptr;
   }
 
@@ -153,6 +158,7 @@ class SharedContextManager : public WeakSingleton<SharedContextManager> {
   mutable std::mutex mutex_;
   std::unordered_map<std::filesystem::path, std::shared_ptr<SharedContext>> contexts_;
   std::shared_ptr<SharedContext> active_context_;
+  std::filesystem::path active_context_path_;
 };
 
 }  // namespace openvino_ep
