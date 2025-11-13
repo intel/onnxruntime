@@ -13,6 +13,7 @@
 
 #include "openvino/pass/manager.hpp"
 #include "openvino/pass/make_stateful.hpp"
+#include "openvino/opsets/opset12.hpp"
 #include "openvino/opsets/opset13.hpp"
 
 namespace onnxruntime {

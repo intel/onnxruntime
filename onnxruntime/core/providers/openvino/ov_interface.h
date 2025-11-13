@@ -155,6 +155,8 @@ class StatefulOVInferRequest : public OVInferRequest {
   bool prefill_use_full_chat_history = false;
   std::vector<int64_t> cached_input_ids;
   std::vector<int64_t> cached_position_ids;
+  std::vector<int64_t> beam_idx_val;
+  std::vector<int64_t> dst_idx_val;
 };
 
 }  // namespace openvino_ep
