@@ -65,7 +65,7 @@ class BinManager {
     } serialized_info;
   };
 
-  bool ShouldSerialize(const std::shared_ptr<SharedContext>& shared_context) const;
+  void DeserializeImpl(std::istream& stream, const std::shared_ptr<SharedContext>& shared_context);
 
   mutable std::shared_mutex mutex_;
   std::optional<std::filesystem::path> external_bin_path_;
