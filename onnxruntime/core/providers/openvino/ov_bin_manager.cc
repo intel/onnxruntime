@@ -189,13 +189,6 @@ std::unique_ptr<std::istream> BinManager::GetNativeBlobAsStream(const std::strin
   return std::make_unique<TensorStream>(GetNativeBlob(blob_name));
 }
 
-void BinManager::Clear() {
-  std::unique_lock lock(mutex_);
-  native_blobs_.clear();
-  mapped_bin_ = {};
-  external_bin_path_.reset();
-}
-
 std::filesystem::path BinManager::GetBinPathForModel(const std::filesystem::path& model_path) {
   ORT_ENFORCE(!model_path.empty());
   return model_path.parent_path() / (model_path.stem().string() + "_" + kOpenVINOExecutionProvider + ".bin");

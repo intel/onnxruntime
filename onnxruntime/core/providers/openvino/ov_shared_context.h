@@ -75,8 +75,6 @@ class SharedContext : public std::enable_shared_from_this<SharedContext> {
   void Serialize();
   void Deserialize();
 
-  void Clear();
-
   std::filesystem::path GetBinPath() const {
     return bin_manager_.GetExternalBinPath();
   }
