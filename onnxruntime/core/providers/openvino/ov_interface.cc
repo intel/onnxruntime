@@ -549,7 +549,7 @@ OVTensorPtr StatefulOVInferRequest::GetTensor(const std::string& input_name) {
                                         tobj->get_shape().size()));
       }
 
-      // When _npu_logits_slice_required is true, it means that prefill may product logits of shape:
+      // When _npu_logits_slice_required is true, it means that prefill may produce logits of shape:
       // [<batch_size>, sequence_length, <vocab_size>]
       // (Where 'sequence_length' is number of input tokens to prefill)
       // But, ORT GenAI is expecting to receive logits of shape:
