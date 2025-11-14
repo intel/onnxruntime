@@ -62,7 +62,7 @@ bool ModelHasInputOutputNames(std::shared_ptr<ov::Model> model, const std::strin
 }
 
 std::string GetInputOutputName(std::shared_ptr<ov::Model> ov_model,
-                            const std::vector<std::string>& candidate_names) {
+                               const std::vector<std::string>& candidate_names) {
   for (const auto& name : candidate_names) {
     if (ModelHasInputOutputNames(ov_model, name)) {
       return name;
@@ -80,12 +80,12 @@ void FuseCacheReorder(std::shared_ptr<ov::Model> ov_model,
     throw std::runtime_error("Model already has fused cache");
   }
 
-    // Define input name candidates in priority order
+  // Define input name candidates in priority order
   const std::vector<std::string> input_name_candidates = {
-    "inputs_embeds",                           // Default fallback
-    "input_ids",                               // Most common
-    "input_hidden_states",                     // Alternative
-    "/model/embed_tokens/Gather_output_0"      // Specific model type
+      "inputs_embeds",                       // Default fallback
+      "input_ids",                           // Most common
+      "input_hidden_states",                 // Alternative
+      "/model/embed_tokens/Gather_output_0"  // Specific model type
   };
 
   std::string main_input_name = GetInputOutputName(ov_model, input_name_candidates);
@@ -406,13 +406,6 @@ void UpdateNPUConfig(ov::AnyMap& config, const KVAxesPosition& kv_pos, const KVD
   RenameKey(config, "PREFILL_HINT", "NPUW_LLM_PREFILL_HINT");
   RenameKey(config, "GENERATE_CONFIG", "NPUW_LLM_GENERATE_CONFIG");
   RenameKey(config, "GENERATE_HINT", "NPUW_LLM_GENERATE_HINT");
-
-  const size_t npuw_context_len_threshold = 2048;
-  if ((kv_desc.max_prompt_len + kv_desc.min_response_len) >= npuw_context_len_threshold) {
-    // This improves accuracy for generation sequences that exceed 2k tokens.
-    config["++NPUW_LLM_PREFILL_CONFIG"] = ov::AnyMap{{"NPUW_DEVICES", "NPU,CPU"}, {"NPUW_ONLINE_AVOID", "P:SinCos/NPU"}};
-    config["++NPUW_LLM_GENERATE_CONFIG"] = ov::AnyMap{{"NPUW_DEVICES", "NPU,CPU"}, {"NPUW_ONLINE_AVOID", "P:SinCos/NPU"}};
-  }
 }
 
 std::optional<ov::Any> PopOptionNew(ov::AnyMap& config, const std::string& option_name) {
