@@ -48,7 +48,6 @@ typedef std::shared_ptr<OVTensor> OVTensorPtr;
 
 std::optional<bool> queryOVProperty(const std::string& property, const std::string& device_type);
 
-
 struct OVCore : WeakSingleton<OVCore> {
   ov::Core core;
 
@@ -82,6 +81,8 @@ struct OVCore : WeakSingleton<OVCore> {
 
   std::vector<std::string> GetAvailableDevices() const;
   std::vector<std::string> GetAvailableDevices(const std::string& device_type) const;
+  void SetCache(const std::string& cache_dir_path);
+  void SetStreams(const std::string& device_type, int num_streams);
 };
 
 class OVExeNetwork {
