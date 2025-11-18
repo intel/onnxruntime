@@ -1,8 +1,18 @@
 // Copyright (c) Intel Corporation.
 // Licensed under the MIT License.
+#ifdef _WIN32
 
 #include <Windows.h>
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wignored-qualifiers"
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#else
+#endif
 #include <google/protobuf/message_lite.h>
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
 #include <atomic>
 
 // Reuse the global shutdown indicator (do NOT set it here; that is owned by the core DLL).
@@ -22,6 +32,7 @@ BOOL APIENTRY DllMain(HMODULE /*hModule*/,
     case DLL_THREAD_DETACH:
       break;
     case DLL_PROCESS_DETACH:
+      // Windows API doc says: "When handling DLL_PROCESS_DETACH, a DLL should free resources such as heap memory only if the DLL is being unloaded dynamically"
       if (lpvReserved != nullptr) {
         // Process termination. Normally skipped for speed/safety,
         // but in leak-check builds we reclaim protobuf heap.
@@ -36,3 +47,5 @@ BOOL APIENTRY DllMain(HMODULE /*hModule*/,
   }
   return TRUE;
 }
+
+#endif  // defined(_WIN32)
