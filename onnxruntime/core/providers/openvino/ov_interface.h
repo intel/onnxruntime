@@ -81,6 +81,8 @@ struct OVCore : WeakSingleton<OVCore> {
 
   std::vector<std::string> GetAvailableDevices() const;
   std::vector<std::string> GetAvailableDevices(const std::string& device_type) const;
+  void SetCache(const std::string& cache_dir_path);
+  void SetStreams(const std::string& device_type, int num_streams);
 };
 
 class OVExeNetwork {
@@ -108,7 +110,7 @@ class OVInferRequest {
 
  public:
   uint32_t GetNumInputs();
-  OVTensorPtr GetTensor(const std::string& name);
+  virtual OVTensorPtr GetTensor(const std::string& name);
   std::string GetInputTensorName(uint32_t index);
 
   // Set tensor call infer req tensor if ort_ptr differs from last set ptr.
@@ -145,6 +147,7 @@ class StatefulOVInferRequest : public OVInferRequest {
   void CacheTensor(const std::string& tensor_name, std::vector<int64_t>& cache);
   void SetTensorFromCache(const std::string& tensor_name, const std::vector<int64_t>& cache_data);
   std::optional<ov::Tensor> FindTensor(const std::string& tensor_name);
+  OVTensorPtr GetTensor(const std::string& name) override;
 
  private:
   void PreProcessInferRequest();
@@ -155,6 +158,9 @@ class StatefulOVInferRequest : public OVInferRequest {
   bool prefill_use_full_chat_history = false;
   std::vector<int64_t> cached_input_ids;
   std::vector<int64_t> cached_position_ids;
+
+  bool IsNPULogitsSliceRequired();
+  bool _npu_logits_slice_required = false;
 };
 
 }  // namespace openvino_ep
