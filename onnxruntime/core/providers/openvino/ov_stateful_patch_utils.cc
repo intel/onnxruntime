@@ -90,13 +90,20 @@ void FuseCacheReorder(std::shared_ptr<ov::Model> ov_model,
 
   std::string main_input_name = GetInputOutputName(ov_model, input_name_candidates);
 
+  auto input_batch = ov_model->input(main_input_name).get_partial_shape()[0];
   auto update_shape = ov_model->input(key_value_input_names[0]).get_partial_shape();
 
-  auto beam_idx = std::make_shared<ov::opset13::Parameter>(ov::element::i32, ov::PartialShape({update_shape[2]}));
+  auto beam_idx = std::make_shared<ov::opset13::Parameter>(ov::element::i32, ov::PartialShape({std::move(input_batch)}));
   beam_idx->set_friendly_name("beam_idx");
   beam_idx->output(0).get_tensor().add_names({"beam_idx"});
   ov_model->add_parameters({beam_idx});
   not_kv_inputs.push_back(beam_idx->get_friendly_name());
+
+  auto src_idx = std::make_shared<ov::opset13::Parameter>(ov::element::i32, ov::PartialShape({update_shape[2]}));
+  src_idx->set_friendly_name("src_idx");
+  src_idx->output(0).get_tensor().add_names({"src_idx"});
+  ov_model->add_parameters({src_idx});
+  not_kv_inputs.push_back(src_idx->get_friendly_name());
 
   auto dst_idx = std::make_shared<ov::opset13::Parameter>(ov::element::i32, update_shape);
   dst_idx->set_friendly_name("dst_idx");
@@ -112,10 +119,15 @@ void FuseCacheReorder(std::shared_ptr<ov::Model> ov_model,
     auto gather_op =
         std::make_shared<ov::opset13::Gather>(parameter_output_port,
                                               beam_idx,
+                                              ov::opset13::Constant::create(ov::element::i64, {}, {gather_dim}));
+
+    auto update_gather_op =
+        std::make_shared<ov::opset13::Gather>(gather_op,
+                                              src_idx,
                                               ov::opset13::Constant::create(ov::element::i64, {}, {2}));
 
-    auto update_op = std::make_shared<ov::opset12::ScatterElementsUpdate>(parameter_output_port,
-        dst_idx, gather_op, ov::opset13::Constant::create(ov::element::i64, {}, {2}));
+    auto update_op = std::make_shared<ov::opset12::ScatterElementsUpdate>(gather_op,
+        dst_idx, update_gather_op, ov::opset13::Constant::create(ov::element::i64, {}, {2}));
 
     // Replace the source output for all consumers of the input tensor
     for (auto& consumer : consumers) {

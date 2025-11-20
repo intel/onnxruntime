@@ -467,12 +467,14 @@ std::optional<ov::Tensor> StatefulOVInferRequest::FindTensor(const std::string& 
 void StatefulOVInferRequest::PreProcessInferRequest() {
   // Workaround: Setting the value here as it cannot be set at the ORT GenAI layer currently.
   // TODO(ankit): Address this issue and implement the fix at the appropriate layer.
-  if (beam_idx_val.size() > 0) {
-    ov::Tensor beam_idx_tensor = ov::Tensor(ov::element::i32, {beam_idx_val.size()});
-    for (int i = 0; i < beam_idx_val.size(); ++i) {
-      beam_idx_tensor.data<int32_t>()[i] = int32_t(beam_idx_val[i]);
+  FillTensor("beam_idx", ov::element::i32, {1}, 0);
+
+  if (src_idx_val.size() > 0) {
+    ov::Tensor src_idx_tensor = ov::Tensor(ov::element::i32, {src_idx_val.size()});
+    for (int i = 0; i < src_idx_val.size(); ++i) {
+      src_idx_tensor.data<int32_t>()[i] = int32_t(src_idx_val[i]);
     }
-    ovInfReq.set_tensor("beam_idx", beam_idx_tensor);
+    ovInfReq.set_tensor("src_idx", src_idx_tensor);
     ov::Tensor dst_idx_tensor = ov::Tensor(ov::element::i32, {1, 32, dst_idx_val.size(), 96});
     for (int i = 0; i < dst_idx_val.size(); ++i) {
       for (int j = 0; j < 32; ++j) {
@@ -483,7 +485,7 @@ void StatefulOVInferRequest::PreProcessInferRequest() {
     }
     ovInfReq.set_tensor("dst_idx", dst_idx_tensor);
   } else {
-    FillTensor("beam_idx", ov::element::i32, {0}, 0);
+    FillTensor("src_idx", ov::element::i32, {0}, 0);
     FillTensor("dst_idx", ov::element::i32, {1, 32, 0, 96}, 0);
   }
 
@@ -537,10 +539,10 @@ void StatefulOVInferRequest::ReorderKVCache(const std::vector<size_t>& src_indic
                      << src_indices.size() << " index pairs";
 
   // set beam_idx and dst_idx based on provided values
-  beam_idx_val.clear();
+  src_idx_val.clear();
   dst_idx_val.clear();
   for (int i = 0; i < src_indices.size(); ++i) {
-    beam_idx_val.emplace_back(src_indices[i]);
+    src_idx_val.emplace_back(src_indices[i]);
     dst_idx_val.emplace_back(dst_indices[i]);
   }
   /*
