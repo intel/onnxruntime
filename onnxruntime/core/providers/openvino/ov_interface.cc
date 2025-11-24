@@ -226,7 +226,8 @@ OVExeNetwork OVCore::ImportEPCtxOVIREncapsulation(std::istream& model_stream,
                                                   std::string& hw_target,
                                                   const ov::AnyMap& device_config,
                                                   bool enable_causallm,
-                                                  std::filesystem::path model_file_path) {
+                                                  std::filesystem::path model_file_path,
+                                                  const SessionContext& session_context) {
   return OvExceptionBoundary<false>([&]() {
     OVExeNetwork exe;
 
@@ -258,6 +259,11 @@ OVExeNetwork OVCore::ImportEPCtxOVIREncapsulation(std::istream& model_stream,
 
       // Load the model explicitly with XML contents
       std::shared_ptr<ov::Model> model = core.read_model(xml_file_path.string());
+
+      if (!session_context.reshape.empty()) {
+        LOGS_DEFAULT(INFO) << log_tag << "Reshaping OV-IR model to specified shape";
+        model->reshape(session_context.reshape);
+      }
 
       if (enable_causallm) {
         exe = OVCore::Get()->StatefulCompileModel(model, hw_target, device_config);

@@ -96,7 +96,7 @@ BackendManager::BackendManager(SessionContext& session_context,
   ptr_stream_t model_stream;
   std::unique_ptr<onnx::ModelProto> model_proto;
   if (subgraph_context_.is_ep_ctx_graph) {
-    if (!session_context_.reshape.empty()) {
+    if (!session_context_.reshape.empty() && !subgraph_context_.is_ep_ctx_ovir_encapsulated) {
       std::string exception_str =
           "[OpenVINO-EP] Bounded dynamic model execution using provider option reshape_input is not supported for OVEP EPContext model";
       ORT_THROW(exception_str);

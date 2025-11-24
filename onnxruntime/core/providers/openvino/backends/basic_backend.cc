@@ -63,7 +63,8 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
                                                                    hw_target,
                                                                    device_config,
                                                                    enable_causallm,
-                                                                   model_file_path());
+                                                                   model_file_path(),
+                                                                   session_context_);
       } else {
         // If the blob is held in an EPContext node, then skip FE+Compile
         // and directly move on to creating a backend with the executable blob

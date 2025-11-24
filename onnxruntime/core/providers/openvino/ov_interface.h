@@ -39,6 +39,7 @@ class OVCore;
 class OVInferRequest;
 class OVExeNetwork;
 struct ModelBlobWrapper;
+struct SessionContext;
 
 typedef ov::Tensor OVTensor;
 typedef ov::ProfilingInfo OVProfilingInfo;
@@ -77,7 +78,8 @@ struct OVCore : WeakSingleton<OVCore> {
                                             std::string& hw_target,
                                             const ov::AnyMap& device_config,
                                             bool enable_causallm,
-                                            std::filesystem::path model_file_path);
+                                            std::filesystem::path model_file_path,
+                                            const SessionContext& session_context);
 
   std::vector<std::string> GetAvailableDevices() const;
   std::vector<std::string> GetAvailableDevices(const std::string& device_type) const;
