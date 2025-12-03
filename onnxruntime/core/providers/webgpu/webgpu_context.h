@@ -5,6 +5,7 @@
 
 #include <memory>
 #include <mutex>
+#include <optional>
 
 #include "core/providers/webgpu/webgpu_external_header.h"
 
@@ -22,7 +23,7 @@ class Tensor;
 
 namespace webgpu {
 class WebGpuContext;
-class ComputeContextBase;
+class ComputeContext;
 class ProgramBase;
 
 // Definition for CapturedCommandInfo in the webgpu namespace
@@ -151,13 +152,6 @@ class WebGpuContext final {
     return validation_mode_;
   }
 
-  //
-  // Get Split-K configuration.
-  //
-  const SplitKConfig& GetSplitKConfig() const {
-    return *split_k_config_;
-  }
-
   void StartProfiling();
   void CollectProfilingData(profiling::Events& events);
   void EndProfiling(TimePoint, profiling::Events& events, profiling::Events& cached_events);
@@ -176,8 +170,15 @@ class WebGpuContext final {
   //
   Status PopErrorScope();
 
-  Status Run(ComputeContextBase& context, const ProgramBase& program);
+  Status Run(ComputeContext& context, const ProgramBase& program);
   void OnRunEnd();
+
+  //
+  // Get Split-K configuration.
+  //
+  // `split_k_config_` won't be initialized until the first call to this method.
+  //
+  const SplitKConfig& GetSplitKConfig();
 
  private:
   enum class TimestampQueryType {
@@ -276,7 +277,7 @@ class WebGpuContext final {
   uint32_t num_pending_dispatches_ = 0;
   const uint32_t max_num_pending_dispatches_ = 16;
 
-  std::unique_ptr<SplitKConfig> split_k_config_;
+  std::optional<SplitKConfig> split_k_config_;
 
   // profiling
   TimestampQueryType query_type_;

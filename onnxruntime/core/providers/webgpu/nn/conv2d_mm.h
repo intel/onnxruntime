@@ -38,10 +38,7 @@ class Conv2dMMProgram final : public Program<Conv2dMMProgram> {
       {"dim_inner", ProgramUniformVariableDataType::Uint32},
       {"pads", ProgramUniformVariableDataType::Uint32},
       {"strides", ProgramUniformVariableDataType::Uint32},
-      {"dilations", ProgramUniformVariableDataType::Uint32},
-      {"logical_dispatch_x", ProgramUniformVariableDataType::Uint32},
-      {"logical_dispatch_y", ProgramUniformVariableDataType::Uint32},
-      {"logical_dispatch_z", ProgramUniformVariableDataType::Uint32});
+      {"dilations", ProgramUniformVariableDataType::Uint32});
 
  private:
   const Activation& activation_;

@@ -421,7 +421,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                                                                       indirect_buffer_ptr, tile_size));
     Q = &query_output;
   } else {
-    ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, tile_size, use_seqlen_k ? seqlen_k : nullptr, indirect_buffer_ptr));
+    ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, tile_size, use_indirect_dispatch ? seqlen_k : nullptr, indirect_buffer_ptr));
   }
 
   if (parameters.sequence_length_ > 1) {
@@ -571,8 +571,8 @@ Status RunSplitPackedQKVWithRotaryEmbeddingAndCopyKV(onnxruntime::webgpu::Comput
       {static_cast<uint32_t>(params.kv_hidden_size_ / components)},
       {static_cast<uint32_t>(params.num_heads_)},
       {static_cast<uint32_t>(params.kv_num_heads_)},
-      {static_cast<uint32_t>(head_size_vec)},
-      {static_cast<uint32_t>(half_rotary_embedding_dim_vec)},
+      {head_size_vec},
+      {half_rotary_embedding_dim_vec},
       {present_sequence_length},
       {tile_size},
       {static_cast<uint32_t>(dispatch_size)},
