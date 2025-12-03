@@ -6,25 +6,22 @@
 
 namespace onnxruntime {
 namespace webgpu {
-
-ComputeContextBase::ComputeContextBase(WebGpuContext& webgpu_context,
-                                       const WebGpuExecutionProvider& ep,
-                                       const OpKernel& op_kernel)
+ComputeContext::ComputeContext(OpKernelContext& kernel_context,
+                               const OpKernel& op_kernel,
+                               const WebGpuExecutionProvider& ep,
+                               WebGpuContext& webgpu_context)
     : webgpu_context_{webgpu_context},
-      ep_{ep},
-      op_kernel_{op_kernel} {
+      kernel_context_{kernel_context},
+      op_kernel_{op_kernel},
+      ep_{ep} {
 }
 
-const webgpu::BufferManager& ComputeContextBase::BufferManagerAccessor::Get(const ComputeContextBase& context) {
+const webgpu::BufferManager& ComputeContext::BufferManagerAccessor::Get(const ComputeContext& context) {
   return context.ep_.BufferManager();
 }
 
-ComputeContext::ComputeContext(WebGpuContext& webgpu_context,
-                               const WebGpuExecutionProvider& ep,
-                               const OpKernel& op_kernel,
-                               OpKernelContext& kernel_context)
-    : ComputeContextBase(webgpu_context, ep, op_kernel),
-      kernel_context_{kernel_context} {
+const SplitKConfig& ComputeContext::GetSplitKConfig() {
+  return webgpu_context_.GetSplitKConfig();
 }
 
 }  // namespace webgpu
