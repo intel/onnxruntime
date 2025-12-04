@@ -127,7 +127,7 @@ reshape_t OpenVINOParserUtils::ParseInputShape(const std::string& reshape_input_
 
   // Regular expressions for parsing
   const std::regex tensor_pattern(R"(([^\[\],]+)\s*\[(.*?)\])");  // e.g. "input_1[1..5, 2, 3..4],data[1,2,3]"
-  // const std::regex dimension_pattern(R"(\s*(\d+(?:\.\.\d+)?)\s*)");  // e.g. "1..5", "2", "3..4"
+  // const  dimension_pattern(R"(\s*(\d+(?:\.\.\d+)?)\s*)");  // e.g. "1..5", "2", "3..4"
   const std::regex dimension_pattern(R"(\s*([^,\s]+)\s*)");
   // Find all tensor shape definitions using regex
   auto tensor_begin = std::sregex_iterator(
@@ -308,6 +308,39 @@ bool OpenVINOParserUtils::Check_Valid_Layout(const std::string& layout_str, cons
   }
 
   return true;
+}
+
+affinity_t OpenVINOParserUtils::ParseAffinity(const std::string& affinity_definition) {
+  LOGS_DEFAULT(INFO) << "[OpenVINO] Affinity is set : " << affinity_definition << "\n";
+  affinity_t result_map;
+
+  // Regex to capture device name and a list of nodes
+  // It captures:
+  // Group 1: device name (e.g., "device")
+  // Group 2: comma-separated list of nodes (e.g., "\"node1\", \"node2\"")
+  std::regex device_nodes_regex(R"(([^,\[\]]+)\[([^\]]+)\])");
+
+  std::sregex_iterator device_it(affinity_definition.begin(), affinity_definition.end(), device_nodes_regex);
+  std::sregex_iterator device_end;
+
+  for (; device_it != device_end; ++device_it) {
+    std::smatch device_match = *device_it;
+    std::string device_name = device_match[1].str();
+    std::string nodes_list_str = device_match[2].str();
+    std::cout << "device_name " << device_name << "\n";
+    std::cout << "nodes_list_str " << nodes_list_str << "\n";
+    std::stringstream nodes_list(nodes_list_str);
+    std::string item;
+
+    while (getline(nodes_list, item, ',')) {
+      result_map[item] = device_name; 
+    }
+  }
+
+  for (auto item : result_map){
+    std::cout << "\n" << item.first << " on " << item.second << "\n"; 
+  }
+  return result_map;
 }
 
 }  // namespace openvino_ep
