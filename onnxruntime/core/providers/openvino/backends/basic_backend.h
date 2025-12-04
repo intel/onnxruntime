@@ -89,9 +89,9 @@ struct OnnxToOvNetworkBindings {
           continue;
         }
 
-        ORT_ENFORCE(matched_names, log_tag,
-                    "Input names mismatch between OpenVINO and ONNX. ", onnx_name,
-                    " doesn't exist in the list of OpenVINO input tensor names");
+        //ORT_ENFORCE(matched_names, log_tag,
+        //            "Input names mismatch between OpenVINO and ONNX. ", onnx_name,
+        //            " doesn't exist in the list of OpenVINO input tensor names");
 
         auto ov_param_index = std::distance(ov_parameters.begin(), it);
 

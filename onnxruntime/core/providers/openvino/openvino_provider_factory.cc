@@ -266,6 +266,11 @@ static void ParseProviderInfo(const ProviderOptions& provider_options,
     pi.layout = OpenVINOParserUtils::ParseLayout(provider_options.at("layout"));
   }
 
+  if (provider_options.contains("affinity")) {
+    std::cout << "Provider options contain affinity\n";
+    pi.affinity = OpenVINOParserUtils::ParseAffinity(provider_options.at("affinity"));
+  }
+
   if (provider_options.contains("load_config")) {
     auto parse_config = [&](const std::string& config_str) -> std::map<std::string, ov::AnyMap> {
       // If the config string is empty, return an empty map and skip processing

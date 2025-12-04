@@ -208,9 +208,9 @@ common::Status OpenVINOExecutionProvider::Compile(
   return status;
 }
 
-#ifdef USE_OVEP_NPU_MEMORY
+ #ifdef USE_OVEP_NPU_MEMORY
 std::vector<AllocatorPtr> OpenVINOExecutionProvider::CreatePreferredAllocators() {
-  if (session_context_.device_type.find("NPU") != std::string::npos) {
+  /* if (session_context_.device_type.find("NPU") != std::string::npos) {
     AllocatorCreationInfo npu_allocator_info{
         [this](OrtDevice::DeviceId device_id) {
           return std::make_unique<OVRTAllocator>(
@@ -224,9 +224,9 @@ std::vector<AllocatorPtr> OpenVINOExecutionProvider::CreatePreferredAllocators()
 
     // fill in allocator
     return std::vector<AllocatorPtr>{CreateAllocator(npu_allocator_info)};
-  } else {
+  } else {*/
     return std::vector<AllocatorPtr>{};
-  }
+  //}
 }
 #endif
 
