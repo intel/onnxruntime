@@ -148,7 +148,7 @@ std::shared_ptr<OVNetwork> Set_Layout(std::shared_ptr<OVNetwork> ov_model, const
 }
 
 void Set_Affinity(std::shared_ptr<OVNetwork> ov_model, const SessionContext& session_context) {
-  
+
   std::string selected_device = "CPU";
   if (auto delimit = session_context.device_type.find(":"); delimit != std::string::npos) {
     auto device_mode = session_context.device_type.substr(0, delimit);
@@ -168,10 +168,10 @@ void Set_Affinity(std::shared_ptr<OVNetwork> ov_model, const SessionContext& ses
      auto it = session_context.affinity.find(name);
      if (it != session_context.affinity.end()) {
        ov_node->get_rt_info()["affinity"] = it->second;
-       std::cout << name << " on " << it->second << "\n";
+       //std::cout << "node name " << name << " on " << it->second << "\t";
      } else {
-       ov_node->get_rt_info()["affinity"] = selected_device;   
-       std::cout << name << " on " << selected_device << "\n";
+       ov_node->get_rt_info()["affinity"] = selected_device;
+       //std::cout << "node name " << name << " on " << selected_device << "\t";
      }
   }
 }

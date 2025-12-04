@@ -112,6 +112,7 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
                                                    subgraph_context_.subgraph_name);
       } else {  // For all other types use ov::ov_core read_model() to generate OV IR
                 // followed by ov::ov_core compile_model()
+        std::cout << "CreateOVModel\n";
         ov_model = CreateOVModel(std::move(model), session_context_, const_outputs_map_);
         exe_network_ = OVCore::Get()->CompileModel(
             ov_model, hw_target, device_config, enable_causallm, subgraph_context_.subgraph_name);

@@ -333,12 +333,12 @@ affinity_t OpenVINOParserUtils::ParseAffinity(const std::string& affinity_defini
     std::string item;
 
     while (getline(nodes_list, item, ',')) {
-      result_map[item] = device_name; 
+      result_map[item] = device_name;
     }
   }
 
   //for (auto item : result_map){
-  //  std::cout << "\n" << item.first << " on " << item.second << "\n"; 
+  //  std::cout << "\n" << item.first << " on " << item.second << "\n";
   //}
   return result_map;
 }

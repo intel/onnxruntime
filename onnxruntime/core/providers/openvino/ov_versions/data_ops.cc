@@ -133,7 +133,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"GreaterOrEqual", V_2022_1, {"CPU", "GPU"}},
     {"GridSample", V_2022_3, {"CPU"}},
     {"GridSample", V_2023_0, {"GPU"}},
-    //{"GroupQueryAttention", V_2025_0, {"CPU"}},
+    {"GroupQueryAttention", V_2025_0, {"CPU"}},
     {"GRU", V_2024_1, {"CPU", "GPU"}},
     {"HardMax", V_2023_1, {"CPU", "GPU"}},
     {"Identity", V_2020_4, {"CPU", "GPU"}},
