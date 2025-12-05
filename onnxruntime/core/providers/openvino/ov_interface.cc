@@ -469,17 +469,17 @@ void StatefulOVInferRequest::PreProcessInferRequest() {
   // TODO(ankit): Address this issue and implement the fix at the appropriate layer.
   FillTensor("beam_idx", ov::element::i32, {1}, 0);
 
-  if (src_idx_val.size() > 0) {
-    ov::Tensor src_idx_tensor = ov::Tensor(ov::element::i32, {src_idx_val.size()});
-    for (int i = 0; i < src_idx_val.size(); ++i) {
-      src_idx_tensor.data<int32_t>()[i] = int32_t(src_idx_val[i]);
+  if (kv_src_indices.size() > 0) {
+    ov::Tensor src_idx_tensor = ov::Tensor(ov::element::i32, {kv_src_indices.size()});
+    for (int i = 0; i < kv_src_indices.size(); ++i) {
+      src_idx_tensor.data<int32_t>()[i] = int32_t(kv_src_indices[i]);
     }
     ovInfReq.set_tensor("src_idx", src_idx_tensor);
-    ov::Tensor dst_idx_tensor = ov::Tensor(ov::element::i32, {1, 32, dst_idx_val.size(), 96});
-    for (int i = 0; i < dst_idx_val.size(); ++i) {
+    ov::Tensor dst_idx_tensor = ov::Tensor(ov::element::i32, {1, 32, kv_dst_indices.size(), 96});
+    for (int i = 0; i < kv_dst_indices.size(); ++i) {
       for (int j = 0; j < 32; ++j) {
         for (int k = 0; k < 96; ++k) {
-          dst_idx_tensor.data<int32_t>()[(j * dst_idx_val.size() + i) * 96 + k] = int32_t(dst_idx_val[i]);
+          dst_idx_tensor.data<int32_t>()[(j * kv_dst_indices.size() + i) * 96 + k] = int32_t(kv_dst_indices[i]);
         }
       }
     }
@@ -538,25 +538,12 @@ void StatefulOVInferRequest::ReorderKVCache(const std::vector<size_t>& src_indic
   LOGS_DEFAULT(INFO) << log_tag << "ReorderKVCache: Reordering OpenVINO-internal KVCache state with "
                      << src_indices.size() << " index pairs";
 
-  // set beam_idx and dst_idx based on provided values
-  src_idx_val.clear();
-  dst_idx_val.clear();
+  kv_src_indices.clear();
+  kv_dst_indices.clear();
   for (int i = 0; i < src_indices.size(); ++i) {
-    src_idx_val.emplace_back(src_indices[i]);
-    dst_idx_val.emplace_back(dst_indices[i]);
+    kv_src_indices.emplace_back(src_indices[i]);
+    kv_dst_indices.emplace_back(dst_indices[i]);
   }
-  /*
-  // Retrieve KVCache states and reorder them based on the provided indices
-  auto states = ovInfReq.query_state();
-
-  for (auto& state : states) {
-    auto start_time = std::chrono::high_resolution_clock::now();
-    state.gather_by_axis(src_indices, dst_indices);
-    auto end_time = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
-    LOGS_DEFAULT(INFO) << log_tag << "gather_by_axis: " << duration << " microseconds";
-  }
-  */
 }
 
 void StatefulOVInferRequest::RewindKVCache(size_t index) {
