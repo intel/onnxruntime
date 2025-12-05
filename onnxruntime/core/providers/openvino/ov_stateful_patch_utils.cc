@@ -121,17 +121,17 @@ void FuseCacheReorder(std::shared_ptr<ov::Model> ov_model,
                                               beam_idx,
                                               ov::opset13::Constant::create(ov::element::i64, {}, {gather_dim}));
 
-    auto update_gather_op =
+    auto updatekv_gather_op =
         std::make_shared<ov::opset13::Gather>(gather_op,
                                               src_idx,
                                               ov::opset13::Constant::create(ov::element::i64, {}, {2}));
 
-    auto update_op = std::make_shared<ov::opset12::ScatterElementsUpdate>(gather_op,
-        dst_idx, update_gather_op, ov::opset13::Constant::create(ov::element::i64, {}, {2}));
+    auto updatekv_op = std::make_shared<ov::opset12::ScatterElementsUpdate>(gather_op,
+        dst_idx, updatekv_gather_op, ov::opset13::Constant::create(ov::element::i64, {}, {2}));
 
     // Replace the source output for all consumers of the input tensor
     for (auto& consumer : consumers) {
-      consumer.replace_source_output(update_op->output(0));
+      consumer.replace_source_output(updatekv_op->output(0));
     }
   }
 
