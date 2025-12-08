@@ -340,6 +340,7 @@ affinity_t OpenVINOParserUtils::ParseAffinity(const std::string& affinity_defini
   //for (auto item : result_map){
   //  std::cout << "\n" << item.first << " on " << item.second << "\n"; 
   //}
+
   return result_map;
 }
 

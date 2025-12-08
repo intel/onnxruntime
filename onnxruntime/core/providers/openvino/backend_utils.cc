@@ -172,6 +172,7 @@ void Set_Affinity(std::shared_ptr<OVNetwork> ov_model, const SessionContext& ses
      } else {
        ov_node->get_rt_info()["affinity"] = selected_device;   
        std::cout << name << " on " << selected_device << "\n";
+
      }
   }
 }
