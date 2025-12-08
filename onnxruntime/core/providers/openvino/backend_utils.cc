@@ -64,7 +64,7 @@ CreateOVModel(std::string&& model,
     }
 
     // Check for Constant Folding
-    if ((session_context.device_type != "NPU") && !session_context.is_wholly_supported_graph) {
+    /* if ((session_context.device_type != "NPU") && !session_context.is_wholly_supported_graph) {
       ov::pass::ConstantFolding pass_const_obj;
       pass_const_obj.run_on_model(ov_model);
       auto& results = const_cast<ov::ResultVector&>(ov_model.get()->get_results());
@@ -78,7 +78,7 @@ CreateOVModel(std::string&& model,
         }
         --index;
       }
-    }
+    }*/
 #ifndef NDEBUG
     if (IsDebugEnabled()) {
       std::string name = ov_model->get_friendly_name();
@@ -168,10 +168,10 @@ void Set_Affinity(std::shared_ptr<OVNetwork> ov_model, const SessionContext& ses
      auto it = session_context.affinity.find(name);
      if (it != session_context.affinity.end()) {
        ov_node->get_rt_info()["affinity"] = it->second;
-       std::cout << "node name " << name << " on " << it->second << "\t";
+       std::cout << name << " on " << it->second << "\n";
      } else {
        ov_node->get_rt_info()["affinity"] = selected_device;   
-       std::cout << "node name " << name << " on " << selected_device << "\t";
+       std::cout << name << " on " << selected_device << "\n";
      }
   }
 }
