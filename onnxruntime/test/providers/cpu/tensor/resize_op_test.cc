@@ -304,10 +304,43 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_uint8) {
   std::vector<uint8_t> Y = {2, 4};
 
   test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
+  std::unordered_set<std::string> excluded_providers;
   // CUDA: result mismatch due to not implementing NHWC support
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider});
+  // ROCm: results mismatch
+  excluded_providers.insert(kCudaExecutionProvider);
+  excluded_providers.insert(kCudaNHWCExecutionProvider);
+  // Disable OV EP due to round when converting from float to uint8
+  excluded_providers.insert(kOpenVINOExecutionProvider);
+  test.ConfigExcludeEps(excluded_providers)
+      .RunWithConfig();
 }
+
+#ifdef USE_OPENVINO
+TEST(ResizeOpTest, OVEPNhwcResizeOpLinearDownSampleTest_4DBilinear_uint8) {
+  OpTester test("Resize", 13);
+  std::vector<float> roi{};
+  std::vector<float> scales{1.0f, 0.6f, 0.6f, 1.0f};
+
+  test.AddAttribute("mode", "linear");
+
+  constexpr int64_t N = 1, H = 2, W = 4, C = 1;
+  std::vector<uint8_t> X = {
+      1, 2, 3, 4,
+      5, 6, 7, 8};
+
+  test.AddInput<uint8_t>("X", {N, H, W, C}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<uint8_t> Y = {3, 4};
+
+  test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultOpenVINOExecutionProvider());
+  test.ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
+}
+#endif // USE_OPENVINO
 
 TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_int8) {
   OpTester test("Resize", 13);
@@ -641,11 +674,50 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_pytorch_half_pixe
   std::vector<uint8_t> Y = {1, 7, 12};
 
   test.AddOutput<uint8_t>("Y", {N, sizes[1], sizes[2], C}, Y);
+  std::unordered_set<std::string> excluded_providers;
   // CUDA: result mismatch due to not implementing NHWC support
   // DML: results mismatch
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kDmlExecutionProvider});
+  excluded_providers.insert(kCudaExecutionProvider);
+  excluded_providers.insert(kCudaNHWCExecutionProvider);
+  excluded_providers.insert(kDmlExecutionProvider);
+  // Disable OV EP due to round when converting from float to uint8
+  excluded_providers.insert(kOpenVINOExecutionProvider);
+  test.ConfigExcludeEps(excluded_providers)
+      .RunWithConfig();
 }
+
+#ifdef USE_OPENVINO
+TEST(ResizeOpTest, OVEPNhwcResizeOpLinearDownSampleTest_4DBilinear_pytorch_half_pixel_uint8) {
+  OpTester test("Resize", 13);
+  std::vector<float> roi{};
+  std::vector<float> scales{};
+  std::vector<int64_t> sizes{1, 3, 1, 1};
+
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute("coordinate_transformation_mode", "pytorch_half_pixel");
+
+  constexpr int64_t N = 1, H = 4, W = 4, C = 1;
+
+  std::vector<uint8_t> X = {
+      1, 2, 3, 4,
+      5, 6, 7, 8,
+      9, 10, 11, 12,
+      13, 14, 15, 16};
+
+  test.AddInput<uint8_t>("X", {N, H, W, C}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("", {0}, scales);
+  test.AddInput<int64_t>("sizes", {4}, sizes);
+
+  std::vector<uint8_t> Y = {2, 7, 12};
+
+  test.AddOutput<uint8_t>("Y", {N, sizes[1], sizes[2], C}, Y);
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultOpenVINOExecutionProvider());
+  test.ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
+}
+#endif // USE_OPENVINO
 
 TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_pytorch_half_pixel_int8) {
   OpTester test("Resize", 13);
