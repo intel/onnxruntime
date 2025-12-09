@@ -525,6 +525,12 @@ void StatefulOVInferRequest::PreProcessInferRequest() {
 void StatefulOVInferRequest::Infer() {
   PreProcessInferRequest();
   OVInferRequest::Infer();
+  PostProcessInferRequest();
+}
+
+void StatefulOVInferRequest::PostProcessInferRequest() {
+    kv_src_indices.clear();
+    kv_dst_indices.clear();
 }
 
 void StatefulOVInferRequest::ReorderKVCache(const std::vector<size_t>& src_indices, const std::vector<size_t>& dst_indices) {

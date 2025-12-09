@@ -155,6 +155,7 @@ class StatefulOVInferRequest : public OVInferRequest {
 
  private:
   void PreProcessInferRequest();
+  void PostProcessInferRequest();
   std::string target_device;
 
   // If prefill_use_full_chat_history is true, cache the "input_ids" & "position_ids" tensors,
