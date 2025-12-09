@@ -36,7 +36,6 @@ struct ParameterInfo {
   // Query methods
   bool IsStatic() const { return dynamic_flags == 0; }
   bool IsFullyDynamic() const { return dynamic_flags & 1; }
-  bool IsBoundedDynamic() const { return dynamic_flags & 2; }
   bool IsMixed() const { return (dynamic_flags & 3) == 3; }
 
   // Setter methods
@@ -147,8 +146,6 @@ class BasicBackend : public IBackend {
   void EnableStreams(ov::AnyMap& device_config);
   void SetNumThreads(ov::AnyMap& device_config);
   void SetOVDeviceConfiguration(ov::AnyMap& device_config);
-  void ValidateOrtDimsAgainstPartialShape(const std::vector<int64_t>& ort_dims,
-                                          const ov::PartialShape& partial_shape) const;
 
   SessionContext& session_context_;
   SubGraphContext subgraph_context_;
