@@ -541,15 +541,15 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
         if (it == proto_initializer_map.end())
           continue;
 
-        auto* proto_init = it->second;
-
-        if (!proto_init) {
+        if (!it->second) {
             ORT_THROW(name + " proto initializer is null!");
         }
 
+        auto& proto_init = *it->second;
+
         // If the proto initializer is missing data, fill it in
-        if (!proto_init->has_raw_data() && src_init->has_raw_data()) {
-          *proto_init->mutable_raw_data() = src_init->raw_data();
+        if (!proto_init.has_raw_data() && src_init->has_raw_data()) {
+          *(proto_init.mutable_raw_data()) = src_init->raw_data();
         }
 
         // Only set in-memory external_data fields if the data is in memory
@@ -559,7 +559,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
                                 << ", data_type: " << src_init->data_type()
                                 << ", raw_data size: " << src_init->raw_data().size();
           if (src_init->raw_data().size() > 0) {
-              SetExternalDataFields(*proto_init, src_init->raw_data().data(), src_init->raw_data().size());
+              SetExternalDataFields(proto_init, src_init->raw_data().data(), src_init->raw_data().size());
           }
           else {
               LOGS(logger, VERBOSE) << "Initializer has empty raw_data: skipping initializer '" << src_init->name() << "'...";
@@ -576,7 +576,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
 
           LOGS(logger, VERBOSE) << "In-memory initializer EXT: " << src_init->name() << ", size: " << length;
 
-          SetExternalDataFields(*proto_init, (const void*)offset, length);
+          SetExternalDataFields(proto_init, (const void*)offset, length);
         } else {
           LOGS(logger, VERBOSE) << "File-based initializer: " << src_init->name() << ", data_type: " << src_init->data_type();
         }
