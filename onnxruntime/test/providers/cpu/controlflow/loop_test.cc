@@ -826,8 +826,7 @@ TEST(Loop, Opset11WithNoVariadicInputsAndOutputs) {
   test.AddOutput<float>("loop_scan_out", {1}, {1.0f});
 
   // Disable TensorRT on unsupported data type BOOL
-  // Disable OpenVino for floating nodes
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // Test a combination of things:
