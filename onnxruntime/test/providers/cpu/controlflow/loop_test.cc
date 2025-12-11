@@ -1037,7 +1037,7 @@ TEST(Loop, IterationCountAsOutput) {
   test.AddOutput<int64_t>("loop_var_0_final", {3, 1}, {0, 1, 2});
 
   // Disable TensorRT on unsupported data type BOOL
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 #if defined(USE_CUDA)
