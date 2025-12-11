@@ -827,12 +827,60 @@ TEST(ResizeOpTest, NhwcResizeOpLinearUpSampleTest_4DBilinear_asymmetric_uint8) {
                             Y, false, .0f, 1.0f);
     // CUDA: result mismatch due to not implementing NHWC support
     test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-             {kCudaExecutionProvider, kCudaNHWCExecutionProvider});
+             {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kOpenVINOExecutionProvider});
   };
 
   run_test(false);
   run_test(true);
 }
+
+#ifdef USE_OPENVINO
+TEST(ResizeOpTest, OVEPNhwcResizeOpLinearUpSampleTest_4DBilinear_asymmetric_uint8) {
+  // To test NNAPI EP, we need the scales/sizes to be in initializers
+  auto run_test = [](bool scales_in_initializer) {
+    OpTester test("Resize", 13);
+    std::vector<float> roi{};
+    std::vector<float> scales{1.0f, 2.0f, 4.0f, 1.0f};
+
+    test.AddAttribute("mode", "linear");
+    test.AddAttribute("coordinate_transformation_mode", "asymmetric");
+
+    constexpr int64_t N = 2, H = 2, W = 2, C = 1;
+    std::vector<uint8_t> X = {1, 3,
+                              4, 8,
+
+                              6, 2,
+                              7, 11};
+
+    test.AddInput<uint8_t>("X", {N, H, W, C}, X);
+    test.AddInput<float>("roi", {0}, roi);
+    test.AddInput<float>("scales", {4}, scales, scales_in_initializer);
+
+    std::vector<uint8_t> Y = {
+        1, 2, 2, 2, 3, 3, 3, 3,
+        2, 3, 4, 5, 6, 6, 6, 6,
+        4, 5, 6, 7, 8, 8, 8, 8,
+        4, 5, 6, 7, 8, 8, 8, 8,
+
+        6, 5, 4, 3, 2, 2, 2, 2,
+        6, 6, 6, 6, 6, 6, 6, 6,
+        7, 8, 9, 10, 11, 11, 11, 11,
+        7, 8, 9, 10, 11, 11, 11, 11};
+
+    // Due to Xnnpack EP has a different rounding behavior, we need to allow a tolerance of 1
+    // The tolerance only works for Xnnpack EP
+    test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C},
+                            Y, false, .0f, 1.0f);
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.emplace_back(DefaultOpenVINOExecutionProvider());
+    test.ConfigEps(std::move(execution_providers))
+        .RunWithConfig();
+  };
+
+  run_test(false);
+  run_test(true);
+}
+#endif // USE_OPENVINO
 
 TEST(ResizeOpTest, NhwcResizeOpLinearUpSampleTest_4DBilinear_asymmetric_int8) {
   // To test NNAPI EP, we need the scales/sizes to be in initializers
@@ -2549,7 +2597,7 @@ TEST(ResizeOpTest, NoAntialias_AlignCorners_Cubic_Floor_NHWC) {
     23.0000f, 24.0000f,
   };
   // clang-format on
-  InlinedVector<std::string_view> excluded_eps = {kCudaExecutionProvider};
+  InlinedVector<std::string_view> excluded_eps = {kCudaExecutionProvider, kOpenVINOExecutionProvider};
   TestAntialiasing(
       {{"antialias", "0"},
        {"coordinate_transformation_mode", "align_corners"},
