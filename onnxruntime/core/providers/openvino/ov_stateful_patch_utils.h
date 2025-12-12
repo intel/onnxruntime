@@ -26,13 +26,14 @@ bool ModelHasInputOutputNames(std::shared_ptr<ov::Model> model, const std::strin
 void FuseCacheReorder(std::shared_ptr<ov::Model> ov_model,
                       std::vector<std::string>& not_kv_inputs,
                       const std::vector<std::string>& key_value_input_names,
-                      int gather_dim);
+                      int gather_dim,
+                      const std::string& device = "");
 
 void MakeStateful(std::shared_ptr<ov::Model>& ov_model,
                   const std::vector<std::string>& key_value_input_names,
                   const std::vector<std::string>& key_value_output_names);
 
-void PatchStatefulDecoder(std::shared_ptr<ov::Model> model);
+void PatchStatefulDecoder(std::shared_ptr<ov::Model> model, const std::string& device = "");
 
 bool HasOpWithType(const std::shared_ptr<const ov::Model>& function, const std::string& type_name);
 

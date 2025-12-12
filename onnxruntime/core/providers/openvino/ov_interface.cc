@@ -111,7 +111,7 @@ OVExeNetwork OVCore::StatefulCompileModel(std::shared_ptr<OVNetwork>& model,
   LOGS_DEFAULT(INFO) << log_tag << "Model IsStateful() Status:\t" << (model_status ? "True" : "False");
   if (!model_status) {
     LOGS_DEFAULT(INFO) << log_tag << "Converting from Stateless OV Model to Stateful OV Model" << std::endl;
-    PatchStatefulDecoder(model);
+    PatchStatefulDecoder(model, hw_target);
   }
 
   if (onnxruntime::openvino_ep::backend_utils::IsDebugEnabled()) {
@@ -468,25 +468,28 @@ void StatefulOVInferRequest::PreProcessInferRequest() {
   // Workaround: Setting the value here as it cannot be set at the ORT GenAI layer currently.
   // TODO(ankit): Address this issue and implement the fix at the appropriate layer.
   FillTensor("beam_idx", ov::element::i32, {1}, 0);
-
+  ov::Shape dst_idx_shape = ovInfReq.get_tensor("dst_idx").get_shape();
+  uint64_t kv_num_heads = dst_idx_shape[1];
+  uint64_t kv_head_size = dst_idx_shape[3];
   if (kv_src_indices.size() > 0) {
     ov::Tensor src_idx_tensor = ov::Tensor(ov::element::i32, {kv_src_indices.size()});
     for (int i = 0; i < kv_src_indices.size(); ++i) {
       src_idx_tensor.data<int32_t>()[i] = int32_t(kv_src_indices[i]);
     }
     ovInfReq.set_tensor("src_idx", src_idx_tensor);
-    ov::Tensor dst_idx_tensor = ov::Tensor(ov::element::i32, {1, 32, kv_dst_indices.size(), 96});
+
+    ov::Tensor dst_idx_tensor = ov::Tensor(ov::element::i32, {1, kv_num_heads, kv_dst_indices.size(), kv_head_size});
     for (int i = 0; i < kv_dst_indices.size(); ++i) {
-      for (int j = 0; j < 32; ++j) {
-        for (int k = 0; k < 96; ++k) {
-          dst_idx_tensor.data<int32_t>()[(j * kv_dst_indices.size() + i) * 96 + k] = int32_t(kv_dst_indices[i]);
+      for (int j = 0; j < kv_num_heads; ++j) {
+        for (int k = 0; k < kv_head_size; ++k) {
+          dst_idx_tensor.data<int32_t>()[(j * kv_dst_indices.size() + i) * kv_head_size + k] = int32_t(kv_dst_indices[i]);
         }
       }
     }
     ovInfReq.set_tensor("dst_idx", dst_idx_tensor);
   } else {
     FillTensor("src_idx", ov::element::i32, {0}, 0);
-    FillTensor("dst_idx", ov::element::i32, {1, 32, 0, 96}, 0);
+    FillTensor("dst_idx", ov::element::i32, {1, kv_num_heads, 0, kv_head_size}, 0);
   }
 
   // If 'prefill use full chat history' mode is enabled, we need to cache input_ids and position_ids.

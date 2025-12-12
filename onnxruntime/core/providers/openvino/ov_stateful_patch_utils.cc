@@ -75,10 +75,15 @@ std::string GetInputOutputName(std::shared_ptr<ov::Model> ov_model,
 void FuseCacheReorder(std::shared_ptr<ov::Model> ov_model,
                       std::vector<std::string>& not_kv_inputs,
                       const std::vector<std::string>& key_value_input_names,
-                      int gather_dim) {
+                      int gather_dim,
+                      const std::string& device) {
   if (ModelHasInputOutputNames(ov_model, "beam_idx")) {
     throw std::runtime_error("Model already has fused cache");
   }
+
+  // Flag to add Gather+ScatterElementsUpdate subgraph for LLM speculative decoding
+  // TO-DO: extend to NPU device when OpenVINO NPU has related optimization
+  bool is_support_speculative_LLM = device.find("GPU") != std::string::npos;
 
   // Define input name candidates in priority order
   const std::vector<std::string> input_name_candidates = {
@@ -99,17 +104,22 @@ void FuseCacheReorder(std::shared_ptr<ov::Model> ov_model,
   ov_model->add_parameters({beam_idx});
   not_kv_inputs.push_back(beam_idx->get_friendly_name());
 
-  auto src_idx = std::make_shared<ov::opset13::Parameter>(ov::element::i32, ov::PartialShape({update_shape[2]}));
-  src_idx->set_friendly_name("src_idx");
-  src_idx->output(0).get_tensor().add_names({"src_idx"});
-  ov_model->add_parameters({src_idx});
-  not_kv_inputs.push_back(src_idx->get_friendly_name());
+  std::shared_ptr<ov::opset13::Parameter> src_idx;
+  std::shared_ptr<ov::opset13::Parameter> dst_idx;
 
-  auto dst_idx = std::make_shared<ov::opset13::Parameter>(ov::element::i32, update_shape);
-  dst_idx->set_friendly_name("dst_idx");
-  dst_idx->output(0).get_tensor().add_names({"dst_idx"});
-  ov_model->add_parameters({dst_idx});
-  not_kv_inputs.push_back(dst_idx->get_friendly_name());
+  if (is_support_speculative_LLM) {
+    src_idx = std::make_shared<ov::opset13::Parameter>(ov::element::i32, ov::PartialShape({update_shape[2]}));
+    src_idx->set_friendly_name("src_idx");
+    src_idx->output(0).get_tensor().add_names({"src_idx"});
+    ov_model->add_parameters({src_idx});
+    not_kv_inputs.push_back(src_idx->get_friendly_name());
+
+    dst_idx = std::make_shared<ov::opset13::Parameter>(ov::element::i32, update_shape);
+    dst_idx->set_friendly_name("dst_idx");
+    dst_idx->output(0).get_tensor().add_names({"dst_idx"});
+    ov_model->add_parameters({dst_idx});
+    not_kv_inputs.push_back(dst_idx->get_friendly_name());
+  }
 
   // Go over all cache parameters and fuse _reorder_cache with indices provided by the new parameter beam_idx
   for (const auto& input_name : key_value_input_names) {
@@ -121,17 +131,25 @@ void FuseCacheReorder(std::shared_ptr<ov::Model> ov_model,
                                               beam_idx,
                                               ov::opset13::Constant::create(ov::element::i64, {}, {gather_dim}));
 
-    auto updatekv_gather_op =
-        std::make_shared<ov::opset13::Gather>(gather_op,
-                                              src_idx,
-                                              ov::opset13::Constant::create(ov::element::i64, {}, {2}));
+    std::shared_ptr<ov::Node> output_node;
+    if (is_support_speculative_LLM) {
+      auto updatekv_gather_op =
+          std::make_shared<ov::opset13::Gather>(gather_op,
+                                                src_idx,
+                                                ov::opset13::Constant::create(ov::element::i64, {}, {2}));
 
-    auto updatekv_op = std::make_shared<ov::opset12::ScatterElementsUpdate>(gather_op,
-        dst_idx, updatekv_gather_op, ov::opset13::Constant::create(ov::element::i64, {}, {2}));
+      auto updatekv_op = std::make_shared<ov::opset12::ScatterElementsUpdate>(gather_op,
+                                                                               dst_idx,
+                                                                               updatekv_gather_op,
+                                                                               ov::opset13::Constant::create(ov::element::i64, {}, {2}));
+      output_node = updatekv_op;
+    } else {
+      output_node = gather_op;
+    }
 
     // Replace the source output for all consumers of the input tensor
     for (auto& consumer : consumers) {
-      consumer.replace_source_output(updatekv_op->output(0));
+      consumer.replace_source_output(output_node->output(0));
     }
   }
 
@@ -268,7 +286,7 @@ std::pair<std::vector<std::string>, std::vector<std::string>> ExtractInputKVTens
 }
 
 // Updated PatchStatefulDecoder function
-void PatchStatefulDecoder(std::shared_ptr<ov::Model> model) {
+void PatchStatefulDecoder(std::shared_ptr<ov::Model> model, const std::string& device) {
   // Use the dynamic pattern-based extraction logic
   auto [key_value_output_names, extracted_patterns] = ExtractKVPatternsFromOutputs(model);
   auto [key_value_input_names, not_kv_inputs] = ExtractInputKVTensors(model, extracted_patterns);
@@ -290,7 +308,7 @@ void PatchStatefulDecoder(std::shared_ptr<ov::Model> model) {
   // batch_dim = 1 if config.model_type == "chatglm" and not hasattr(config, "rope_ratio") else 0
   auto batch_dim = 0;
 
-  FuseCacheReorder(model, not_kv_inputs, key_value_input_names, batch_dim);
+  FuseCacheReorder(model, not_kv_inputs, key_value_input_names, batch_dim, device);
 
   MakeStateful(model, key_value_input_names, key_value_output_names);
 }

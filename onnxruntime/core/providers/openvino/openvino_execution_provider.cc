@@ -287,7 +287,7 @@ common::Status OpenVINOExecutionProvider::SetEpDynamicOptions(gsl::span<const ch
         }
       }
     } else if (key == "kvcache_reorder") {
-    // Convert kvcache_reorder value format "1,2,3;4,5,6" into two vectors
+      // Convert kvcache_reorder value format "1,2,3;4,5,6" into two vectors
       // src_indices = [1,2,3], dst_indices = [4,5,6]
       size_t delimiter_pos = value.find(';');
       if (delimiter_pos == std::string::npos) {
