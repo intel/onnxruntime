@@ -291,57 +291,52 @@ common::Status OpenVINOExecutionProvider::SetEpDynamicOptions(gsl::span<const ch
       // src_indices = [1,2,3], dst_indices = [4,5,6]
       size_t delimiter_pos = value.find(';');
       if (delimiter_pos == std::string::npos) {
-        LOGS_DEFAULT(WARNING) << "kvcache_reorder value format is incorrect, expected format is 'x1,x2,x3;y1,y2,y3' where x and y are comma-separated int64_t lists";
-        return Status::OK();
+        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                     "kvcache_reorder value format is incorrect, expected format is 'x1,x2,x3;y1,y2,y3' where x and y are comma-separated int64_t lists");
       }
 
       std::string src_string = value.substr(0, delimiter_pos);
       std::string dst_string = value.substr(delimiter_pos + 1);
 
-      std::vector<size_t> src_indices;
-      std::vector<size_t> dst_indices;
+      auto parse_indices = [](const std::string& input, const std::string& index_type) -> std::pair<Status, std::vector<size_t>> {
+        std::vector<size_t> indices;
+        std::stringstream stream(input);
+        std::string token;
 
-      try {
-        // Parse source indices from comma-separated string
-        std::stringstream src_stream(src_string);
-        std::string src_token;
-        while (std::getline(src_stream, src_token, ',')) {
-          // Trim whitespace
-          src_token.erase(0, src_token.find_first_not_of(" \t"));
-          src_token.erase(src_token.find_last_not_of(" \t") + 1);
+        try {
+          while (std::getline(stream, token, ',')) {
+            // Trim whitespace
+            token.erase(0, token.find_first_not_of(" \t"));
+            token.erase(token.find_last_not_of(" \t") + 1);
 
-          if (!src_token.empty()) {
-            int64_t index = std::stoll(src_token);
-            if (index >= 0) {
-              src_indices.push_back(static_cast<size_t>(index));
-            } else {
-              LOGS_DEFAULT(WARNING) << "kvcache_reorder src_index is < 0: " << index;
+            if (!token.empty()) {
+              int64_t index = std::stoll(token);
+              if (index >= 0) {
+                indices.push_back(static_cast<size_t>(index));
+              } else {
+                return {Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                              "kvcache_reorder " + index_type + " cannot be negative: " + std::to_string(index)),
+                        std::vector<size_t>()};
+              }
             }
           }
+        } catch (const std::exception& e) {
+          return {Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                        "Failed to parse kvcache_reorder " + index_type + ": " + std::string(e.what())),
+                  std::vector<size_t>()};
         }
 
-        // Parse destination indices from comma-separated string
-        std::stringstream dst_stream(dst_string);
-        std::string dst_token;
-        while (std::getline(dst_stream, dst_token, ',')) {
-          // Trim whitespace
-          dst_token.erase(0, dst_token.find_first_not_of(" \t"));
-          dst_token.erase(dst_token.find_last_not_of(" \t") + 1);
+        return {Status::OK(), std::move(indices)};
+      };
 
-          if (!dst_token.empty()) {
-            int64_t index = std::stoll(dst_token);
-            if (index >= 0) {
-              dst_indices.push_back(static_cast<size_t>(index));
-            } else {
-              LOGS_DEFAULT(WARNING) << "kvcache_reorder dst_index is < 0: " << index;
-            }
-          }
-        }
+      auto [src_status, src_indices] = parse_indices(src_string, "src_index");
+      if (!src_status.IsOK()) {
+        return src_status;
+      }
 
-      } catch (const std::exception& e) {
-        LOGS_DEFAULT(WARNING) << "Conversion for kvcache_reorder string value to int64_t indices failed. "
-                              << "Exception: " << e.what();
-        return Status::OK();
+      auto [dst_status, dst_indices] = parse_indices(dst_string, "dst_index");
+      if (!dst_status.IsOK()) {
+        return dst_status;
       }
 
       // Trigger KVCache Reorder for target Backend with vector arguments

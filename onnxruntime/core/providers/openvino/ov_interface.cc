@@ -473,15 +473,15 @@ void StatefulOVInferRequest::PreProcessInferRequest() {
   uint64_t kv_head_size = dst_idx_shape[3];
   if (kv_src_indices.size() > 0) {
     ov::Tensor src_idx_tensor = ov::Tensor(ov::element::i32, {kv_src_indices.size()});
-    for (int i = 0; i < kv_src_indices.size(); ++i) {
+    for (auto i = 0; i < kv_src_indices.size(); ++i) {
       src_idx_tensor.data<int32_t>()[i] = int32_t(kv_src_indices[i]);
     }
     ovInfReq.set_tensor("src_idx", src_idx_tensor);
 
     ov::Tensor dst_idx_tensor = ov::Tensor(ov::element::i32, {1, kv_num_heads, kv_dst_indices.size(), kv_head_size});
-    for (int i = 0; i < kv_dst_indices.size(); ++i) {
-      for (int j = 0; j < kv_num_heads; ++j) {
-        for (int k = 0; k < kv_head_size; ++k) {
+    for (auto i = 0; i < kv_dst_indices.size(); ++i) {
+      for (auto j = 0; j < kv_num_heads; ++j) {
+        for (auto k = 0; k < kv_head_size; ++k) {
           dst_idx_tensor.data<int32_t>()[(j * kv_dst_indices.size() + i) * kv_head_size + k] = int32_t(kv_dst_indices[i]);
         }
       }
