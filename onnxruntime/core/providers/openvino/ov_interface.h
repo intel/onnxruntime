@@ -163,6 +163,8 @@ class StatefulOVInferRequest : public OVInferRequest {
   bool prefill_use_full_chat_history = false;
   std::vector<int64_t> cached_input_ids;
   std::vector<int64_t> cached_position_ids;
+
+  bool is_support_kvcache_reorder = false;
   std::vector<int64_t> kv_src_indices;
   std::vector<int64_t> kv_dst_indices;
 

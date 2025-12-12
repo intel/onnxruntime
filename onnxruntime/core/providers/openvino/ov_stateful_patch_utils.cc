@@ -81,9 +81,9 @@ void FuseCacheReorder(std::shared_ptr<ov::Model> ov_model,
     throw std::runtime_error("Model already has fused cache");
   }
 
-  // Flag to add Gather+ScatterElementsUpdate subgraph for LLM speculative decoding
+  // Flag to add Gather+ScatterElementsUpdate subgraph to reorder KV cache for LLM speculative decoding
   // TO-DO: extend to NPU device when OpenVINO NPU has related optimization
-  bool is_support_speculative_LLM = device.find("GPU") != std::string::npos;
+  bool is_support_kvcache_reorder = device.find("GPU") != std::string::npos;
 
   // Define input name candidates in priority order
   const std::vector<std::string> input_name_candidates = {
@@ -107,7 +107,7 @@ void FuseCacheReorder(std::shared_ptr<ov::Model> ov_model,
   std::shared_ptr<ov::opset13::Parameter> src_idx;
   std::shared_ptr<ov::opset13::Parameter> dst_idx;
 
-  if (is_support_speculative_LLM) {
+  if (is_support_kvcache_reorder) {
     src_idx = std::make_shared<ov::opset13::Parameter>(ov::element::i32, ov::PartialShape({update_shape[2]}));
     src_idx->set_friendly_name("src_idx");
     src_idx->output(0).get_tensor().add_names({"src_idx"});
@@ -132,7 +132,7 @@ void FuseCacheReorder(std::shared_ptr<ov::Model> ov_model,
                                               ov::opset13::Constant::create(ov::element::i64, {}, {gather_dim}));
 
     std::shared_ptr<ov::Node> output_node;
-    if (is_support_speculative_LLM) {
+    if (is_support_kvcache_reorder) {
       auto updatekv_gather_op =
           std::make_shared<ov::opset13::Gather>(gather_op,
                                                 src_idx,

@@ -380,6 +380,7 @@ void OVInferRequest::Infer() {
 StatefulOVInferRequest::StatefulOVInferRequest(ov::InferRequest infer_request, std::string device)
     : OVInferRequest(std::move(infer_request)), target_device(device) {
   bool gpu_or_npu = ((device.find("NPU") != std::string::npos) || (device.find("GPU") != std::string::npos));
+  is_support_kvcache_reorder = device.find("GPU") != std::string::npos;
 
   _npu_logits_slice_required = IsNPULogitsSliceRequired();
 
@@ -468,28 +469,31 @@ void StatefulOVInferRequest::PreProcessInferRequest() {
   // Workaround: Setting the value here as it cannot be set at the ORT GenAI layer currently.
   // TODO(ankit): Address this issue and implement the fix at the appropriate layer.
   FillTensor("beam_idx", ov::element::i32, {1}, 0);
-  ov::Shape dst_idx_shape = ovInfReq.get_tensor("dst_idx").get_shape();
-  uint64_t kv_num_heads = dst_idx_shape[1];
-  uint64_t kv_head_size = dst_idx_shape[3];
-  if (kv_src_indices.size() > 0) {
-    ov::Tensor src_idx_tensor = ov::Tensor(ov::element::i32, {kv_src_indices.size()});
-    for (auto i = 0; i < kv_src_indices.size(); ++i) {
-      src_idx_tensor.data<int32_t>()[i] = int32_t(kv_src_indices[i]);
-    }
-    ovInfReq.set_tensor("src_idx", src_idx_tensor);
 
-    ov::Tensor dst_idx_tensor = ov::Tensor(ov::element::i32, {1, kv_num_heads, kv_dst_indices.size(), kv_head_size});
-    for (auto i = 0; i < kv_dst_indices.size(); ++i) {
-      for (auto j = 0; j < kv_num_heads; ++j) {
-        for (auto k = 0; k < kv_head_size; ++k) {
-          dst_idx_tensor.data<int32_t>()[(j * kv_dst_indices.size() + i) * kv_head_size + k] = int32_t(kv_dst_indices[i]);
+  if (is_support_kvcache_reorder){
+      ov::Shape dst_idx_shape = ovInfReq.get_tensor("dst_idx").get_shape();
+      uint64_t kv_num_heads = dst_idx_shape[1];
+      uint64_t kv_head_size = dst_idx_shape[3];
+      if (kv_src_indices.size() > 0) {
+        ov::Tensor src_idx_tensor = ov::Tensor(ov::element::i32, {kv_src_indices.size()});
+        for (auto i = 0; i < kv_src_indices.size(); ++i) {
+          src_idx_tensor.data<int32_t>()[i] = int32_t(kv_src_indices[i]);
         }
+        ovInfReq.set_tensor("src_idx", src_idx_tensor);
+
+        ov::Tensor dst_idx_tensor = ov::Tensor(ov::element::i32, {1, kv_num_heads, kv_dst_indices.size(), kv_head_size});
+        for (auto i = 0; i < kv_dst_indices.size(); ++i) {
+          for (auto j = 0; j < kv_num_heads; ++j) {
+            for (auto k = 0; k < kv_head_size; ++k) {
+              dst_idx_tensor.data<int32_t>()[(j * kv_dst_indices.size() + i) * kv_head_size + k] = int32_t(kv_dst_indices[i]);
+            }
+          }
+        }
+        ovInfReq.set_tensor("dst_idx", dst_idx_tensor);
+      } else {
+        FillTensor("src_idx", ov::element::i32, {0}, 0);
+        FillTensor("dst_idx", ov::element::i32, {1, kv_num_heads, 0, kv_head_size}, 0);
       }
-    }
-    ovInfReq.set_tensor("dst_idx", dst_idx_tensor);
-  } else {
-    FillTensor("src_idx", ov::element::i32, {0}, 0);
-    FillTensor("dst_idx", ov::element::i32, {1, kv_num_heads, 0, kv_head_size}, 0);
   }
 
   // If 'prefill use full chat history' mode is enabled, we need to cache input_ids and position_ids.
@@ -532,8 +536,10 @@ void StatefulOVInferRequest::Infer() {
 }
 
 void StatefulOVInferRequest::PostProcessInferRequest() {
-    kv_src_indices.clear();
-    kv_dst_indices.clear();
+  if(is_support_kvcache_reorder){
+      kv_src_indices.clear();
+      kv_dst_indices.clear();
+    }
 }
 
 void StatefulOVInferRequest::ReorderKVCache(const std::vector<size_t>& src_indices, const std::vector<size_t>& dst_indices) {
