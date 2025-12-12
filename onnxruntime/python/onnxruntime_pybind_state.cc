@@ -1042,7 +1042,7 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
     ProviderOptions OV_provider_options_map;
     const std::unordered_set<std::string> valid_provider_keys = {"device_type", "device_id", "device_luid", "cache_dir", "precision",
                                                                  "load_config", "context", "num_of_threads", "model_priority", "num_streams", "enable_opencl_throttling", "enable_qdq_optimizer",
-                                                                 "enable_causallm", "disable_dynamic_shapes", "reshape_input", "layout"};
+                                                                 "enable_causallm", "disable_dynamic_shapes", "reshape_input", "layout", "affinity"};
     auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
       for (auto option : it->second) {

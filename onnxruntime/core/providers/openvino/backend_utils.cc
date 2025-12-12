@@ -57,8 +57,14 @@ CreateOVModel(std::string&& model,
       LOGS_DEFAULT(INFO) << log_tag << "Setting the ov tensor layout to specified layout";
       ov_model = Set_Layout(ov_model, session_context.layout);
     }
+
+    if (!session_context.affinity.empty()) {
+      LOGS_DEFAULT(INFO) << log_tag << "Setting the ov nodes to specified affinity";
+      Set_Affinity(ov_model, session_context);
+    }
+
     // Check for Constant Folding
-    if ((session_context.device_type != "NPU") && !session_context.is_wholly_supported_graph) {
+    /* if ((session_context.device_type != "NPU") && !session_context.is_wholly_supported_graph) {
       ov::pass::ConstantFolding pass_const_obj;
       pass_const_obj.run_on_model(ov_model);
       auto& results = const_cast<ov::ResultVector&>(ov_model.get()->get_results());
@@ -72,7 +78,7 @@ CreateOVModel(std::string&& model,
         }
         --index;
       }
-    }
+    }*/
 #ifndef NDEBUG
     if (IsDebugEnabled()) {
       std::string name = ov_model->get_friendly_name();
@@ -139,6 +145,36 @@ std::shared_ptr<OVNetwork> Set_Layout(std::shared_ptr<OVNetwork> ov_model, const
   }
 
   return preproc.build();
+}
+
+void Set_Affinity(std::shared_ptr<OVNetwork> ov_model, const SessionContext& session_context) {
+  
+  std::string selected_device = "CPU";
+  if (auto delimit = session_context.device_type.find(":"); delimit != std::string::npos) {
+    auto device_mode = session_context.device_type.substr(0, delimit);
+    if (device_mode.find("HETERO") != std::string::npos) {
+      const auto& devices = session_context.device_type.substr(delimit + 1);
+      auto delimit_comma = devices.find(",");
+      selected_device = devices.substr(0, delimit_comma);
+    } else {
+      ORT_THROW("[ERROR] [OpenVINO] Invalid device_type is selected. Supported modes is HETERO");
+    }
+  } else {
+    ORT_THROW("[ERROR] [OpenVINO] Invalid device_type is selected. Supported modes is HETERO");
+  }
+
+  for (auto&& ov_node : ov_model->get_ops()) {
+     auto name = ov_node->get_friendly_name();
+     auto it = session_context.affinity.find(name);
+     if (it != session_context.affinity.end()) {
+       ov_node->get_rt_info()["affinity"] = it->second;
+       std::cout << name << " on " << it->second << "\n";
+     } else {
+       ov_node->get_rt_info()["affinity"] = selected_device;   
+       std::cout << name << " on " << selected_device << "\n";
+
+     }
+  }
 }
 
 int GetFirstAvailableDevice(SessionContext& session_context) {
