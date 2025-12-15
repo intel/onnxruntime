@@ -348,12 +348,12 @@ static void DumpOpenVINOEPModel([[maybe_unused]] const std::filesystem::path& on
 
 // this is a helper function to set the data fields, it duplicates ExternalDataInfo::SetExternalLocationToProto
 // but we cannot use that function as it is not part of public provider api.
-static void SetExternalDataFields(ONNX_NAMESPACE::TensorProto* proto_init, const void* data_ptr, int64_t data_size) {
+static void SetExternalDataFields(ONNX_NAMESPACE::TensorProto& proto_init, const void* data_ptr, int64_t data_size) {
   static constexpr const char* ORT_INTERNAL_MEM_INITIALIZER = "*/_ORT_MEM_ADDR_/*";
-  auto* external_data = proto_init->mutable_external_data();
+  auto* external_data = proto_init.mutable_external_data();
   bool found_location = false, found_offset = false, found_length = false;
   const int ext_data_size = external_data->size();
-  proto_init->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
+  proto_init.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
 
   for (int j = 0; j < ext_data_size; ++j) {
     auto& ext_entry = external_data->at(j);
@@ -541,11 +541,15 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
         if (it == proto_initializer_map.end())
           continue;
 
-        auto* proto_init = it->second;
+        if (!it->second) {
+            ORT_THROW(name + " proto initializer is null!");
+        }
+
+        auto& proto_init = *it->second;
 
         // If the proto initializer is missing data, fill it in
-        if (!proto_init->has_raw_data() && src_init->has_raw_data()) {
-          *proto_init->mutable_raw_data() = src_init->raw_data();
+        if (!proto_init.has_raw_data() && src_init->has_raw_data()) {
+          *(proto_init.mutable_raw_data()) = src_init->raw_data();
         }
 
         // Only set in-memory external_data fields if the data is in memory
@@ -554,10 +558,12 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
                                 << src_init->name()
                                 << ", data_type: " << src_init->data_type()
                                 << ", raw_data size: " << src_init->raw_data().size();
-          if (src_init->raw_data().size() > 0)
-            SetExternalDataFields(proto_init, src_init->raw_data().data(), src_init->raw_data().size());
-          else
-            LOGS(logger, VERBOSE) << "Initializer has empty raw_data: skipping initializer '" << src_init->name() << "'...";
+          if (src_init->raw_data().size() > 0) {
+              SetExternalDataFields(proto_init, src_init->raw_data().data(), src_init->raw_data().size());
+          }
+          else {
+              LOGS(logger, VERBOSE) << "Initializer has empty raw_data: skipping initializer '" << src_init->name() << "'...";
+          }
         } else if (onnxruntime::utils::HasExternalDataInMemory(*src_init)) {
           auto it_ext = external_initializers_offset_and_length.find(name);
           if (it_ext == external_initializers_offset_and_length.end()) {
