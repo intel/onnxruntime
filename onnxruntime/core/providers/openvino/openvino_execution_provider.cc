@@ -185,7 +185,6 @@ common::Status OpenVINOExecutionProvider::Compile(
 
       for (const auto& fused_node_graph : fused_nodes) {
         const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
-
         // Set include_embed_data to true only for the first backend manager
         backend_it->TryExportCompiledBlobAsEPCtxNode(graph_body_viewer, is_first);
 

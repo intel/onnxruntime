@@ -93,10 +93,13 @@ struct OnnxToOvNetworkBindings {
         //            "Input names mismatch between OpenVINO and ONNX. ", onnx_name,
         //            " doesn't exist in the list of OpenVINO input tensor names");
 
+        if (!matched_names) {
+          continue; 
+        }
         auto ov_param_index = std::distance(ov_parameters.begin(), it);
-
         auto shape = ov_parameters[ov_param_index].get_partial_shape();
         auto type = ov_parameters[ov_param_index].get_element_type();
+
         ParameterInfo info{onnx_name, ov_param_index, onnx_param_index, type, ParameterShape{shape}};
 
         // Analyze shape dynamism and set flags
@@ -125,7 +128,7 @@ struct OnnxToOvNetworkBindings {
             has_dynamic_io_ = true;
           }
         }
-
+        
         input_output_map.push_back(std::move(info));
       }
     };

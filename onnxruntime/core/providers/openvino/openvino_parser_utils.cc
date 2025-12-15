@@ -327,8 +327,6 @@ affinity_t OpenVINOParserUtils::ParseAffinity(const std::string& affinity_defini
     std::smatch device_match = *device_it;
     std::string device_name = device_match[1].str();
     std::string nodes_list_str = device_match[2].str();
-    //std::cout << "device_name " << device_name << "\n";
-    //std::cout << "nodes_list_str " << nodes_list_str << "\n";
     std::stringstream nodes_list(nodes_list_str);
     std::string item;
 
@@ -337,9 +335,6 @@ affinity_t OpenVINOParserUtils::ParseAffinity(const std::string& affinity_defini
     }
   }
 
-  //for (auto item : result_map){
-  //  std::cout << "\n" << item.first << " on " << item.second << "\n";
-  //}
   return result_map;
 }
 
