@@ -267,7 +267,6 @@ static void ParseProviderInfo(const ProviderOptions& provider_options,
   }
 
   if (provider_options.contains("affinity")) {
-    std::cout << "Provider options contain affinity\n";
     pi.affinity = OpenVINOParserUtils::ParseAffinity(provider_options.at("affinity"));
   }
 

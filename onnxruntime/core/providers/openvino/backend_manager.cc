@@ -292,12 +292,12 @@ bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::GraphViewer& s
   }
 
   // For dynamic models with incomplete reshape coverage, clear shapes
-  if (has_symbolic_dims && !all_dynamic_inputs_covered) {
+  /* if (has_symbolic_dims && !all_dynamic_inputs_covered) {
     session_context_.reshape.clear();
     LOGS_DEFAULT(WARNING) << "reshape_input does not cover all dynamic dimensions, "
                           << "ignoring all provided shapes";
     return true;  // Model is dynamic
-  }
+  }*/
 
   // If shapes are valid with complete coverage for dynamic model, treat as concrete
   if (has_symbolic_dims && shapes_valid && all_dynamic_inputs_covered) {
