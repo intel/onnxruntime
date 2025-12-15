@@ -2760,10 +2760,10 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 #endif
       })
       .def("set_ep_dynamic_options", [](PyInferenceSession* sess, const py::dict& options) {
-            std::vector<const char*> keys;
-            std::vector<const char*> values;
-            std::vector<std::string> key_strings;
-            std::vector<std::string> value_strings;
+            InlinedVector<const char*> keys;
+            InlinedVector<const char*> values;
+            InlinedVector<std::string> key_strings;
+            InlinedVector<std::string> value_strings;
 
             // Reserve space to avoid reallocations
             key_strings.reserve(options.size());
@@ -2783,13 +2783,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
               ORT_THROW("No options were provided");
             }
 
-            auto status = sess->GetSessionHandle()->SetEpDynamicOptions(
-                gsl::make_span(keys.data(), keys.size()),
-                gsl::make_span(values.data(), values.size()));
-
-            if (!status.IsOK()) {
-              ORT_THROW("Failed to set EP dynamic options: " + status.ErrorMessage());
-            } },
+            ORT_THROW_IF_ERROR(sess->GetSessionHandle()->SetEpDynamicOptions(keys, values)); },
            R"pbdoc(Set dynamic options for execution providers.
 
           Args:
