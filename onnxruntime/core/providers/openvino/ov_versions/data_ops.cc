@@ -50,8 +50,7 @@ std::set<std::string> ops_supported_only_in_model = {
     "RandomNormalLike",
     "ReduceMin",
     "Slice",
-    "TopK"
-  };
+    "TopK"};
 
 // Ops which are supported as functions (as composite ops)
 std::set<std::string> ops_supported_as_function = {
