@@ -2598,7 +2598,7 @@ TEST(ResizeOpTest, NoAntialias_AlignCorners_Cubic_Floor_NHWC) {
     23.0000f, 24.0000f,
   };
   // clang-format on
-  // OVEP: results mismatch due to OVEP's optimiztions have conflict
+  // OVEP: results mismatch due to OVEP's optimizations have conflict
   InlinedVector<std::string_view> excluded_eps = {kCudaExecutionProvider, kOpenVINOExecutionProvider};
   TestAntialiasing(
       {{"antialias", "0"},
