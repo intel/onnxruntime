@@ -826,6 +826,7 @@ TEST(ResizeOpTest, NhwcResizeOpLinearUpSampleTest_4DBilinear_asymmetric_uint8) {
     test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C},
                             Y, false, .0f, 1.0f);
     // CUDA: result mismatch due to not implementing NHWC support
+    // Disable OV EP due to round when converting from float to uint8
     test.Run(OpTester::ExpectResult::kExpectSuccess, "",
              {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kOpenVINOExecutionProvider});
   };
@@ -2597,6 +2598,7 @@ TEST(ResizeOpTest, NoAntialias_AlignCorners_Cubic_Floor_NHWC) {
     23.0000f, 24.0000f,
   };
   // clang-format on
+  // OVEP: results mismatch due to OV's optimiztion for NHWC layout
   InlinedVector<std::string_view> excluded_eps = {kCudaExecutionProvider, kOpenVINOExecutionProvider};
   TestAntialiasing(
       {{"antialias", "0"},

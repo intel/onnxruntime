@@ -713,10 +713,6 @@ TEST(QuantizeLinearOpTest, OVEP_Int8_NegativeZeroPoint) {
 
 // quantize with scalar zero point and scale
 TEST(QuantizeLinearOpTest, Int8_PositiveZeroPoint) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Expected equality of these values: -104 and -105";
-  }
 
   OpTester test("QuantizeLinear", 10);
   std::vector<int64_t> dims{8};
@@ -735,10 +731,6 @@ TEST(QuantizeLinearOpTest, Int8_PositiveZeroPoint) {
 
 #ifdef USE_OPENVINO
 TEST(QuantizeLinearOpTest, OVEP_Int8_PositiveZeroPoint) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Expected equality of these values: -104 and -105";
-  }
 
   OpTester test("QuantizeLinear", 10);
   std::vector<int64_t> dims{8};
