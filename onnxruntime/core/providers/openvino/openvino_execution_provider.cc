@@ -5,6 +5,7 @@
 #include <string>
 #include <memory>
 #include <vector>
+#include <cerrno>
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/openvino_execution_provider.h"
 #include "core/providers/openvino/contexts.h"
@@ -295,53 +296,54 @@ common::Status OpenVINOExecutionProvider::SetEpDynamicOptions(gsl::span<const ch
                      "kvcache_reorder value format is incorrect, expected format is 'x1,x2,x3;y1,y2,y3' where x and y are comma-separated int64_t lists");
       }
 
-      std::string src_string = value.substr(0, delimiter_pos);
-      std::string dst_string = value.substr(delimiter_pos + 1);
+      std::string_view src_string(value.begin(), value.begin() + delimiter_pos);
+      std::string_view dst_string(value.begin() + delimiter_pos + 1, value.end());
 
-      auto parse_indices = [](const std::string& input, const std::string& index_type) -> std::pair<Status, std::vector<size_t>> {
-        std::vector<size_t> indices;
-        std::stringstream stream(input);
-        std::string token;
-
-        try {
-          while (std::getline(stream, token, ',')) {
-            // Trim whitespace
-            token.erase(0, token.find_first_not_of(" \t"));
-            token.erase(token.find_last_not_of(" \t") + 1);
-
-            if (!token.empty()) {
-              int64_t index = std::stoll(token);
-              if (index >= 0) {
-                indices.push_back(static_cast<size_t>(index));
-              } else {
-                return {Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                              "kvcache_reorder " + index_type + " cannot be negative: " + std::to_string(index)),
-                        std::vector<size_t>()};
-              }
-            }
+      constexpr auto parse_indices = [](std::string_view input, const std::string& index_type) -> std::variant<Status, std::vector<int32_t>> {
+        std::vector<int32_t> indices;
+        while (!input.empty()) {
+          const auto delimiter_pos = input.find(',');
+          const auto part = input.substr(0, delimiter_pos);
+          errno = 0;
+          char* parse_end = nullptr;
+          // strtoll/stoll already skips whitespaces
+          const auto index = std::strtol(part.data(), &parse_end, 10);
+          if (parse_end == part.data()) {
+            return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                          "Failed to parse kvcache_reorder " + index_type + ": " + std::string(part));
           }
-        } catch (const std::exception& e) {
-          return {Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                        "Failed to parse kvcache_reorder " + index_type + ": " + std::string(e.what())),
-                  std::vector<size_t>()};
+          if (index < 0) {
+            return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                          "kvcache_reorder " + index_type + " cannot be negative: " + std::string(part));
+          }
+          if (errno == ERANGE) {
+            return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                          "kvcache_reorder " + index_type + " exceed INT32_MAX: " + std::string(part));
+          }
+          indices.push_back(static_cast<int32_t>(index));
+          if (delimiter_pos != std::string_view::npos) {
+            // ignore any trailing chars after the number, can do futher checking if needed
+            input.remove_prefix(part.size() + 1);
+          } else {
+            break;
+          }
         }
-
-        return {Status::OK(), std::move(indices)};
+        return indices;
       };
 
-      auto [src_status, src_indices] = parse_indices(src_string, "src_index");
-      if (!src_status.IsOK()) {
-        return src_status;
+      const auto src_indices = parse_indices(src_string, "src_index");
+      if (src_indices.index() == 0) {
+        return std::get<0>(src_indices);
       }
 
-      auto [dst_status, dst_indices] = parse_indices(dst_string, "dst_index");
-      if (!dst_status.IsOK()) {
-        return dst_status;
+      const auto dst_indices = parse_indices(dst_string, "dst_index");
+      if (dst_indices.index() == 0) {
+        return std::get<0>(dst_indices);
       }
 
       // Trigger KVCache Reorder for target Backend with vector arguments
       for (auto& backend : backend_managers_) {
-        backend.ReorderKVCache(src_indices, dst_indices);
+        backend.ReorderKVCache(std::get<1>(src_indices), std::get<1>(dst_indices));
       }
     } else {
       // Handle unknown options

@@ -109,9 +109,13 @@ OVExeNetwork OVCore::StatefulCompileModel(std::shared_ptr<OVNetwork>& model,
 
   bool model_status = IsStateful(model);
   LOGS_DEFAULT(INFO) << log_tag << "Model IsStateful() Status:\t" << (model_status ? "True" : "False");
+  // Flag to add Gather+ScatterElementsUpdate subgraph to reorder KV cache for LLM speculative decoding
+  bool is_fused_kvcache_reorder = false;
   if (!model_status) {
     LOGS_DEFAULT(INFO) << log_tag << "Converting from Stateless OV Model to Stateful OV Model" << std::endl;
-    PatchStatefulDecoder(model, hw_target);
+    // TO-DO: extend to NPU device when OpenVINO NPU has related optimization
+    is_fused_kvcache_reorder = hw_target.find("GPU") != std::string::npos;
+    PatchStatefulDecoder(model, is_fused_kvcache_reorder);
   }
 
   if (onnxruntime::openvino_ep::backend_utils::IsDebugEnabled()) {
@@ -152,7 +156,7 @@ OVExeNetwork OVCore::StatefulCompileModel(std::shared_ptr<OVNetwork>& model,
 
   LOGS_DEFAULT(INFO) << log_tag << "Compiling OV Model using Stateful Transformation flow";
   compiled_model = OVCore::Get()->core.compile_model(model, hw_target, config);
-  OVExeNetwork exe(compiled_model, hw_target, true);
+  OVExeNetwork exe(compiled_model, hw_target, true, is_fused_kvcache_reorder);
   return exe;
 }
 
@@ -332,7 +336,7 @@ std::shared_ptr<OVInferRequest> OVExeNetwork::CreateInferRequest() {
     auto infReq = compiled_model_obj.create_infer_request();
     std::shared_ptr<OVInferRequest> ovInfReq;
     if (is_stateful_causallm) {
-      ovInfReq = std::make_shared<StatefulOVInferRequest>(std::move(infReq), target_device);
+      ovInfReq = std::make_shared<StatefulOVInferRequest>(std::move(infReq), target_device, is_fused_kvcache_reorder);
     } else {
       ovInfReq = std::make_shared<OVInferRequest>(std::move(infReq));
     }
@@ -377,10 +381,9 @@ void OVInferRequest::Infer() {
                              "In Error Couldn't start Inference");
 }
 
-StatefulOVInferRequest::StatefulOVInferRequest(ov::InferRequest infer_request, std::string device)
-    : OVInferRequest(std::move(infer_request)), target_device(device) {
+StatefulOVInferRequest::StatefulOVInferRequest(ov::InferRequest infer_request, std::string device, bool fused_kvcache_reorder)
+    : OVInferRequest(std::move(infer_request)), target_device(device), is_fused_kvcache_reorder(fused_kvcache_reorder) {
   bool gpu_or_npu = ((device.find("NPU") != std::string::npos) || (device.find("GPU") != std::string::npos));
-  is_support_kvcache_reorder = device.find("GPU") != std::string::npos;
 
   _npu_logits_slice_required = IsNPULogitsSliceRequired();
 
@@ -470,23 +473,23 @@ void StatefulOVInferRequest::PreProcessInferRequest() {
   // TODO(ankit): Address this issue and implement the fix at the appropriate layer.
   FillTensor("beam_idx", ov::element::i32, {1}, 0);
 
-  if (is_support_kvcache_reorder){
+  if (is_fused_kvcache_reorder){
       ov::Shape dst_idx_shape = ovInfReq.get_tensor("dst_idx").get_shape();
-      uint64_t kv_num_heads = dst_idx_shape[1];
-      uint64_t kv_head_size = dst_idx_shape[3];
+      const auto kv_num_heads = dst_idx_shape[1];
+      const auto kv_head_size = dst_idx_shape[3];
       if (kv_src_indices.size() > 0) {
         ov::Tensor src_idx_tensor = ov::Tensor(ov::element::i32, {kv_src_indices.size()});
-        for (auto i = 0; i < kv_src_indices.size(); ++i) {
-          src_idx_tensor.data<int32_t>()[i] = int32_t(kv_src_indices[i]);
+        const auto src_idx_ptr = src_idx_tensor.data<int32_t>();
+        for (size_t i = 0; i < kv_src_indices.size(); ++i) {
+          src_idx_ptr[i] = static_cast<int32_t>(kv_src_indices[i]);
         }
         ovInfReq.set_tensor("src_idx", src_idx_tensor);
 
         ov::Tensor dst_idx_tensor = ov::Tensor(ov::element::i32, {1, kv_num_heads, kv_dst_indices.size(), kv_head_size});
-        for (auto i = 0; i < kv_dst_indices.size(); ++i) {
-          for (auto j = 0; j < kv_num_heads; ++j) {
-            for (auto k = 0; k < kv_head_size; ++k) {
-              dst_idx_tensor.data<int32_t>()[(j * kv_dst_indices.size() + i) * kv_head_size + k] = int32_t(kv_dst_indices[i]);
-            }
+        const auto dst_idx_ptr = dst_idx_tensor.data<int32_t>();
+        for (size_t i = 0; i < kv_num_heads; ++i) {
+          for (size_t j = 0; j < kv_dst_indices.size(); ++j) {
+            std::fill_n(dst_idx_ptr + (i * kv_dst_indices.size() + j) * kv_head_size, kv_head_size, kv_dst_indices[j]);
           }
         }
         ovInfReq.set_tensor("dst_idx", dst_idx_tensor);
@@ -536,13 +539,13 @@ void StatefulOVInferRequest::Infer() {
 }
 
 void StatefulOVInferRequest::PostProcessInferRequest() {
-  if(is_support_kvcache_reorder){
+  if(is_fused_kvcache_reorder){
       kv_src_indices.clear();
       kv_dst_indices.clear();
     }
 }
 
-void StatefulOVInferRequest::ReorderKVCache(const std::vector<size_t>& src_indices, const std::vector<size_t>& dst_indices) {
+void StatefulOVInferRequest::ReorderKVCache(const std::vector<int32_t>& src_indices, const std::vector<int32_t>& dst_indices) {
   // Validate input parameters
   if (src_indices.size() != dst_indices.size()) {
     ORT_THROW(log_tag + "ReorderKVCache: src_indices and dst_indices must have the same size. "
@@ -553,12 +556,8 @@ void StatefulOVInferRequest::ReorderKVCache(const std::vector<size_t>& src_indic
   LOGS_DEFAULT(INFO) << log_tag << "ReorderKVCache: Reordering OpenVINO-internal KVCache state with "
                      << src_indices.size() << " index pairs";
 
-  kv_src_indices.clear();
-  kv_dst_indices.clear();
-  for (int i = 0; i < src_indices.size(); ++i) {
-    kv_src_indices.emplace_back(src_indices[i]);
-    kv_dst_indices.emplace_back(dst_indices[i]);
-  }
+  kv_src_indices = src_indices;
+  kv_dst_indices = dst_indices;
 }
 
 void StatefulOVInferRequest::RewindKVCache(size_t index) {
