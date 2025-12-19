@@ -19,8 +19,9 @@ static inline uint64_t AlignUp(uint64_t value, uint64_t alignment) {
 class TensorStreamBuf : public std::streambuf {
  public:
   explicit TensorStreamBuf(ov::Tensor& tensor) {
-    // Use const data accessor since memory-mapped tensors are read-only starting OV 2026.0
-    char* data = const_cast<char*>(static_cast<const ov::Tensor&>(tensor).data<char>());
+    // Use raw data() accessor since memory-mapped tensors are read-only in OV 2026.0
+    // The templated data<T>() method is not allowed on read-only tensors
+    char* data = static_cast<char*>(const_cast<void*>(static_cast<const ov::Tensor&>(tensor).data()));
     size_t size = tensor.get_byte_size();
     setg(data, data, data + size);
   }
@@ -171,11 +172,12 @@ ov::Tensor BinManager::GetNativeBlob(const std::string& blob_name) {
 
   if (mapped_bin_) {
     // Create a tensor from memory-mapped external file
-    // Use const data accessor since memory-mapped tensors are read-only starting OV 2026.0
+    // Use raw data() accessor since memory-mapped tensors are read-only in OV 2026.0
+    // The templated data<T>() method is not allowed on read-only tensors
     blob_container.tensor = ov::Tensor(
         ov::element::u8,
         ov::Shape{blob_container.serialized_info.size},
-        const_cast<uint8_t*>(static_cast<const ov::Tensor&>(mapped_bin_).data<uint8_t>()) + blob_container.serialized_info.file_offset);
+        static_cast<uint8_t*>(const_cast<void*>(static_cast<const ov::Tensor&>(mapped_bin_).data())) + blob_container.serialized_info.file_offset);
   } else {
     // Create a tensor from embedded data vector
     blob_container.tensor = ov::Tensor(
