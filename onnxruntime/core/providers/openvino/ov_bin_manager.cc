@@ -19,7 +19,8 @@ static inline uint64_t AlignUp(uint64_t value, uint64_t alignment) {
 class TensorStreamBuf : public std::streambuf {
  public:
   explicit TensorStreamBuf(ov::Tensor& tensor) {
-    char* data = const_cast<char*>(tensor.data<char>());
+    // Use const data accessor since memory-mapped tensors are read-only starting OV 2026.0
+    char* data = const_cast<char*>(static_cast<const ov::Tensor&>(tensor).data<char>());
     size_t size = tensor.get_byte_size();
     setg(data, data, data + size);
   }
@@ -170,10 +171,11 @@ ov::Tensor BinManager::GetNativeBlob(const std::string& blob_name) {
 
   if (mapped_bin_) {
     // Create a tensor from memory-mapped external file
+    // Use const data accessor since memory-mapped tensors are read-only starting OV 2026.0
     blob_container.tensor = ov::Tensor(
         ov::element::u8,
         ov::Shape{blob_container.serialized_info.size},
-        mapped_bin_.data<uint8_t>() + blob_container.serialized_info.file_offset);
+        const_cast<uint8_t*>(static_cast<const ov::Tensor&>(mapped_bin_).data<uint8_t>()) + blob_container.serialized_info.file_offset);
   } else {
     // Create a tensor from embedded data vector
     blob_container.tensor = ov::Tensor(
