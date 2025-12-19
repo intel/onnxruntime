@@ -29,8 +29,10 @@ void* OVRTAllocator::Alloc(size_t size) {
     ov::Tensor* tensor = new ov::Tensor(remote_ctx_.create_host_tensor(ov::element::Type_t::u8,
                                                                        {size}));
     std::lock_guard<std::mutex> lock(mutex_);
-    allocated_.insert({tensor->data(), tensor});
-    return reinterpret_cast<void*>(tensor->data());
+    // Use const data accessor for OV 2026.0 compatibility
+    void* ptr = const_cast<uint8_t*>(static_cast<const ov::Tensor&>(*tensor).data<uint8_t>());
+    allocated_.insert({ptr, tensor});
+    return ptr;
   } catch (const ov::Exception& e) {
     ORT_THROW(std::string("Alloc failed: ") + e.what());
   }
