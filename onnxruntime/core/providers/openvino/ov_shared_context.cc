@@ -54,7 +54,9 @@ void* SharedContext::WeightsFile::TryGetOrCreateDeviceMapping(std::optional<ov::
     } else if (dev_name.empty()) {
       // CPU/virtual device case, create a CPU tensor memory mapped from file
       auto&& mmaped_tensor = ov::read_tensor_data(file_path_);
-      it->second = MappingContainer{.ptr_ = mmaped_tensor.data(), .tensor_ = mmaped_tensor};
+      // Use raw data() accessor since memory-mapped tensors are read-only in OV 2026.0
+      // The templated data<T>() method is not allowed on read-only tensors
+      it->second = MappingContainer{.ptr_ = const_cast<void*>(static_cast<const ov::Tensor&>(mmaped_tensor).data()), .tensor_ = mmaped_tensor};
     }
   }
 
@@ -85,7 +87,11 @@ void SharedContext::LoadTensorFromFile(
     // Can't mmap the file to device tensor, create a host tensor and copy the data
     tensor = remote_context->create_host_tensor(element_type, dimensions);
     ORT_ENFORCE(tensor.get_byte_size() == value.serialized.size, "Remote tensor size mismatch");
-    weights_file->LoadWeights(value.serialized.data_offset, tensor.data(), value.serialized.size);
+    // Use raw data() accessor for sub-byte types (i4, u4) compatibility in OV 2026.0
+    // The templated data<T>() method fails is_pointer_representable check for sub-byte types
+    weights_file->LoadWeights(value.serialized.data_offset,
+                              const_cast<void*>(static_cast<const ov::Tensor&>(tensor).data()),
+                              value.serialized.size);
   }
 
   ORT_ENFORCE(tensor.get_byte_size() == value.serialized.size, "Tensor size mismatch");
