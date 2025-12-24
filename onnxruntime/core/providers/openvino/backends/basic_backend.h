@@ -60,17 +60,11 @@ struct OnnxToOvNetworkBindings {
 
   OnnxToOvNetworkBindings(OVExeNetwork& exec_network, SubGraphContext& subgraph_context, SessionContext& session_context) {
     auto populate = [&](auto& input_output_map, const SubGraphContext::string_index_map_t& onnx_input_map, const auto& ov_parameters) {
+      auto input_parameter_aligned = (onnx_input_map.size() == ov_parameters.size());
       for (const auto& [onnx_name, onnx_param_index] : onnx_input_map) {
         auto it = std::find_if(ov_parameters.begin(), ov_parameters.end(),
                                [&onnx_name](const auto& ov_parameter_info) { return ov_parameter_info.get_names().contains(onnx_name); });
         bool matched_names = it != ov_parameters.end();
-
-        if (it == ov_parameters.end()) {
-          LOGS_DEFAULT(WARNING) << log_tag << "The input '" << onnx_name
-                                << "' is not used due to OpenVINO optimization. "
-                                   "This may cause issues if the input is required.";
-          continue;
-        }
 
         // For Stateful Model Compilation, the ONNX model includes KV cache (past/present) tensors.
         // However, these tensors are internally converted to a stateful representation, which removes them.
@@ -86,6 +80,13 @@ struct OnnxToOvNetworkBindings {
             has_dynamic_io_ = true;
             continue;
           }
+        }
+
+        if (!input_parameter_aligned && !matched_names) {
+          LOGS_DEFAULT(WARNING) << log_tag << "The input '" << onnx_name
+                                << "' is not used due to OpenVINO optimization. "
+                                   "This may cause issues if the input is required.";
+          continue;
         }
 
         ORT_ENFORCE(matched_names, log_tag,
