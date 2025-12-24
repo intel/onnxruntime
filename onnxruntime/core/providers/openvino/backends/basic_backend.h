@@ -60,6 +60,7 @@ struct OnnxToOvNetworkBindings {
 
   OnnxToOvNetworkBindings(OVExeNetwork& exec_network, SubGraphContext& subgraph_context, SessionContext& session_context) {
     auto populate = [&](auto& input_output_map, const SubGraphContext::string_index_map_t& onnx_input_map, const auto& ov_parameters) {
+      auto input_parameter_aligned = (onnx_input_map.size() == ov_parameters.size());
       for (const auto& [onnx_name, onnx_param_index] : onnx_input_map) {
         auto it = std::find_if(ov_parameters.begin(), ov_parameters.end(),
                                [&onnx_name](const auto& ov_parameter_info) { return ov_parameter_info.get_names().contains(onnx_name); });
@@ -79,6 +80,13 @@ struct OnnxToOvNetworkBindings {
             has_dynamic_io_ = true;
             continue;
           }
+        }
+
+        if (!input_parameter_aligned && !matched_names) {
+          LOGS_DEFAULT(WARNING) << log_tag << "The input '" << onnx_name
+                                << "' is not used due to OpenVINO optimization. "
+                                   "This may cause issues if the input is required.";
+          continue;
         }
 
         ORT_ENFORCE(matched_names, log_tag,
@@ -110,6 +118,12 @@ struct OnnxToOvNetworkBindings {
 
           info.SetFullyDynamic(has_fully_dynamic);
           info.SetBoundedDynamic(has_bounded_dynamic);
+        } else {
+          // OV needs allocate the output buffer before inference, but the 0 size output graph doesn't need to do a real inference in ONNX
+          auto shape_size = ov::shape_size(shape.get_shape());
+          if (0 == shape_size) {
+            has_dynamic_io_ = true;
+          }
         }
 
         input_output_map.push_back(std::move(info));
