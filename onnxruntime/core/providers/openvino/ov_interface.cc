@@ -110,12 +110,12 @@ OVExeNetwork OVCore::StatefulCompileModel(std::shared_ptr<OVNetwork>& model,
   bool model_status = IsStateful(model);
   LOGS_DEFAULT(INFO) << log_tag << "Model IsStateful() Status:\t" << (model_status ? "True" : "False");
   // Flag to add Gather+ScatterElementsUpdate subgraph to reorder KV cache for LLM speculative decoding
-  bool is_fused_kvcache_reorder = false;
+  bool should_add_kvcache_reorder = false;
   if (!model_status) {
     LOGS_DEFAULT(INFO) << log_tag << "Converting from Stateless OV Model to Stateful OV Model" << std::endl;
     // TO-DO: extend to NPU device when OpenVINO NPU has related optimization
-    is_fused_kvcache_reorder = hw_target.find("GPU") != std::string::npos;
-    PatchStatefulDecoder(model, is_fused_kvcache_reorder);
+    should_add_kvcache_reorder = hw_target.find("GPU") != std::string::npos;
+    PatchStatefulDecoder(model, should_add_kvcache_reorder);
   }
 
   if (onnxruntime::openvino_ep::backend_utils::IsDebugEnabled()) {
@@ -156,7 +156,7 @@ OVExeNetwork OVCore::StatefulCompileModel(std::shared_ptr<OVNetwork>& model,
 
   LOGS_DEFAULT(INFO) << log_tag << "Compiling OV Model using Stateful Transformation flow";
   compiled_model = OVCore::Get()->core.compile_model(model, hw_target, config);
-  OVExeNetwork exe(compiled_model, hw_target, true, is_fused_kvcache_reorder);
+  OVExeNetwork exe(compiled_model, hw_target, true, should_add_kvcache_reorder);
   return exe;
 }
 
@@ -336,7 +336,7 @@ std::shared_ptr<OVInferRequest> OVExeNetwork::CreateInferRequest() {
     auto infReq = compiled_model_obj.create_infer_request();
     std::shared_ptr<OVInferRequest> ovInfReq;
     if (is_stateful_causallm) {
-      ovInfReq = std::make_shared<StatefulOVInferRequest>(std::move(infReq), target_device, is_fused_kvcache_reorder);
+      ovInfReq = std::make_shared<StatefulOVInferRequest>(std::move(infReq), target_device, is_kvcache_reorder_added);
     } else {
       ovInfReq = std::make_shared<OVInferRequest>(std::move(infReq));
     }
@@ -381,8 +381,8 @@ void OVInferRequest::Infer() {
                              "In Error Couldn't start Inference");
 }
 
-StatefulOVInferRequest::StatefulOVInferRequest(ov::InferRequest infer_request, std::string device, bool fused_kvcache_reorder)
-    : OVInferRequest(std::move(infer_request)), target_device(device), is_fused_kvcache_reorder(fused_kvcache_reorder) {
+StatefulOVInferRequest::StatefulOVInferRequest(ov::InferRequest infer_request, std::string device, bool kvcache_reorder_added)
+    : OVInferRequest(std::move(infer_request)), target_device(device), is_kvcache_reorder_added(kvcache_reorder_added) {
   bool gpu_or_npu = ((device.find("NPU") != std::string::npos) || (device.find("GPU") != std::string::npos));
 
   _npu_logits_slice_required = IsNPULogitsSliceRequired();
@@ -473,7 +473,7 @@ void StatefulOVInferRequest::PreProcessInferRequest() {
   // TODO(ankit): Address this issue and implement the fix at the appropriate layer.
   FillTensor("beam_idx", ov::element::i32, {1}, 0);
 
-  if (is_fused_kvcache_reorder){
+  if (is_kvcache_reorder_added){
       ov::Shape dst_idx_shape = ovInfReq.get_tensor("dst_idx").get_shape();
       const auto kv_num_heads = dst_idx_shape[1];
       const auto kv_head_size = dst_idx_shape[3];
@@ -539,7 +539,7 @@ void StatefulOVInferRequest::Infer() {
 }
 
 void StatefulOVInferRequest::PostProcessInferRequest() {
-  if(is_fused_kvcache_reorder){
+  if(is_kvcache_reorder_added){
       kv_src_indices.clear();
       kv_dst_indices.clear();
     }

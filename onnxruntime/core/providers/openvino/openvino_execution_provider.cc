@@ -306,7 +306,7 @@ common::Status OpenVINOExecutionProvider::SetEpDynamicOptions(gsl::span<const ch
           const auto part = input.substr(0, delimiter_pos);
           errno = 0;
           char* parse_end = nullptr;
-          // strtoll/stoll already skips whitespaces
+          // strtol/stol already skips whitespaces
           const auto index = std::strtol(part.data(), &parse_end, 10);
           if (parse_end == part.data()) {
             return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
@@ -316,7 +316,7 @@ common::Status OpenVINOExecutionProvider::SetEpDynamicOptions(gsl::span<const ch
             return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                           "kvcache_reorder " + index_type + " cannot be negative: " + std::string(part));
           }
-          if (errno == ERANGE) {
+          if (index > std::numeric_limits<int32_t>::max() || errno == ERANGE) {
             return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                           "kvcache_reorder " + index_type + " exceed INT32_MAX: " + std::string(part));
           }

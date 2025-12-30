@@ -27,13 +27,13 @@ void FuseCacheReorder(std::shared_ptr<ov::Model> ov_model,
                       std::vector<std::string>& not_kv_inputs,
                       const std::vector<std::string>& key_value_input_names,
                       int gather_dim,
-                      const bool is_fused_kvcache_reorder = false);
+                      const bool should_add_kvcache_reorder = false);
 
 void MakeStateful(std::shared_ptr<ov::Model>& ov_model,
                   const std::vector<std::string>& key_value_input_names,
                   const std::vector<std::string>& key_value_output_names);
 
-void PatchStatefulDecoder(std::shared_ptr<ov::Model> model, const bool is_fused_kvcache_reorder = false);
+void PatchStatefulDecoder(std::shared_ptr<ov::Model> model, const bool should_add_kvcache_reorder = false);
 
 bool HasOpWithType(const std::shared_ptr<const ov::Model>& function, const std::string& type_name);
 
