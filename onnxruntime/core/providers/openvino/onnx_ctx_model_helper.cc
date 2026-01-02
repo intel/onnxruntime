@@ -134,7 +134,7 @@ std::unique_ptr<ModelBlobWrapper> EPCtxHandler::GetModelBlobStream(const std::fi
 
     result.reset();  // Release the stream as we will get the native blob from SharedContext
     auto shared_context = shared_context_manager_->GetOrCreateSharedContext(native_blob_path);
-    return std::make_unique<ModelBlobWrapper>(shared_context->GetNativeBlobAsStream(partition_name), shared_context->GetNativeBlob(partition_name));
+    return std::make_unique<ModelBlobWrapper>(shared_context->GetNativeBlob(partition_name));
   }
 
   LOGS_DEFAULT(VERBOSE) << "[OpenVINO EP] Read blob from EPContext Node";
