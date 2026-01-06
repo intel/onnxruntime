@@ -322,7 +322,7 @@ common::Status OpenVINOExecutionProvider::SetEpDynamicOptions(gsl::span<const ch
           }
           indices.push_back(static_cast<int32_t>(index));
           if (delimiter_pos != std::string_view::npos) {
-            // ignore any trailing chars after the number, can do futher checking if needed
+            // ignore any trailing chars after the number, can do further checking if needed
             input.remove_prefix(part.size() + 1);
           } else {
             break;
@@ -332,18 +332,18 @@ common::Status OpenVINOExecutionProvider::SetEpDynamicOptions(gsl::span<const ch
       };
 
       const auto src_indices = parse_indices(src_string, "src_index");
-      if (src_indices.index() == 0) {
-        return std::get<0>(src_indices);
+      if (std::holds_alternative<Status>(src_indices)) {
+        return std::get<Status>(src_indices);
       }
 
       const auto dst_indices = parse_indices(dst_string, "dst_index");
-      if (dst_indices.index() == 0) {
-        return std::get<0>(dst_indices);
+      if (std::holds_alternative<Status>(dst_indices)) {
+        return std::get<Status>(dst_indices);
       }
 
       // Trigger KVCache Reorder for target Backend with vector arguments
       for (auto& backend : backend_managers_) {
-        backend.ReorderKVCache(std::get<1>(src_indices), std::get<1>(dst_indices));
+        backend.ReorderKVCache(std::get<std::vector<int32_t>>(src_indices), std::get<std::vector<int32_t>>(dst_indices));
       }
     } else {
       // Handle unknown options
