@@ -22,7 +22,7 @@
 					allowfullscreen
 				/>
 				<div class="text-center">
-					<a class="text-xl" href={video.link}>
+					<a class="text-xl underline" href={video.link}>
 						{video.title}
 					</a>
 				</div>
