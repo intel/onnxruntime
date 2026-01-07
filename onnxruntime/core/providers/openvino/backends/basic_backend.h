@@ -151,6 +151,7 @@ class BasicBackend : public IBackend {
     return exe_network_.Get();
   }
   void RewindKVCache(size_t index) override;
+  void ReorderKVCache(const std::vector<int32_t>& src_indices, const std::vector<int32_t>& dst_indices) override;
 
  private:
   bool ValidateSubgraph(std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map);
