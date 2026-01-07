@@ -315,6 +315,12 @@ void BasicBackend::RewindKVCache(size_t index) {
   });
 }
 
+void BasicBackend::ReorderKVCache(const std::vector<int32_t>& src_indices, const std::vector<int32_t>& dst_indices) {
+  infer_req_pool_->forEachIdleRequest([&](OVInferRequestPtr& infer_request) {
+    infer_request->ReorderKVCache(src_indices, dst_indices);
+  });
+}
+
 void BasicBackend::Infer(OrtKernelContext* ctx) const {
   Ort::KernelContext context(ctx);
 

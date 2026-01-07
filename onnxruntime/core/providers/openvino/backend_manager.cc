@@ -781,5 +781,11 @@ void BackendManager::RewindKVCache(size_t index) {
   }
 }
 
+void BackendManager::ReorderKVCache(const std::vector<int32_t>& src_indices, const std::vector<int32_t>& dst_indices) {
+  if (concrete_backend_) {
+    concrete_backend_->ReorderKVCache(src_indices, dst_indices);
+  }
+}
+
 }  // namespace openvino_ep
 }  // namespace onnxruntime
