@@ -93,7 +93,7 @@ Status EPCtxHandler::AddOVEPCtxNodeToGraph(const GraphViewer& graph_viewer,
   return Status::OK();
 }
 
-std::unique_ptr<ModelBlobWrapper> EPCtxHandler::GetModelBlobStream(const std::filesystem::path& so_context_file_path, const GraphViewer& graph_viewer, const SessionContext& session_context) const {
+std::unique_ptr<ModelBlobWrapper> EPCtxHandler::GetModelBlobStream(const std::filesystem::path& so_context_file_path, const GraphViewer& graph_viewer, const std::string& device_type) const {
   auto first_index = *graph_viewer.GetNodesInTopologicalOrder().begin();
   auto node = graph_viewer.GetNode(first_index);
   ORT_ENFORCE(node != nullptr);
@@ -129,7 +129,7 @@ std::unique_ptr<ModelBlobWrapper> EPCtxHandler::GetModelBlobStream(const std::fi
     // exported with must match the version that is currently running.
     native_blob_path = std::move(blob_filepath);
     // Skip SDK version check for NPU devices as they may use different SDK versions.
-    if (session_context.device_type.find("NPU") == std::string::npos) {
+    if (device_type.find("NPU") == std::string::npos) {
       ORT_ENFORCE((attrs.count(EP_SDK_VER) == 1) && (attrs.at(EP_SDK_VER).s() == openvino_sdk_version_),
             "EPCtx blob was exported / is compatible with OpenVINO SDK version " + attrs.at(EP_SDK_VER).s() +
                 ", but OpenVINO SDK version currently in use is " + openvino_sdk_version_);
