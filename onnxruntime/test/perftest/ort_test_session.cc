@@ -1034,11 +1034,35 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     // Switch to custom
     allocator_ = Ort::UnownedAllocator(custom_allocator_);
 
-    // free dimensions are treated as 1 if not overridden
-    transform_fcn = [](int64_t input) { return (input == -1) ? -input : input; };
-    new_value = [](OrtAllocator* allocator, const std::vector<int64_t>& output_shape, Ort::ConstTensorTypeAndShapeInfo& tensor_info) {
-      return Ort::Value::CreateTensor(allocator, output_shape.data(), output_shape.size(), tensor_info.GetElementType());
-    };
+    //Do not pre-allocate if dynamic dimensions are present
+    bool has_dynamic_output = false;
+
+    for (size_t i = 0; i < session_.GetOutputCount(); ++i) {
+    auto type_info = session_.GetOutputTypeInfo(i);
+    auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+    auto shape = tensor_info.GetShape();
+    for (auto dim : shape) {
+      if (dim == -1) {
+        has_dynamic_output = true;
+        break;
+      }
+    }
+    if (has_dynamic_output) break;
+    }
+
+    if (has_dynamic_output) {
+      transform_fcn = [](int64_t input) { return input; };
+      new_value = [](OrtAllocator*, const std::vector<int64_t>&, Ort::ConstTensorTypeAndShapeInfo&) {
+      return Ort::Value(nullptr);
+      };
+    } else {
+      transform_fcn = [](int64_t input) { return input; };
+      new_value = [](OrtAllocator* allocator, const std::vector<int64_t>& output_shape,
+                   Ort::ConstTensorTypeAndShapeInfo& tensor_info) {
+      return Ort::Value::CreateTensor(allocator, output_shape.data(), output_shape.size(),
+                                     tensor_info.GetElementType());
+      };
+    }
   }
 
   for (size_t i = 0; i < output_names_raw_ptr.size(); i++) {
