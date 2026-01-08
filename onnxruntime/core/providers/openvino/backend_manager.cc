@@ -321,7 +321,7 @@ static bool IsQDQGraph(const onnxruntime::GraphViewer& graph_viewer) {
   }
   return false;
 }
-
+#if ((OPENVINO_VERSION_MAJOR < 2025) || ((OPENVINO_VERSION_MAJOR == 2025) && (OPENVINO_VERSION_MINOR < 4)))
 static bool Is16BitTensor(const onnxruntime::NodeArg* node_arg) {
   const auto* type_proto = node_arg ? node_arg->TypeAsProto() : nullptr;
   return type_proto && type_proto->has_tensor_type() &&
@@ -359,7 +359,7 @@ static bool IsQDQGraphWithUint16OrInt16(const onnxruntime::GraphViewer& graph_vi
   }
   return false;
 }
-
+#endif
 static void DumpOpenVINOEPModel([[maybe_unused]] const std::filesystem::path& onnx_model_path_name,
                                 [[maybe_unused]] ONNX_NAMESPACE::ModelProto* model_proto,
                                 [[maybe_unused]] const onnxruntime::Node& fused_node) {
@@ -494,7 +494,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
 
   // Check if the graph is QDQ and has int16 or uint16 quantization
   // If so, we will apply the QDQ scales fix transformation (for GPU device only)
-  bool is_qdq_graph_uint16_or_int16 = IsQDQGraphWithUint16OrInt16(subgraph);
+  //bool is_qdq_graph_uint16_or_int16 = IsQDQGraphWithUint16OrInt16(subgraph);
 
   const auto& onnx_model_path_name = subgraph.ModelPath();
   // QDQ stripping enabled only for the NPU and experimentally on the GPU
@@ -508,7 +508,9 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     DumpOpenVINOEPModel(onnx_model_path_name, model_proto.get(), fused_node);
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     return model_proto;
-  } else if ((session_context_.device_type.find("GPU") != std::string::npos) &&
+  }
+  #if ((OPENVINO_VERSION_MAJOR < 2025) || ((OPENVINO_VERSION_MAJOR == 2025) && (OPENVINO_VERSION_MINOR < 4)))
+  else if ((session_context_.device_type.find("GPU") != std::string::npos) &&
              is_qdq_graph_uint16_or_int16) {
     // Create a copy of the model
     std::unique_ptr<onnxruntime::Model> model;
@@ -519,7 +521,9 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     DumpOpenVINOEPModel(onnx_model_path_name, model_proto.get(), fused_node);
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     return model_proto;
-  } else {
+  }
+#endif
+  else {
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] OVEP QDQ optimization pass is disabled";
 
     // scan ext initializers:
