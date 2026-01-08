@@ -13,6 +13,7 @@
 	import clearbladeLogo from '../../images/logos/clearblade-logo.png';
 	import deezerLogo from '../../images/logos/deezer-logo.png';
 	import goodnotesLogo from '../../images/logos/goodnotes-logo.png';
+	import graiphicLogo from '../../images/logos/graiphic-logo.png'
 	import huggingfaceLogo from '../../images/logos/huggingface-logo.png';
 	import hypefactorsLogo from '../../images/logos/hypefactors-logo.png';
 	import infarmLogo from '../../images/logos/infarm-logo.png';
@@ -134,6 +135,14 @@
 			author: 'Pedro Gómez, Senior Software Engineer, Goodnotes',
 			imgsrc: goodnotesLogo,
 			imgalt: 'Goodnotes logo'
+		},
+		{
+			title: 'Graiphic',
+			quote:
+				"With SOTA, we have developed the first complete ecosystem fully based on ONNX and ONNX Runtime. More than just supporting AI workloads, SOTA orchestrates graph-based computation at its core, enabling modular, scalable, and transparent execution across AI and non-AI domains alike. We believe ONNX is not just a format, it is the foundation for the future of graph-native computation.",
+			author: 'Youssef Menjour, CTO and Co-founder, Graiphic',
+			imgsrc: graiphicLogo,
+			imgalt: 'Graiphic logo'
 		},
 		{
 			title: 'Hugging Face',
@@ -284,8 +293,8 @@
 		{
 			title: 'Unreal Engine',
 			quote:
-				"We selected ONNX Runtime as the backend of Unreal Engine's Neural Network Interface (NNI) plugin inference system because of its extensibility to support the platforms that Unreal Engine runs on, while enabling ML practitioners to develop ML models in the frameworks of their choice. NNI evaluates neural networks in real time in Unreal Engine and acts as the foundation for game developers to use and deploy ML models to solve many development challenges, including animation, ML-based AI, camera tracking, and more.",
-			author: 'Francisco Vicente Carrasco, Research Engineering Lead, Epic Games',
+				"MetaHuman Animator is a state-of-the-art solution to the performance-driven facial animation of digital characters. It leverages the power of the ONNX Runtime to execute models that are trained to translate an actor's voice into a high-fidelity mouth and tongue animation on MetaHuman characters, making it easy for creators to produce high-fidelity, rich storytelling experiences.",
+			author: 'MetaHuman Animator team, Epic Games',
 			imgsrc: unrealengineLogo,
 			imgalt: 'Unreal Engine logo'
 		},

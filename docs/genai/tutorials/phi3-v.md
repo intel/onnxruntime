@@ -65,12 +65,12 @@ You can download the models here:
 
 3. Run the model
 
-   Run the model with [phi3v.py](https://github.com/microsoft/onnxruntime-genai/blob/main/examples/python/phi3v.py).
+   Run the model with [model-vision.py](https://github.com/microsoft/onnxruntime-genai/blob/main/examples/python/model-vision.py).
 
    ```bash
-   curl https://raw.githubusercontent.com/microsoft/onnxruntime-genai/main/examples/python/phi3v.py -o phi3v.py
+   curl https://raw.githubusercontent.com/microsoft/onnxruntime-genai/main/examples/python/model-vision.py -o model-vision.py
    pip install pyreadline3
-   python phi3v.py -m gpu/gpu-int4-rtn-block-32 -e dml
+   python model-vision.py -m gpu/gpu-int4-rtn-block-32 -e dml
    ```
 
    Enter the path to an image file and a prompt. The model uses the image and prompt to give you an answer.
@@ -102,13 +102,7 @@ You can download the models here:
 
 3. Install the generate() API
 
-   * CUDA 11
-
-   ```bash
-   pip install onnxruntime-genai-cuda --index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-11/pypi/simple/
-   ```
-
-   * CUDA 12
+   Note: this package uses CUDA 12. To use CUDA 11, you need to [build and install from source](../howto/build-from-source.md).
 
    ```bash
    pip install onnxruntime-genai-cuda
@@ -116,12 +110,12 @@ You can download the models here:
 
 4. Run the model
 
-   Run the model with [phi3v.py](https://github.com/microsoft/onnxruntime-genai/blob/main/examples/python/phi3v.py).
+   Run the model with [model-vision.py](https://github.com/microsoft/onnxruntime-genai/blob/main/examples/python/model-vision.py).
 
    ```bash
-   curl https://raw.githubusercontent.com/microsoft/onnxruntime-genai/main/examples/python/phi3v.py -o phi3v.py
+   curl https://raw.githubusercontent.com/microsoft/onnxruntime-genai/main/examples/python/model-vision.py -o model-vision.py
    pip install pyreadline3
-   python phi3v.py -m gpu/gpu-int4-rtn-block-32 -e cuda
+   python model-vision.py -m gpu/gpu-int4-rtn-block-32 -e cuda
    ```
 
    Enter the path to an image file and a prompt, and the model uses the image and prompt to give you an answer.
@@ -153,12 +147,12 @@ You can download the models here:
 
 3. Run the model
 
-   Run the model with [phi3v.py](https://github.com/microsoft/onnxruntime-genai/blob/main/examples/python/phi3v.py).
+   Run the model with [model-vision.py](https://github.com/microsoft/onnxruntime-genai/blob/main/examples/python/model-vision.py).
 
    ```bash
-   curl https://raw.githubusercontent.com/microsoft/onnxruntime-genai/main/examples/python/phi3v.py -o phi3v.py
+   curl https://raw.githubusercontent.com/microsoft/onnxruntime-genai/main/examples/python/model-vision.py -o model-vision.py
    pip install pyreadline3
-   python phi3v.py -m cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4 -e cpu
+   python model-vision.py -m cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4 -e cpu
    ```
 
    Enter the path to an image file and a prompt, and the model uses the image and prompt to give you an answer.

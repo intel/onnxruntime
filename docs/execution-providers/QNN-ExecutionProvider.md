@@ -23,7 +23,7 @@ OnnxRuntime QNN Execution Provider can be used on Android and Windows devices wi
 ## Install Pre-requisites (Build from Source Only)
 
 If you build QNN Execution Provider from source, you should first
-download the Qualcomm AI Engine Direct SDK (QNN SDK) from [https://qpm.qualcomm.com/main/tools/details/qualcomm_ai_engine_direct](https://qpm.qualcomm.com/main/tools/details/qualcomm_ai_engine_direct)
+download the Qualcomm AI Engine Direct SDK (QNN SDK) from [https://qpm.qualcomm.com/#/main/tools/details/Qualcomm_AI_Runtime_SDK](https://qpm.qualcomm.com/#/main/tools/details/Qualcomm_AI_Runtime_SDK)
 
 ### QNN Version Requirements
 
@@ -51,17 +51,30 @@ OnnxRuntime QNN Execution Provider is a supported runtime in [Qualcomm AI Hub](h
 
 ## Configuration Options
 The QNN Execution Provider supports a number of configuration options. These provider options are specified as key-value string pairs.
+### EP Provider Options
+
+|`"backend_type"`|Description|
+|---|-----|
+|'cpu'|Enable CPU backend. Useful for integration testing. The CPU backend is a reference implementation of QNN operators.|
+|'gpu'|Enable GPU backend.|
+|'htp'|Enable HTP backend. Offloads compute to NPU. Default.|
+|'saver'|Enable Saver backend.|
 
 |`"backend_path"`|Description|
 |---|-----|
-|'libQnnCpu.so' or 'QnnCpu.dll'|Enable CPU backend. Useful for integration testing. CPU backend is a reference implementation of QNN operators|
-|'libQnnHtp.so' or 'QnnHtp.dll'|Enable HTP backend. Offloads compute to NPU.|
+|'libQnnCpu.so' or 'QnnCpu.dll'|Enable CPU backend. See `backend_type` 'cpu'.|
+|'libQnnHtp.so' or 'QnnHtp.dll'|Enable HTP backend. See `backend_type` 'htp'.|
+|'libQnnGpu.so' or 'QnnGpu.dll'|Enable GPU backend. See `backend_type` 'gpu'.|
+
+**Note:** `backend_path` is an alternative to `backend_type`. At most one of the two should be specified.
+`backend_path` requires a platform-specific path (e.g., `libQnnCpu.so` vs. `QnnCpu.dll`) but also allows one to specify an arbitrary path.
 
 |`"profiling_level"`|Description|
 |---|---|
-|'off'||
+|'off'|default.|
 |'basic'||
 |'detailed'||
+|'optrace'|Requires QAIRT 2.39 or later|
 
 |`"profiling_file_path"`|Description|
 |---|---|
@@ -82,7 +95,7 @@ Alternatively to setting profiling_level at compile time, profiling can be enabl
 |---|---|
 |'burst'||
 |'balanced'||
-|'default'||
+|'default'|default.|
 |'high_performance'||
 |'high_power_saver'||
 |'low_balanced'||
@@ -137,6 +150,11 @@ Alternatively to setting profiling_level at compile time, profiling can be enabl
 |'0'|Default. Disabled.|
 |'1'|Enable the QNN HTP shared memory allocator. Requires libcdsprpc.so/dll to be available. [Code example](https://github.com/microsoft/onnxruntime/blob/544bdd60730270f49f6a5baafdff54065f626776/onnxruntime/test/shared_lib/test_inference.cc#L2262-L2354)|
 
+### Run Options
+
+|`"qnn.lora_config"`|Description|
+|---|---|
+|Config path|LoRAv2 config file path. The format of the config will be mentioned in the **LoraV2 support**.|
 
 ## Supported ONNX operators
 
@@ -375,8 +393,24 @@ Available session configurations include:
 
 The above snippet only specifies the `backend_path` provider option. Refer to the [Configuration options section](./QNN-ExecutionProvider.md#configuration-options) for a list of all available QNN EP provider options.
 
+## Running a model with QNN EP's GPU backend
+
+The QNN GPU backend can run models with 32-bit/16-bit floating-point activations and weights as such without prior quantization. A 16-bit floating-point model generally can run inference faster on the GPU compared to its 32-bit version. To help reduce the size of large models, quantizing weights to `uint8`, while keeping activations in float is also supported.
+
+Other than the quantized model requirement mentioned in the above HTP backend section, all other requirements are valid for the GPU backend also. So is the model inference sample code except for the portion where you specify the backend.
+
+```python
+# Create an ONNX Runtime session.
+# TODO: Provide the path to your ONNX model
+session = onnxruntime.InferenceSession("model.onnx",
+                                       sess_options=options,
+                                       providers=["QNNExecutionProvider"],
+                                       provider_options=[{"backend_path": "QnnGpu.dll"}]) # Provide path to Gpu dll in QNN SDK
+
+```
+
 ## QNN context binary cache feature
-There's a QNN context which contains QNN graphs after converting, compiling, filnalizing the model. QNN can serialize the context into binary file, so that user can use it for futher inference direclty (without the QDQ model) to improve the model loading cost.
+There's a QNN context which contains QNN graphs after converting, compiling, finalizing the model. QNN can serialize the context into binary file, so that user can use it for futher inference directly (without the QDQ model) to improve the model loading cost.
 The QNN Execution Provider supports a number of session options to configure this.
 
 ### Dump QNN context binary
@@ -427,7 +461,7 @@ options.add_session_config_entry("ep.context_file_path", "./model_a_ctx.onnx")
 ```
 
 ### Enable the embed mode
-The QNN context binary content is not embedded in the generated Onnx model by default. A bin file will be generated separately. The file name looks like [input_model_file_name]_QNNExecutionProvider_QNN_[hash_id]_x_x.bin. The name is provided by Ort and tracked in the generated Onnx model. It will cause problems if any changes are made to the bin file. This bin file needs to sit together with the generated Onnx file. User can enable it by setting "ep.context_embed_mode" to "1". In that case the content of the context binary is embedded inside the Onnx model.
+The QNN context binary content is not embedded in the generated Onnx model by default. A bin file will be generated separately. The file name looks like [input_model_file_name]_QNN_[hash_id].bin. The name is provided by Ort and tracked in the generated Onnx model. It will cause problems if any changes are made to the bin file. This bin file needs to sit together with the generated Onnx file. User can enable it by setting "ep.context_embed_mode" to "1". In that case the content of the context binary is embedded inside the Onnx model.
 
 ```
 // C++
@@ -442,50 +476,145 @@ g_ort->AddSessionConfigEntry(session_options, kOrtSessionOptionEpContextEmbedMod
 options.add_session_config_entry("ep.context_embed_mode", "1")
 ```
 
+## QNN EP Profiling
+Profiling data is available with the HTP backend. Enabling QNN profiling will generate a user-readable .csv file that will contain information from initialization, execution, and de-initialization.
+
+If onnxruntime is compiled with a more recent QAIRT SDK (2.39 or later), then a _qnn.log file will also be generated alongside the .csv file. This .log file is parsable by [qnn-profile-viewer](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-10/general_tools.html#qnn-profile-viewer), which is provided in the SDK.
+
+### General Usage
+To utilize QNN profiling, simply set the EP option profiling_level to basic, detailed, or optrace. Additionally, the EP option profiling_file_path must also be set to the output .csv filepath you would like to write data to:
+```python
+# Python on Windows on Snapdragon device
+import onnxruntime as ort
+import numpy as np
+
+provider_options = [
+    "backend_path": "path/to/QnnHtp.dll", # Use libQnnHtp.so if on Linux
+    "htp_performance_mode": "burst",
+    "device_id": "0",
+    "htp_graph_finalization_optimization_mode":"3",
+    "soc_model": "60",
+    "htp_arch": "73",
+    "vtcm_mv": "8",
+    "profiling_level": "basic",
+    "profiling_file_path": "output.csv"
+]
+
+sess_options = ort.SessionOptions()
+
+session = ort.InferenceSession(
+    "model.onnx",
+    sess_options=sess_options,
+    providers=["QNNExecutionProvider"],
+    provider_options=provider_options
+)
+
+input0 = np.ones((1,2,3,4), dtype=np.float32)
+result = session.run(None, {"input": input0})
+```
+
+With the example above, a file "output.csv" will be generated containing the profiling data. Additionally, if using QAIRT 2.39 SDK or later, another file "output_qnn.log" will be generated.
+
+"output_qnn.log" can then be parsed with the appropriate qnn-profile-viewer binary:
+```console
+> qnn-profile-viewer.exe --input_log .\output_qnn.log --output output_2.csv
+```
+
+The above will output basic information, such as the profiling data for the fastest and slowest execution as well as the average case. A .csv file can also be generated this way, too, though the information will likely not differ from the "output.csv".
+
+Additionally, if the profiling_level is set to "detailed" or "optrace", additional data will be shown per-network-layer.
+
+### Optrace-Level Profiling
+[Optrace-level profiling](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-10/htp_backend.html#qnn-htp-profiling) generates a profiling .log file that contains [Qualcomm Hexagon Tensor Processor Analaysis Summary (QHAS)](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-10/htp_backend.html#qnn-htp-analysis-summary-qhas-) data. This data can be used to generate chrometraces and provide a web browser-friendly UI to visualize data.
+
+**This feature is only available with the QAIRT 2.39 SDK and later.**
+
+### Optrace Setup
+To utilize this feature, a context binary must be generated prior to execution:
+```python
+# Python on Windows on Snapdragon device
+import onnxruntime as ort
+import numpy as np
+
+provider_options = [
+    "backend_path": "path/to/QnnHtp.dll", # Use libQnnHtp.so if on Linux
+    "htp_performance_mode": "burst",
+    "device_id": "0",
+    "htp_graph_finalization_optimization_mode":"3",
+    "soc_model": "60",
+    "htp_arch": "73",
+    "vtcm_mv": "8",
+    "profiling_level": "optrace",   # Set profiling_level to optrace
+    "profiling_file_path": "optrace.csv"
+]
+
+sess_options = ort.SessionOptions()
+
+# Enable context bin generation
+sess_options.add_session_config_entry("ep.context_embed_mode", "0")
+sess_options.add_session_config_entry("ep.context_enable", "1")
+
+session = ort.InferenceSession(
+    "model.onnx",
+    sess_options=sess_options,
+    providers=["QNNExecutionProvider"],
+    provider_options=provider_options
+)
+```
+
+Upon successful session creation, three files will be generated:
+- model_ctx.onnx
+- model_qnn.bin
+- QNNExecutionProvider_QNN_\<number\>_schematic.bin
+
+model_ctx.onnx is an onnx model with a node that points to the model_qnn.bin context binary, which will be used by the HTP backend for execution. The _schematic.bin file will be used by qnn-profile-viewer to generate QHAS data.
+
+### Generating QHAS Data
+Previously for general profiling data, a session was created and executed with "model.onnx". However, now there is a new _ctx.onnx model that utilizes a newly generated context binary. As such, a new inference session must be created with the new _ctx.onnx model:
+```python
+# Continuing from Optrace Setup:
+
+sess_options.add_session_config_entry("ep.context_enable", "0")
+
+optrace_session = ort.InferenceSession(
+    "model_ctx.onnx",
+    sess_options=sess_options,
+    providers=["QNNExecutionProvider"],
+    provider_options=provider_options
+)
+
+input0 = np.ones((1,2,3,4), dtype=np.float32)
+result = optrace_session.run(None, {"input": input0})
+```
+
+As before under "General Usage", a .csv file (optrace.csv) and a _qnn.log file (optrace_qnn.log) are generated.
+
+qnn-profile-viewer can be used with different parameters and files to parse all the data written to optrace_qnn.log:
+```console
+> qnn-profile-viewer.exe --config .\config.json --reader .\QnnHtpOptraceProfilingReader.dll --input_log .\optrace_qnn.log  --schematic .\QNNExecutionProvider_QNN_12345_schematic.bin --output optrace.json
+```
+
+Please note:
+- Three new files are used:
+  - config.json: Please refer to the "Post Process (Chrometrace Generation)" section [on this page](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-10/htp_backend.html#qnn-htp-optrace-profiling).
+  - QnnHtpOptraceProfilingReader.dll: Provided as part of the QAIRT SDK. The corresponding file for Linux is libQnnHtpOptraceProfilingReader.so.
+  - QNNExecutionProvider_QNN_12345_schematic.bin: The name will vary. This file must be the same one generated alongside the context binary under "Optrace Setup".
+- The output file is now a .json file containing chrometrace data. This .json file can be opened with either [Perfetto Trace Vizualizer](https://ui.perfetto.dev/) or with chrome://tracing.
+
+After running qnn-profile-viewer, you should see a handful of .json files generated with the same prefix as the --output filename parameter. You should also see an .html file generated as well. This .html file can be opened by Chrome to view the chrometrace in a more user-friendly GUI.
+
+### Additional References
+For more information how to interpret QHAS data, please refer to [this page](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-10/htp_backend.html#qnn-htp-analysis-summary-qhas-).
+
+For more information on the data collected with optrace profiling, please refer to [this page](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-10/htp_backend.html#qnn-htp-optrace-profiling).
+
 ## QNN EP weight sharing
+Refers to the [EPContext design doc](https://onnxruntime.ai/docs/execution-providers/EP-Context-Design.html#epcontext-with-weight-sharing)
 
-### Weight sharing in Onnx domain
-Weight sharing in Onnx means multiple Onnx models with external weights point to the same external weight file. The Onnx models share same tensor names so that they reference to the same tensor data.
-<p align="center"><img width="50%" src="../../images/Onnx_weight_sharing.png" alt="Weight sharing across Onnx models"/></p>
+Note: QNN EP requires **Linux x86_64** or **Windows x86_64** platform.
 
-### Weight sharing in QNN domain
-QNN weight sharing is enabled with QNN pre-generated QNN context binary. It requires users to generate context binary offline on Linux x86_64 or Windows x86_64 machine (Windows support since QNN 2.26). The QNN context binary contains multiple graphs which share the same tensors.
-<p align="center"><img width="30%" src="../../images/Qnn_weight_sharing.png" alt="Weight sharing in QNN context binary"/></p>
+Additionally, if user creates the QNN context binary (`qnn_ctx.bin`) with weight sharing using the QNN toolchain (`qnn-context-binary-generator`), they can use a script to generate the wrapper Onnx model from the context:  [gen_qnn_ctx_onnx_model.py](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/qnn/gen_qnn_ctx_onnx_model.py). The script creates multiple `model_x_ctx.onnx` files, each containing an `EPContext` node that references the shared `qnn_ctx.bin` file. Each `EPContext` node specifies a unique node name, referring to different Qnn graph from the QNN context.
 
-### Weight sharing in QNN domain
-The way OnnxRuntime to convert Onnx model with weight sharing to QNN context binary with weight sharing.
-1. Create QNN context with weight sharing configuration enabled.
-2. Convert and compile model1.onnx into QNN context (get Qnn graph1).
-3. Convert and compile model2.onnx into QNN context (get Qnn graph2).
-4. Repeat step 2 if more models.
-5. Generated the QNN context binary file, generated wrapped Onnx model with EPContext nodes.
-OnnxRuntime QNN EP provides [OnnxRuntime_qnn_ctx_gen](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/qnn_ctx_gen) tool to complete these steps.
-Example command line:
-```
-./ep_weight_sharing_ctx_gen -e qnn -i "soc_model|60 htp_graph_finalization_optimization_mode|3" ./model1.onnx,./model2.onnx
-```
-It creates 2 Onnx model (model1_ctx.onnx, model2_ctx.onnx) and a QNN context binary file (model2_xxx.bin).
-<p align="center"><img width="90%" src="../../images/Ort_Qnn_Ep_weight_sharing.png" alt="Weight sharing from Onnx to QNN"/></p>
-If user creates the QNN context binary .bin file weight sharing from QNN toolchain (qnn-context-binary-generator). The context binary .bin file looks the same. User needs to create model1.onnx and model2.onnx with EPContext node which points to this .bin file. Each EPContext node should refer (node name and partition_name) to different Qnn graph names from the QNN context. Here’s an example script for reference [gen_qnn_ctx_onnx_model.py](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/qnn/gen_qnn_ctx_onnx_model.py) which wraps one single QNN graph into EPContext node. 
-
-### Inference with QNN resource sharing workflow
-OnnxRuntime inference session need to have resource sharing enabled (set session option ep.share_ep_contexts to 1) to use the dumped Qnn context model with weight sharing enabled.
-- Create OnnxRuntime inference session with ep.share_ep_contexts=1, loads the model1_ctx.onnx model.
-  - The session loads the model1_ctx.onnx model.
-  - The shared place is empty.
-  - EPContext node1 in model1_ctx.onnx specifies that it uses Qnn_graph1
-  - QNN EP loads the qnn_ctx.bin and deserialize the binary to get Qnn graphs (Qnn_graph1, Qnn_graph2).
-  - Uses Qnn_graph1 for this OnnxRuntime session.
-  - Put the Qnn_graph2 into the shared place.
-- Create OnnxRuntime inference session with ep.share_ep_contexts=1, loads the model2_ctx.onnx model.
-  - The session loads the model2_ctx.onnx model.
-  - The EPContext node2 in model2_ctx.onnx specifies that it uses Qnn_graph2.
-  - The shared place has Qnn_graph2.
-  - QNN EP skips loading qnn_ctx.bin since it gets what it wants from the shared place.
-  - Uses Qnn_graph2 from the shared place for this session.
-- To avoid issues while existing execution, user needs to destroy the 2nd session first, then the 1st session.
-
-[Code example](https://github.com/microsoft/onnxruntime/blob/291a5352b27ded5714e5748b381f2efb88f28fb9/onnxruntime/test/providers/qnn/qnn_ep_context_test.cc#L979-L992).
 
 ## Usage
 ### C++
@@ -575,3 +704,12 @@ After the override, the model works like this:
 - Op4’s output is just u16 (not converted).
 - Op5’s output is converted from u16 to u8. Op6 consumes the u8 type.
 
+## LoRAv2 support
+Currently, only pre-compiled models with EPContext nodes are supported. The  example script for reference [gen_qnn_ctx_onnx_model.py](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/qnn/gen_qnn_ctx_onnx_model.py). After applying the model LoRAv2 using the [QNN SDK](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-50/tutorials.html#lora-(low-rank-adaptation)), a main qnn context binary and several adapter binary sections will be generated. We use the LoRAv2 config and place it into RunOptions for inference.
+
+* The format of the LoRAv2 config:
+  * graph name: QNN graph in QNN pre-built context binary.
+  * adapter binary section path: binary section generated by qnn-context-binary-generator
+```
+<graph name>;<adapter binary section path>
+```

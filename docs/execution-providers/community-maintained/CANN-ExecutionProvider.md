@@ -32,9 +32,9 @@ Please reference table below for official CANN packages dependencies for the ONN
 
 |ONNX Runtime|CANN|
 |---|---|
-|v1.18.0|8.0.0|
-|v1.19.0|8.0.0|
-|v1.20.0|8.0.0|
+|v1.20.0|8.2.0|
+|v1.21.0|8.2.0|
+|v1.22.1|8.2.0|
 
 ## Build
 
@@ -70,6 +70,12 @@ Default value: kNextPowerOfTwo
 Whether to use the graph inference engine to speed up performance. The recommended setting is true. If false, it will fall back to the single-operator inference engine.
 
 Default value: true
+
+### enable_cann_subgraph
+
+The CANN backend supports automatic splitting of ONNX models. If set to true, it will support more ONNX models, but it may also introduce some performance overhead (as some nodes may fall back to the CPU).
+
+Default value: false
 
 ### dump_graphs
 
@@ -389,4 +395,4 @@ Following ops are supported by the CANN Execution Provider in single-operator In
 Additional operator support and performance tuning will be added soon.
 
 * [Ascend](https://www.hiascend.com/en/)
-* [CANN](https://www.hiascend.com/en/software/cann)
+* [CANN](https://www.hiascend.com/cann)

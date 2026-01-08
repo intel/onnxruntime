@@ -9,6 +9,9 @@ redirect_from: /docs/reference/execution-providers/DirectML-ExecutionProvider
 # DirectML Execution Provider
 {: .no_toc }
 
+{: .note }
+**Note: DirectML is in sustained engineering.** DirectML continues to be supported, but new feature development has moved to [WinML](../get-started/with-windows.md) for Windows-based ONNX Runtime deployments. WinML provides the same ONNX Runtime APIs while dynamically selecting the best execution provider based on your hardware. See the [WinML install section](../install/#cccwinml-installs) for installation instructions.
+
 The DirectML Execution Provider is a component of ONNX Runtime that uses [DirectML](https://docs.microsoft.com/en-us/windows/ai/directml/dml-intro) to accelerate inference of ONNX models. The DirectML execution provider is capable of greatly improving evaluation time of models using commodity GPU hardware, without sacrificing broad hardware support or requiring vendor-specific extensions to be installed.
 
 
@@ -44,7 +47,7 @@ DirectML was introduced in Windows 10, version 1903, and in the corresponding ve
 Requirements for building the DirectML execution provider:
 
 1. Visual Studio 2017 toolchain
-2. [The Windows 10 SDK (10.0.18362.0) for Windows 10, version 1903](https://developer.microsoft.com/en-us/windows/downloads/windows-10-sdk) (or newer)
+2. [The Windows 10 SDK (10.0.17134.0) for Windows 10, version 1803](https://developer.microsoft.com/en-us/windows/downloads/sdk-archive/index-legacy) (or newer)
 
 To build onnxruntime with the DML EP included, supply the `--use_dml` flag to `build.bat`. 
 For example:
