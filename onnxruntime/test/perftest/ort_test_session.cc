@@ -1018,8 +1018,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 
   auto transform_fcn = std::function<int64_t(int64_t)>();
   auto new_value = std::function<Ort::Value(OrtAllocator*, const std::vector<int64_t>&, Ort::ConstTensorTypeAndShapeInfo&)>();
+  transform_fcn = [](int64_t input) { return input; };
   if (device_memory_name_.empty()) {
-    transform_fcn = [](int64_t input) { return input; };
     new_value = [](OrtAllocator*, const std::vector<int64_t>&, Ort::ConstTensorTypeAndShapeInfo&) {
       return Ort::Value(nullptr);
     };
@@ -1041,22 +1041,17 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     auto type_info = session_.GetOutputTypeInfo(i);
     auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
     auto shape = tensor_info.GetShape();
-    for (auto dim : shape) {
-      if (dim == -1) {
-        has_dynamic_output = true;
-        break;
-      }
+    if (std::any_of(shape.begin(), shape.end(), [](int64_t d) { return d == -1; })) {
+      has_dynamic_output = true;
+      break;
     }
-    if (has_dynamic_output) break;
     }
 
     if (has_dynamic_output) {
-      transform_fcn = [](int64_t input) { return input; };
       new_value = [](OrtAllocator*, const std::vector<int64_t>&, Ort::ConstTensorTypeAndShapeInfo&) {
       return Ort::Value(nullptr);
       };
     } else {
-      transform_fcn = [](int64_t input) { return input; };
       new_value = [](OrtAllocator* allocator, const std::vector<int64_t>& output_shape,
                    Ort::ConstTensorTypeAndShapeInfo& tensor_info) {
       return Ort::Value::CreateTensor(allocator, output_shape.data(), output_shape.size(),
