@@ -100,11 +100,10 @@ BackendManager::BackendManager(SessionContext& session_context,
       std::string exception_str =
           "[OpenVINO-EP] Bounded dynamic model execution using provider option reshape_input is not supported for OVEP EPContext model";
       ORT_THROW(exception_str);
-    }
-    if (subgraph_context_.is_ep_ctx_ovir_encapsulated) {
-      model_stream = ep_ctx_handle_.GetModelBlobStream(session_context_.onnx_model_path_name.replace_extension("xml").string(), subgraph);
+    }    if (subgraph_context_.is_ep_ctx_ovir_encapsulated) {
+      model_stream = ep_ctx_handle_.GetModelBlobStream(session_context_.onnx_model_path_name.replace_extension("xml").string(), subgraph, session_context_.device_type);
     } else {
-      model_stream = ep_ctx_handle_.GetModelBlobStream(session_context_.so_context_file_path, subgraph);
+      model_stream = ep_ctx_handle_.GetModelBlobStream(session_context_.so_context_file_path, subgraph, session_context_.device_type);
     }
 
   } else {
