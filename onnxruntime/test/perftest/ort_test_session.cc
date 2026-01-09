@@ -124,15 +124,20 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       }
     } else if (!performance_test_config.filter_ep_device_kv_pairs.empty()) {
       // Find and select the OrtEpDevice associated with the EP in "--filter_ep_devices".
-      for (size_t index = 0; index < ep_devices.size(); ++index) {
-        auto device = ep_devices[index];
-        if (ep_set.find(std::string(device.EpName())) == ep_set.end())
-          continue;
+      for (const auto& kv : performance_test_config.filter_ep_device_kv_pairs) {
+        for (size_t index = 0; index < ep_devices.size(); ++index) {
+          auto device = ep_devices[index];
+          if (ep_set.find(std::string(device.EpName())) == ep_set.end())
+            continue;
 
-        // Check both EP metadata and device metadata for a match
-        auto ep_metadata_kv_pairs = device.EpMetadata().GetKeyValuePairs();
-        auto device_metadata_kv_pairs = device.Device().Metadata().GetKeyValuePairs();
-        for (const auto& kv : performance_test_config.filter_ep_device_kv_pairs) {
+          // Skip if deviced was already added
+          if (added_ep_devices.find(device.EpName()) != added_ep_devices.end() &&
+              std::find(added_ep_devices[device.EpName()].begin(), added_ep_devices[device.EpName()].end(), device) != added_ep_devices[device.EpName()].end())
+              continue;
+
+          // Check both EP metadata and device metadata for a match
+          auto ep_metadata_kv_pairs = device.EpMetadata().GetKeyValuePairs();
+          auto device_metadata_kv_pairs = device.Device().Metadata().GetKeyValuePairs();
           auto ep_metadata_itr = ep_metadata_kv_pairs.find(kv.first);
           auto device_metadata_itr = device_metadata_kv_pairs.find(kv.first);
 
