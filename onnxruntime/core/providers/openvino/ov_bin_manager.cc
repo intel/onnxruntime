@@ -172,15 +172,12 @@ ov::Tensor BinManager::GetNativeBlob(const std::string& blob_name) {
   }
 
   if (mapped_bin_) {
-    // Create a tensor from memory-mapped external file
-
-    // Suppress warning for tensor.data() returning const in 2026.0. Should be removable after 2026.0 is min supported ov version.
-    OPENVINO_SUPPRESS_DEPRECATED_START
-    blob_container.tensor = ov::Tensor(
-        ov::element::u8,
-        ov::Shape{blob_container.serialized_info.size},
-        static_cast<const ov::Tensor>(mapped_bin_).data<const uint8_t>() + blob_container.serialized_info.file_offset);
-    OPENVINO_SUPPRESS_DEPRECATED_END
+    // Create tensor view from mapped_bin_ (which holds the underlying buffer)
+    auto blob_offset = blob_container.serialized_info.file_offset;
+    auto blob_size = blob_container.serialized_info.size;
+    ov::Coordinate begin{blob_offset};
+    ov::Coordinate end{blob_offset + blob_size};
+    blob_container.tensor = ov::Tensor(mapped_bin_, begin, end);
   } else {
     // Create a tensor from embedded data vector
     blob_container.tensor = ov::Tensor(
