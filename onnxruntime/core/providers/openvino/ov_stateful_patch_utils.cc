@@ -77,7 +77,7 @@ void FuseCacheReorder(std::shared_ptr<ov::Model> ov_model,
                       const std::vector<std::string>& key_value_input_names,
                       int gather_dim,
                       const bool should_add_kvcache_reorder) {
-  if (ModelHasInputOutputNames(ov_model, "beam_idx")) {
+  if (ModelHasInputOutputNames(ov_model, "beam_idx") || ModelHasInputOutputNames(ov_model, "src_idx")) {
     throw std::runtime_error("Model already has fused cache");
   }
 
@@ -94,12 +94,7 @@ void FuseCacheReorder(std::shared_ptr<ov::Model> ov_model,
   auto input_batch = ov_model->input(main_input_name).get_partial_shape()[0];
   auto update_shape = ov_model->input(key_value_input_names[0]).get_partial_shape();
 
-  auto beam_idx = std::make_shared<ov::opset13::Parameter>(ov::element::i32, ov::PartialShape({std::move(input_batch)}));
-  beam_idx->set_friendly_name("beam_idx");
-  beam_idx->output(0).get_tensor().add_names({"beam_idx"});
-  ov_model->add_parameters({beam_idx});
-  not_kv_inputs.push_back(beam_idx->get_friendly_name());
-
+  std::shared_ptr<ov::opset13::Parameter> beam_idx;
   std::shared_ptr<ov::opset13::Parameter> src_idx;
   std::shared_ptr<ov::opset13::Parameter> dst_idx;
 
@@ -115,6 +110,12 @@ void FuseCacheReorder(std::shared_ptr<ov::Model> ov_model,
     dst_idx->output(0).get_tensor().add_names({"dst_idx"});
     ov_model->add_parameters({dst_idx});
     not_kv_inputs.push_back(dst_idx->get_friendly_name());
+  } else {
+    beam_idx = std::make_shared<ov::opset13::Parameter>(ov::element::i32, ov::PartialShape({std::move(input_batch)}));
+    beam_idx->set_friendly_name("beam_idx");
+    beam_idx->output(0).get_tensor().add_names({"beam_idx"});
+    ov_model->add_parameters({beam_idx});
+    not_kv_inputs.push_back(beam_idx->get_friendly_name());
   }
 
   // Go over all cache parameters and fuse _reorder_cache with indices provided by the new parameter beam_idx
@@ -122,25 +123,22 @@ void FuseCacheReorder(std::shared_ptr<ov::Model> ov_model,
     auto parameter_output_port = ov_model->input(input_name);
     auto consumers = parameter_output_port.get_target_inputs();
 
-    auto gather_op =
-        std::make_shared<ov::opset13::Gather>(parameter_output_port,
-                                              beam_idx,
-                                              ov::opset13::Constant::create(ov::element::i64, {}, {gather_dim}));
-
     std::shared_ptr<ov::Node> output_node;
     if (should_add_kvcache_reorder) {
       auto updatekv_gather_op =
-          std::make_shared<ov::opset13::Gather>(gather_op,
+          std::make_shared<ov::opset13::Gather>(parameter_output_port,
                                                 src_idx,
                                                 ov::opset13::Constant::create(ov::element::i64, {}, {2}));
 
-      auto updatekv_op = std::make_shared<ov::opset12::ScatterElementsUpdate>(gather_op,
+      auto updatekv_op = std::make_shared<ov::opset12::ScatterElementsUpdate>(parameter_output_port,
                                                                               dst_idx,
                                                                               updatekv_gather_op,
                                                                               ov::opset13::Constant::create(ov::element::i64, {}, {2}));
       output_node = updatekv_op;
     } else {
-      output_node = gather_op;
+      output_node = std::make_shared<ov::opset13::Gather>(parameter_output_port,
+                                                          beam_idx,
+                                                          ov::opset13::Constant::create(ov::element::i64, {}, {gather_dim}));
     }
 
     // Replace the source output for all consumers of the input tensor
@@ -305,6 +303,9 @@ void PatchStatefulDecoder(std::shared_ptr<ov::Model> model, const bool should_ad
   auto batch_dim = 0;
 
   FuseCacheReorder(model, not_kv_inputs, key_value_input_names, batch_dim, should_add_kvcache_reorder);
+
+  printf("##$$before MakeStateful\n");
+  getchar();
 
   MakeStateful(model, key_value_input_names, key_value_output_names);
 }

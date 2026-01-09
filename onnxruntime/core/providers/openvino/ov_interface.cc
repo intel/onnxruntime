@@ -469,9 +469,6 @@ std::optional<ov::Tensor> StatefulOVInferRequest::FindTensor(const std::string& 
 }
 
 void StatefulOVInferRequest::PreProcessInferRequest() {
-  // Workaround: Setting the value here as it cannot be set at the ORT GenAI layer currently.
-  // TODO(ankit): Address this issue and implement the fix at the appropriate layer.
-  FillTensor("beam_idx", ov::element::i32, {1}, 0);
 
   if (is_kvcache_reorder_added) {
     ov::Shape dst_idx_shape = ovInfReq.get_tensor("dst_idx").get_shape();
@@ -485,18 +482,22 @@ void StatefulOVInferRequest::PreProcessInferRequest() {
       }
       ovInfReq.set_tensor("src_idx", src_idx_tensor);
 
-      ov::Tensor dst_idx_tensor = ov::Tensor(ov::element::i32, {1, kv_num_heads, kv_dst_indices.size(), kv_head_size});
-      const auto dst_idx_ptr = dst_idx_tensor.data<int32_t>();
-      for (size_t i = 0; i < kv_num_heads; ++i) {
-        for (size_t j = 0; j < kv_dst_indices.size(); ++j) {
-          std::fill_n(dst_idx_ptr + (i * kv_dst_indices.size() + j) * kv_head_size, kv_head_size, kv_dst_indices[j]);
+        ov::Tensor dst_idx_tensor = ov::Tensor(ov::element::i32, {1, kv_num_heads, kv_dst_indices.size(), kv_head_size});
+        const auto dst_idx_ptr = dst_idx_tensor.data<int32_t>();
+        for (size_t i = 0; i < kv_num_heads; ++i) {
+          for (size_t j = 0; j < kv_dst_indices.size(); ++j) {
+            std::fill_n(dst_idx_ptr + (i * kv_dst_indices.size() + j) * kv_head_size, kv_head_size, kv_dst_indices[j]);
+          }
         }
+        ovInfReq.set_tensor("dst_idx", dst_idx_tensor);
+      } else {
+        FillTensor("src_idx", ov::element::i32, {0}, 0);
+        FillTensor("dst_idx", ov::element::i32, {1, kv_num_heads, 0, kv_head_size}, 0);
       }
-      ovInfReq.set_tensor("dst_idx", dst_idx_tensor);
-    } else {
-      FillTensor("src_idx", ov::element::i32, {0}, 0);
-      FillTensor("dst_idx", ov::element::i32, {1, kv_num_heads, 0, kv_head_size}, 0);
-    }
+  } else {
+    // Workaround: Setting the value here as it cannot be set at the ORT GenAI layer currently.
+    // TODO(ankit): Address this issue and implement the fix at the appropriate layer.
+    FillTensor("beam_idx", ov::element::i32, {1}, 0);
   }
 
   // If 'prefill use full chat history' mode is enabled, we need to cache input_ids and position_ids.
