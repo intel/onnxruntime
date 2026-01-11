@@ -181,3 +181,47 @@ jobs:
           name: vcpkg-manifest-install-log-${{ inputs.architecture }}-${{ inputs.build_config }}
           path: ${{ runner.temp }}/${{ inputs.build_config }}/${{ inputs.build_config }}/vcpkg-manifest-install.log
           if-no-files-found: ignore
+
+
+  lint-python-format:
+    name: Python format
+    runs-on: [self-hosted, Linux, X64]
+
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Create Virtual Env
+        run: |
+         python3 -m venv .venv
+         echo "$GITHUB_WORKSPACE/.venv/bin" >> $GITHUB_PATH
+
+      - name: Update PATH
+        run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Install dependencies
+        run: |
+          set -e -x
+          python -m pip install -r requirements-dev.txt
+          lintrunner init
+
+      - name: Run lintrunner on all files
+        run: |
+          set +e
+          if ! lintrunner --force-color --all-files --tee-json=lint.json -v; then
+              echo ""
+              echo -e "\e[1m\e[36mYou can reproduce these results locally by using \`lintrunner\`. To set up lintrunner locally, see https://github.com/microsoft/onnxruntime/blob/main/docs/Coding_Conventions_and_Standards.md#linting .\e[0m"
+              exit 1
+          fi
+
+      - name: Cleanup Virtual Environment
+        if: always()
+        run: |
+          if [ -d ".venv" ]; then
+             echo "Deleting virtual environment..."
+             rm -rf .venv
+          fi
