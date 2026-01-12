@@ -13,6 +13,7 @@ concurrency:
 
 permissions:
   contents: read
+  security-events: write
   packages: write # Needed if the reusable workflow pushes images
   attestations: write # Optional: for artifact attestations if enabled
   id-token: write # Optional: may be needed for OIDC authentication (e.g., ACR)
