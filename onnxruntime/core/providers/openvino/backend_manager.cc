@@ -100,7 +100,8 @@ BackendManager::BackendManager(SessionContext& session_context,
       std::string exception_str =
           "[OpenVINO-EP] Bounded dynamic model execution using provider option reshape_input is not supported for OVEP EPContext model";
       ORT_THROW(exception_str);
-    }    if (subgraph_context_.is_ep_ctx_ovir_encapsulated) {
+    }
+    if (subgraph_context_.is_ep_ctx_ovir_encapsulated) {
       model_stream = ep_ctx_handle_.GetModelBlobStream(session_context_.onnx_model_path_name.replace_extension("xml").string(), subgraph, session_context_.device_type);
     } else {
       model_stream = ep_ctx_handle_.GetModelBlobStream(session_context_.so_context_file_path, subgraph, session_context_.device_type);
@@ -267,9 +268,8 @@ bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::GraphViewer& s
   // Early return if no reshape input provided
   if (session_context_.reshape.empty()) {
     return has_symbolic_dims;  // Return based on whether model has symbolic dims
-  }
-  else return false;
-
+  } else
+    return false;
 }
 
 // Check to see if the graph is QDQ
@@ -541,7 +541,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
           continue;
 
         if (!it->second) {
-            ORT_THROW(name + " proto initializer is null!");
+          ORT_THROW(name + " proto initializer is null!");
         }
 
         auto& proto_init = *it->second;
@@ -558,10 +558,9 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
                                 << ", data_type: " << src_init->data_type()
                                 << ", raw_data size: " << src_init->raw_data().size();
           if (src_init->raw_data().size() > 0) {
-              SetExternalDataFields(proto_init, src_init->raw_data().data(), src_init->raw_data().size());
-          }
-          else {
-              LOGS(logger, VERBOSE) << "Initializer has empty raw_data: skipping initializer '" << src_init->name() << "'...";
+            SetExternalDataFields(proto_init, src_init->raw_data().data(), src_init->raw_data().size());
+          } else {
+            LOGS(logger, VERBOSE) << "Initializer has empty raw_data: skipping initializer '" << src_init->name() << "'...";
           }
         } else if (onnxruntime::utils::HasExternalDataInMemory(*src_init)) {
           auto it_ext = external_initializers_offset_and_length.find(name);
