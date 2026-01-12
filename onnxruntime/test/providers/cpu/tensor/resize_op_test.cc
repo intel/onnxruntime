@@ -340,7 +340,7 @@ TEST(ResizeOpTest, OVEPNhwcResizeOpLinearDownSampleTest_4DBilinear_uint8) {
   test.ConfigEps(std::move(execution_providers))
       .RunWithConfig();
 }
-#endif // USE_OPENVINO
+#endif  // USE_OPENVINO
 
 TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_int8) {
   OpTester test("Resize", 13);
@@ -717,7 +717,7 @@ TEST(ResizeOpTest, OVEPNhwcResizeOpLinearDownSampleTest_4DBilinear_pytorch_half_
   test.ConfigEps(std::move(execution_providers))
       .RunWithConfig();
 }
-#endif // USE_OPENVINO
+#endif  // USE_OPENVINO
 
 TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_pytorch_half_pixel_int8) {
   OpTester test("Resize", 13);
@@ -881,7 +881,7 @@ TEST(ResizeOpTest, OVEPNhwcResizeOpLinearUpSampleTest_4DBilinear_asymmetric_uint
   run_test(false);
   run_test(true);
 }
-#endif // USE_OPENVINO
+#endif  // USE_OPENVINO
 
 TEST(ResizeOpTest, NhwcResizeOpLinearUpSampleTest_4DBilinear_asymmetric_int8) {
   // To test NNAPI EP, we need the scales/sizes to be in initializers

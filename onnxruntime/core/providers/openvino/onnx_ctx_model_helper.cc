@@ -131,8 +131,8 @@ std::unique_ptr<ModelBlobWrapper> EPCtxHandler::GetModelBlobStream(const std::fi
     // Skip SDK version check for NPU devices as they may use different SDK versions.
     if (device_type.find("NPU") == std::string::npos) {
       ORT_ENFORCE((attrs.count(EP_SDK_VER) == 1) && (attrs.at(EP_SDK_VER).s() == openvino_sdk_version_),
-            "EPCtx blob was exported / is compatible with OpenVINO SDK version " + attrs.at(EP_SDK_VER).s() +
-                ", but OpenVINO SDK version currently in use is " + openvino_sdk_version_);
+                  "EPCtx blob was exported / is compatible with OpenVINO SDK version " + attrs.at(EP_SDK_VER).s() +
+                      ", but OpenVINO SDK version currently in use is " + openvino_sdk_version_);
     }
     result.reset();  // Release the stream as we will get the native blob from SharedContext
     auto shared_context = shared_context_manager_->GetOrCreateSharedContext(native_blob_path);
