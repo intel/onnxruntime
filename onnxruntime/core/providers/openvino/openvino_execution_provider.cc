@@ -293,7 +293,7 @@ common::Status OpenVINOExecutionProvider::SetEpDynamicOptions(gsl::span<const ch
       size_t delimiter_pos = value.find(';');
       if (delimiter_pos == std::string::npos) {
         return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                     "kvcache_reorder value format is incorrect, expected format is 'x1,x2,x3;y1,y2,y3' where x and y are comma-separated int64_t lists");
+                      "kvcache_reorder value format is incorrect, expected format is 'x1,x2,x3;y1,y2,y3' where x and y are comma-separated int64_t lists");
       }
 
       std::string_view src_string(value.begin(), value.begin() + delimiter_pos);

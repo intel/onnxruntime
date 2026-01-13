@@ -133,7 +133,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           // Skip if deviced was already added
           if (added_ep_devices.find(device.EpName()) != added_ep_devices.end() &&
               std::find(added_ep_devices[device.EpName()].begin(), added_ep_devices[device.EpName()].end(), device) != added_ep_devices[device.EpName()].end())
-              continue;
+            continue;
 
           // Check both EP metadata and device metadata for a match
           auto ep_metadata_kv_pairs = device.EpMetadata().GetKeyValuePairs();
@@ -1022,28 +1022,27 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
   }
 
   if (!device_memory_name_.empty()) {
-
     Ort::MemoryInfo memory_info(nullptr);  // Default initialize, will be overwritten
     if (device_memory_name_ == CUDA) {
-        memory_info = Ort::MemoryInfo(device_memory_name_.data(), OrtArenaAllocator, 0, OrtMemTypeDefault);
+      memory_info = Ort::MemoryInfo(device_memory_name_.data(), OrtArenaAllocator, 0, OrtMemTypeDefault);
     } else {
-        memory_info = Ort::MemoryInfo(device_memory_name_.data(), OrtArenaAllocator, 0, OrtMemTypeCPUOutput);
+      memory_info = Ort::MemoryInfo(device_memory_name_.data(), OrtArenaAllocator, 0, OrtMemTypeCPUOutput);
     }
     custom_allocator_ = Ort::Allocator(session_, memory_info);
     // Switch to custom allocator
     allocator_ = Ort::UnownedAllocator(custom_allocator_);
   }
   for (size_t i = 0; i < output_names_raw_ptr.size(); i++) {
-      Ort::TypeInfo type_info = session_.GetOutputTypeInfo(i);
-      auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
-      std::vector<int64_t> output_shape = tensor_info.GetShape();
-      auto is_dynamic = std::find(output_shape.begin(), output_shape.end(), -1) != output_shape.end();
-      if (is_dynamic || device_memory_name_.empty()) {
-         outputs_.emplace_back(Ort::Value(nullptr));
-      } else {
-         auto new_value = Ort::Value::CreateTensor(allocator_, output_shape.data(), output_shape.size(), tensor_info.GetElementType());
-         outputs_.emplace_back(std::move(new_value));
-      }
+    Ort::TypeInfo type_info = session_.GetOutputTypeInfo(i);
+    auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+    std::vector<int64_t> output_shape = tensor_info.GetShape();
+    auto is_dynamic = std::find(output_shape.begin(), output_shape.end(), -1) != output_shape.end();
+    if (is_dynamic || device_memory_name_.empty()) {
+      outputs_.emplace_back(Ort::Value(nullptr));
+    } else {
+      auto new_value = Ort::Value::CreateTensor(allocator_, output_shape.data(), output_shape.size(), tensor_info.GetElementType());
+      outputs_.emplace_back(std::move(new_value));
+    }
   }
 }
 

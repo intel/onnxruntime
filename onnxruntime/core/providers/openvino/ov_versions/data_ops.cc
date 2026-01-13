@@ -480,31 +480,31 @@ void DataOps::populate_op_mode_supported() {
     UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1, V_2024_2,
                               V_2024_3, V_2024_4, V_2024_5, V_2024_6, V_2025_0, V_2025_1, V_2025_2, V_2025_3, V_2025_4},
                              [this](const Node* node, const InitializedTensorSet&) {
-                              auto& attributes = node->GetAttributes();
-                              if (attributes.count("coordinate_transformation_mode") > 0) {
-                                auto coordinate_transformation_mode =
-                                    attributes.at("coordinate_transformation_mode").s();
-                                if (coordinate_transformation_mode == "tf_crop_and_resize" ||
-                                       coordinate_transformation_mode == "half_pixel_symmetric") {
-                                        return true;
-                                }
-                              }
-                              if (attributes.count("antialias") > 0) {
-                                auto antialias_mode =
-                                    attributes.at("antialias").i();
-                                auto resize_mode = attributes.at("mode").s();
-                                if (antialias_mode == 1 &&
-                                    (resize_mode == "linear" ||
-                                     resize_mode == "cubic")) {
-                                  return true;
-                                }
-                              }
-                              if (attributes.count("exclude_outside") > 0) {
-                                if (attributes.at("exclude_outside").i() == 1) {
-                                  return true;
-                                }
-                              }
-                                return false;
+                               auto& attributes = node->GetAttributes();
+                               if (attributes.count("coordinate_transformation_mode") > 0) {
+                                 auto coordinate_transformation_mode =
+                                     attributes.at("coordinate_transformation_mode").s();
+                                 if (coordinate_transformation_mode == "tf_crop_and_resize" ||
+                                     coordinate_transformation_mode == "half_pixel_symmetric") {
+                                   return true;
+                                 }
+                               }
+                               if (attributes.count("antialias") > 0) {
+                                 auto antialias_mode =
+                                     attributes.at("antialias").i();
+                                 auto resize_mode = attributes.at("mode").s();
+                                 if (antialias_mode == 1 &&
+                                     (resize_mode == "linear" ||
+                                      resize_mode == "cubic")) {
+                                   return true;
+                                 }
+                               }
+                               if (attributes.count("exclude_outside") > 0) {
+                                 if (attributes.at("exclude_outside").i() == 1) {
+                                   return true;
+                                 }
+                               }
+                               return false;
                              }};
     op_list_.insert({"Resize", obj});
   }

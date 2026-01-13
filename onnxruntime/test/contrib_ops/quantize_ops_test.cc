@@ -326,7 +326,7 @@ TEST(QuantizeLinearContribOpTest, OVEPQuantizeLinear_per_tensor_float_int8) {
   test.ConfigEps(std::move(execution_providers))
       .RunWithConfig();
 }
-#endif // USE_OPENVINO
+#endif  // USE_OPENVINO
 
 // Test uint16 com.microsoft.QuantizeLinear (per tensor)
 TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_float_uint16) {
@@ -382,7 +382,7 @@ TEST(QuantizeLinearContribOpTest, OVEPQuantizeLinear_per_tensor_float_uint16) {
   test.ConfigEps(std::move(execution_providers))
       .RunWithConfig();
 }
-#endif // USE_OPENVINO
+#endif  // USE_OPENVINO
 
 // Test int16 com.microsoft.QuantizeLinear (per tensor)
 TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_float_int16) {

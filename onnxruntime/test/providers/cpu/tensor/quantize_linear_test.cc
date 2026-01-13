@@ -484,7 +484,7 @@ TEST(QuantizeLinearOpTest, OVEP_Uint16) {
   test.ConfigEps(std::move(execution_providers))
       .RunWithConfig();
 }
-#endif // USE_OPENVINO
+#endif  // USE_OPENVINO
 
 // Test int16 QuantizeLinear (per tensor)
 TEST(QuantizeLinearOpTest, Int16) {
@@ -568,7 +568,7 @@ TEST(QuantizeLinearOpTest, OVEP_Int4) {
   test.ConfigEps(std::move(execution_providers))
       .RunWithConfig();
 }
-#endif // USE_OPENVINO
+#endif  // USE_OPENVINO
 
 // Test uint4 QuantizeLinear (per tensor)
 TEST(QuantizeLinearOpTest, UInt4) {
@@ -697,7 +697,6 @@ TEST(QuantizeLinearOpTest, Int8_NegativeZeroPoint) {
 
 #ifdef USE_OPENVINO
 TEST(QuantizeLinearOpTest, OVEP_Int8_NegativeZeroPoint) {
-
   OpTester test("QuantizeLinear", 10);
   std::vector<int64_t> dims{8};
   test.AddInput<float>("x", dims, {0, 2, 3, 5, 6, -2, -5, -6});
@@ -709,11 +708,10 @@ TEST(QuantizeLinearOpTest, OVEP_Int8_NegativeZeroPoint) {
   test.ConfigEps(std::move(execution_providers))
       .RunWithConfig();
 }
-#endif // USE_OPENVINO
+#endif  // USE_OPENVINO
 
 // quantize with scalar zero point and scale
 TEST(QuantizeLinearOpTest, Int8_PositiveZeroPoint) {
-
   OpTester test("QuantizeLinear", 10);
   std::vector<int64_t> dims{8};
   test.AddInput<float>("x", dims, {0, 2, 3, 5, 6, -2, -5, -6});
@@ -731,7 +729,6 @@ TEST(QuantizeLinearOpTest, Int8_PositiveZeroPoint) {
 
 #ifdef USE_OPENVINO
 TEST(QuantizeLinearOpTest, OVEP_Int8_PositiveZeroPoint) {
-
   OpTester test("QuantizeLinear", 10);
   std::vector<int64_t> dims{8};
   test.AddInput<float>("x", dims, {0, 2, 3, 5, 6, -2, -5, -6});
@@ -743,7 +740,7 @@ TEST(QuantizeLinearOpTest, OVEP_Int8_PositiveZeroPoint) {
   test.ConfigEps(std::move(execution_providers))
       .RunWithConfig();
 }
-#endif // USE_OPENVINO
+#endif  // USE_OPENVINO
 
 // quantize with 2D data
 TEST(QuantizeLinearOpTest, 2D) {
