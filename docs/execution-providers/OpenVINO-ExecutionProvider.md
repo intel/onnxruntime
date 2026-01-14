@@ -30,9 +30,9 @@ ONNX Runtime OpenVINO™ Execution Provider is compatible with three latest rele
 
 |ONNX Runtime|OpenVINO™|Notes|
 |---|---|---| 
+|1.24.0|2025.4.1|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.9)|
 |1.23.0|2025.3|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.8)|
 |1.22.0|2025.1|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.7)|
-|1.21.0|2025.0|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.6)|
 
 ## Build
 
@@ -185,9 +185,10 @@ Manages parallel inference streams for throughput optimization (default: `1` for
 
 ### `cache_dir`
 
-**DEPRECATED:** This option is deprecated since OpenVINO 2025.3/ORT 1.23 and can be set via `load_config` using the `CACHE_DIR` property.
+**DEPRECATED:** This option is deprecated since OpenVINO 2025.3/ORT 1.23 and can be set via `load_config` using the `CACHE_DIR` property. `cache_dir` is configured **per-session** rather than globally.
 
-Enables model caching to significantly reduce subsequent load times. Supports CPU, NPU, and GPU devices with kernel caching on iGPU/dGPU.
+
+Enables model caching to significantly reduce subsequent load times. Supports CPU, NPU, and GPU devices with kernel caching on iGPU/dGPU.  
 
 **Benefits**
 - Saves compiled models and `cl_cache` files for dynamic shapes
@@ -210,12 +211,42 @@ Enables model caching to significantly reduce subsequent load times. Supports CP
 - Better compatibility with future OpenVINO releases
 - No property name translation required
 
+
+
 #### JSON Configuration Format
 ```json
 {
   "DEVICE_NAME": {
     "PROPERTY_KEY": "value"
   }
+}
+```
+
+`load_config` now supports nested JSON objects up to **8 levels deep** for complex device configurations.
+
+**Maximum Nesting:** 8 levels deep.
+
+**Example: Multi-Level Nested Configuration**
+```python
+import onnxruntime as ort
+import json
+
+# Complex nested configuration for AUTO device
+config = {
+    "AUTO": {
+        "PERFORMANCE_HINT": "THROUGHPUT",
+        "DEVICE_PROPERTIES": {
+            "CPU": {
+                "INFERENCE_PRECISION_HINT": "f32",
+                "NUM_STREAMS": "3",
+                "INFERENCE_NUM_THREADS": "8"
+            },
+            "GPU": {
+                "INFERENCE_PRECISION_HINT": "f16",
+                "NUM_STREAMS": "5"
+            }
+        }
+    }
 }
 ```
 
@@ -400,6 +431,7 @@ Configures resource allocation priority for multi-model deployment scenarios.
 **Example:**
 
 `input_image[NCHW],output_tensor[NC]`
+
 
 ---
 
