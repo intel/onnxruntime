@@ -54,6 +54,7 @@ void RunSliceTest(const std::vector<int64_t>& input_dims,
 
   if (onnx_shape_disagreement) {
     excluded_providers.insert(kCoreMLExecutionProvider);
+    excluded_providers.insert(kOpenVINOExecutionProvider);
   }
 
   if (!v10_only) {
@@ -538,10 +539,6 @@ TEST(SliceTest, Slice1D_ReverseAllAxes_1) {
   }
   if (DefaultVSINPUExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{4}] did not match run output shape [{0}] for output";
-  }
-
-  if (DefaultOpenVINOExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: The input ends do not support int max when step is negative.";
   }
 
   RunSliceTest<float>({4},

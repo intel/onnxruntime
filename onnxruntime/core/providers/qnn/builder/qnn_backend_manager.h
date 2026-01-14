@@ -15,6 +15,7 @@
 #include <mutex>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -27,6 +28,7 @@
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_context_mem_handle_manager.h"
 #include "core/providers/qnn/builder/qnn_def.h"
+#include "core/providers/qnn/builder/qnn_htp_power_config_manager.h"
 #include "core/providers/qnn/builder/qnn_profile_serializer.h"
 #include "core/providers/qnn/builder/qnn_node_group/qnn_node_group.h"
 
@@ -165,12 +167,17 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   Status CreateHtpPowerCfgId(uint32_t deviceId, uint32_t coreId, uint32_t& htp_power_config_id);
 
-  Status SetHtpPowerConfig(uint32_t htp_power_config_client_id,
-                           HtpPerformanceMode htp_performance_mode);
+  Status SetHtpPowerConfigs(uint32_t htp_power_config_client_id,
+                            HtpPerformanceMode htp_performance_mode,
+                            uint32_t rpc_polling_time,
+                            uint32_t rpc_control_latency);
 
-  Status SetRpcPowerConfigs(uint32_t htp_power_config_client_id,
-                            uint32_t rpc_control_latency,
-                            uint32_t rpc_polling_time);
+  Status SetPerThreadHtpPowerConfigs(const std::thread::id& thread_id, bool pre_run);
+
+  Status AddPerThreadHtpPowerConfigMapping(const std::thread::id& thread_id,
+                                           const PerThreadHtpPowerConfigs_t& htp_power_configs);
+
+  void RemovePerThreadHtpPowerConfigMapping(const std::thread::id& thread_id);
 
   const QNN_INTERFACE_VER_TYPE& GetQnnInterface() { return qnn_interface_; }
 
@@ -302,16 +309,6 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   bool IsDevicePropertySupported();
 
-  template <typename T>
-  std::vector<std::add_pointer_t<std::add_const_t<T>>> ObtainNullTermPtrVector(const std::vector<T>& vec) {
-    std::vector<std::add_pointer_t<std::add_const_t<T>>> ret;
-    for (auto& elem : vec) {
-      ret.push_back(&elem);
-    }
-    ret.push_back(nullptr);
-    return ret;
-  }
-
   std::string GetBackendBuildId() {
     char* backend_build_id{nullptr};
     if (QNN_SUCCESS != qnn_interface_.backendGetBuildId((const char**)&backend_build_id)) {
@@ -333,6 +330,9 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   // Adds a new QNN context.
   // Transfers ownership of `context_handle` (i.e., responsibility of freeing it) to this instance
   Status AddQnnContextHandle(Qnn_ContextHandle_t context_handle);
+
+  bool GetPerThreadHtpPowerConfigMapping(const std::thread::id& thread_id,
+                                         PerThreadHtpPowerConfigs_t& htp_power_configs);
 
  private:
   // assume Qnn_ContextHandle_t is a pointer and able to be wrapped with std::unique_ptr
@@ -421,6 +421,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   QnnBackend_Config_t** backend_config_ = nullptr;
   Qnn_LogHandle_t log_handle_ = nullptr;
   Qnn_DeviceHandle_t device_handle_ = nullptr;
+  power::HtpPowerConfigManager htp_power_config_manager_;
 
   // Map of Qnn_ContextHandle_t to QnnContextHandleRecord.
   // The QnnContextHandleRecord has ownership of the Qnn_ContextHandle_t.
@@ -464,6 +465,10 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   uint32_t soc_model_ = QNN_SOC_MODEL_UNKNOWN;
   const std::vector<OpPackage> op_packages_;
   bool skip_qnn_version_check_ = false;
+
+  // Mapping of thread id to on-run-start/end power configs
+  std::mutex per_thread_power_configs_mutex_;
+  std::unordered_map<std::thread::id, PerThreadHtpPowerConfigs_t> per_thread_power_configs_;
 };
 
 }  // namespace qnn

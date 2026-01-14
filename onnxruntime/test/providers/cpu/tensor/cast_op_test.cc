@@ -75,6 +75,11 @@ void TestCastOp(gsl::span<const SrcType> input,
     excluded_provider_types.insert(kCudaExecutionProvider);
   }
 
+  if (input.size() == 0) {
+    // The OpenVINO doesn't support 0 size input
+    excluded_provider_types.insert(kOpenVINOExecutionProvider);
+  }
+
   if (cuda_only && (excluded_provider_types.count(kCudaExecutionProvider) > 0)) {
     return;
   }
@@ -853,9 +858,6 @@ TEST(CastOpTest, Int32ToInt4x2OddNumberOfElements) {
 }
 
 TEST(CastOpTest, Int32ToInt4x2EmptyTensor) {
-  if (DefaultOpenVINOExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "The OpenVINO not support 0 size input";
-  }
   // GIVEN
   const std::vector<int64_t> empty_shape{0};
   const std::vector<int32_t> empty_input = {};

@@ -40,10 +40,6 @@
 #ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #endif
-#ifdef USE_ROCM
-#include "core/providers/rocm/rocm_provider_factory.h"
-#include "core/providers/rocm/gpu_data_transfer.h"
-#endif
 #include "core/session/allocator_adapters.h"
 #include "core/session/environment.h"
 #include "core/session/IOBinding.h"
@@ -76,9 +72,6 @@ namespace onnxruntime {
 
 #ifdef USE_CUDA
 ProviderInfo_CUDA& GetProviderInfo_CUDA();
-#endif
-#ifdef USE_ROCM
-ProviderInfo_ROCM& GetProviderInfo_ROCM();
 #endif
 
 class FuseAdd : public OpKernel {
@@ -217,7 +210,7 @@ static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, Prov
   if (provider_type == kCpuExecutionProvider) {
     node.SetExecutionProviderType(provider_type);
   } else {
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_WEBGPU)
+#if defined(USE_CUDA) || defined(USE_WEBGPU)
     node.SetExecutionProviderType(provider_type);
 #endif
   }
@@ -262,8 +255,7 @@ void RunModel(InferenceSession& session_object,
   if (is_preallocate_output_vec) {
     fetches.resize(output_names.size());
     for (auto& elem : fetches) {
-      CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_mul_x, values_mul_x,
-                           &elem);
+      AllocateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_mul_x, &elem);
     }
   }
 
@@ -307,7 +299,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     // And it can't be used for copying buffer to buffer since the target buffer is still in mapped state.
     OrtMemoryInfo mem_info(WEBGPU_BUFFER, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0));
     gpu_alloc = session_object.GetAllocator(mem_info);
-  } else if (allocation_provider == kCudaExecutionProvider || allocation_provider == kRocmExecutionProvider) {
+  } else if (allocation_provider == kCudaExecutionProvider) {
     gpu_alloc = gpu_provider->CreatePreferredAllocators()[0];
   }
   if (enable_graph_capture) {
@@ -367,7 +359,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
   if (is_preallocate_output_vec) {
     if (allocation_provider == kCpuExecutionProvider) {
       AllocateMLValue<float>(cpu_alloc, expected_output_dims, &output_ml_value);
-    } else if (allocation_provider == kCudaExecutionProvider || allocation_provider == kRocmExecutionProvider || allocation_provider == kWebGpuExecutionProvider) {
+    } else if (allocation_provider == kCudaExecutionProvider || allocation_provider == kWebGpuExecutionProvider) {
       AllocateMLValue<float>(gpu_alloc, expected_output_dims, &output_ml_value);
     } else {
       ORT_THROW("Unsupported provider");
@@ -390,9 +382,9 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
   // Now run
   ASSERT_STATUS_OK(session_object.Run(run_options, *io_binding));
 
-  if ((is_preallocate_output_vec && (allocation_provider == kCudaExecutionProvider || allocation_provider == kRocmExecutionProvider || allocation_provider == kWebGpuExecutionProvider)) ||
+  if ((is_preallocate_output_vec && (allocation_provider == kCudaExecutionProvider || allocation_provider == kWebGpuExecutionProvider)) ||
       (output_device && output_device->Type() == OrtDevice::GPU)) {
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_WEBGPU)
+#if defined(USE_CUDA) || defined(USE_WEBGPU)
     // in this case we need to copy the tensor from cuda to cpu
     std::vector<OrtValue>& outputs = io_binding->GetOutputs();
     ASSERT_EQ(1u, outputs.size());
@@ -403,9 +395,6 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
 #ifdef USE_CUDA
     st = gpu_provider->GetDataTransfer()->CopyTensor(rtensor, cpu_tensor);
 #endif
-#ifdef USE_ROCM
-    st = GetProviderInfo_ROCM().CreateGPUDataTransfer()->CopyTensor(rtensor, cpu_tensor);
-#endif
 #ifdef USE_WEBGPU
     st = gpu_provider->GetDataTransfer()->CopyTensor(rtensor, cpu_tensor);
 #endif
@@ -415,7 +404,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     VerifyOutputs({ml_value}, expected_output_dims, expected_values_mul_y);
 #endif
   } else {
-    if (allocation_provider == kCudaExecutionProvider || allocation_provider == kRocmExecutionProvider || allocation_provider == kWebGpuExecutionProvider) {
+    if (allocation_provider == kCudaExecutionProvider || allocation_provider == kWebGpuExecutionProvider) {
       ASSERT_STATUS_OK(gpu_provider->Sync());
     }
     VerifyOutputs(io_binding->GetOutputs(), expected_output_dims, expected_values_mul_y);
@@ -638,9 +627,6 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
 #ifdef USE_CUDA
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #endif
-#ifdef USE_ROCM
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
-#endif
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   ASSERT_STATUS_OK(session_object.Initialize());
 
@@ -676,7 +662,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
     }
   }
 
-#if (defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING)) || (defined(USE_ROCM) && defined(ENABLE_ROCM_PROFILING))
+#if (defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING))
   ASSERT_TRUE(has_kernel_info);
 #endif
 }
@@ -691,9 +677,6 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions2) {
   InferenceSession session_object(so, GetEnvironment());
 #ifdef USE_CUDA
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
-#endif
-#ifdef USE_ROCM
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
 #endif
 #ifdef USE_WEBGPU
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultWebGpuExecutionProvider()));
@@ -731,10 +714,6 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions2) {
       has_api_info = has_api_info || lines[i].find("Api") != std::string::npos &&
                                          lines[i].find("cudaLaunch") != std::string::npos;
 #endif
-#ifdef USE_ROCM
-      has_api_info = has_api_info || lines[i].find("Api") != std::string::npos &&
-                                         lines[i].find("hipLaunch") != std::string::npos;
-#endif
 #ifdef USE_WEBGPU
       has_api_info = has_api_info || lines[i].find("Api") != std::string::npos;
 #endif
@@ -742,7 +721,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions2) {
   }
 
 // Note that the apple device is a paravirtual device which may not support webgpu timestamp query. So skip the check on it.
-#if (defined(USE_ROCM) && defined(ENABLE_ROCM_PROFILING)) || (defined(USE_WEBGPU) && !defined(__APPLE__))
+#if (defined(USE_WEBGPU) && !defined(__APPLE__))
   ASSERT_TRUE(has_api_info);
 #endif
 }
@@ -1041,17 +1020,10 @@ static void TestBindHelper(const std::string& log_str,
   InferenceSession session_object{so, GetEnvironment()};
   IExecutionProvider* gpu_provider{};
 
-  if (bind_provider_type == kCudaExecutionProvider || bind_provider_type == kRocmExecutionProvider || bind_provider_type == kWebGpuExecutionProvider) {
+  if (bind_provider_type == kCudaExecutionProvider || bind_provider_type == kWebGpuExecutionProvider) {
 #ifdef USE_CUDA
     {
       auto provider = DefaultCudaExecutionProvider();
-      gpu_provider = provider.get();
-      ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(provider)));
-    }
-#endif
-#ifdef USE_ROCM
-    {
-      auto provider = DefaultRocmExecutionProvider();
       gpu_provider = provider.get();
       ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(provider)));
     }
@@ -1176,11 +1148,9 @@ TEST(InferenceSessionTests, InvalidInputTypeOfTensorElement) {
   ASSERT_TRUE(!st.IsOK());
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_WEBGPU)
+#if defined(USE_CUDA) || defined(USE_WEBGPU)
 #if USE_CUDA
 constexpr const char* kGpuExecutionProvider = kCudaExecutionProvider;
-#elif USE_ROCM
-constexpr const char* kGpuExecutionProvider = kRocmExecutionProvider;
 #elif USE_WEBGPU
 constexpr const char* kGpuExecutionProvider = kWebGpuExecutionProvider;
 #endif
@@ -1670,8 +1640,6 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultTensorrtExecutionProvider()));
 #elif USE_CUDA
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
-#elif USE_ROCM
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
 #endif
 
   status = session_object.Load(model_file_name);
@@ -1822,8 +1790,6 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultTensorrtExecutionProvider()));
 #elif USE_CUDA
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
-#elif USE_ROCM
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
 #endif
 
   status = session_object.Load(model_file_name);
@@ -3101,6 +3067,27 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
   VerifyThreadPoolWithDenormalAsZero(session2.GetInterOpThreadPoolToUse(), false);
 }
 #endif
+
+TEST(InferenceSessionTests, BadDataTypeInInitializerIsHandled) {
+  // model has an initializer with a bogus data type. Graph ctor should detect and throw.
+  auto model_uri = ORT_TSTR("testdata/icm-31000000518082.onnx");
+
+  SessionOptions so;
+  so.session_logid = "TempTest.LoadModel";
+  InferenceSession session{so, GetEnvironment()};
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Load(model_uri), "does not have valid data type");
+}
+
+TEST(InferenceSessionTests, GraphResolveHandlesNodeWithSubgraphBeingRemoved) {
+  // model has a subgraph with output that is not consumed. the node with the subgraph should get removed in
+  // Graph::BuildConnections and Graph::Resolve should adjust its list of subgraphs to not access the removed subgraph.
+  auto model_uri = ORT_TSTR("testdata/icm-31000000518483.onnx");
+
+  SessionOptions so;
+  so.session_logid = "TempTest.LoadModel";
+  InferenceSession session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(model_uri));
+}
 
 }  // namespace test
 }  // namespace onnxruntime
