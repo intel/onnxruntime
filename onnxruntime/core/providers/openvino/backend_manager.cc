@@ -322,7 +322,7 @@ static bool IsQDQGraph(const onnxruntime::GraphViewer& graph_viewer) {
   return false;
 }
 
-#if ((OPENVINO_VERSION_MAJOR < 2025) || ((OPENVINO_VERSION_MAJOR == 2025) && (OPENVINO_VERSION_MINOR < 4)))
+#if (OPENVINO_VERSION_MAJOR < 2026)
 static bool Is16BitTensor(const onnxruntime::NodeArg* node_arg) {
   const auto* type_proto = node_arg ? node_arg->TypeAsProto() : nullptr;
   return type_proto && type_proto->has_tensor_type() &&
@@ -507,7 +507,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     return model_proto;
   }
-#if ((OPENVINO_VERSION_MAJOR < 2025) || ((OPENVINO_VERSION_MAJOR == 2025) && (OPENVINO_VERSION_MINOR < 4)))
+#if (OPENVINO_VERSION_MAJOR < 2026)
   // Enable OVEP-level QDQ stripping only for OV versions that don't have it
   else if ((session_context_.device_type.find("GPU") != std::string::npos) &&
            IsQDQGraphWithUint16OrInt16(subgraph)) {
