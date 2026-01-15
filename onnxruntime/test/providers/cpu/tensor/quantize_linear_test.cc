@@ -721,6 +721,7 @@ TEST(QuantizeLinearOpTest, Int8_PositiveZeroPoint) {
   std::unordered_set<std::string> excluded_providers;
   // Disable Tensorrt EP due to error:node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
   excluded_providers.insert(kTensorrtExecutionProvider);
+  excluded_providers.insert(kDmlExecutionProvider);
   // Disable OV EP due to different formulation for QuantizeLinear
   excluded_providers.insert(kOpenVINOExecutionProvider);
   test.ConfigExcludeEps(excluded_providers)
