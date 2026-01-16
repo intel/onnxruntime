@@ -440,7 +440,9 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
   };
 
   [[maybe_unused]] bool enable_ovep_qdq_optimizer = session_context_.enable_qdq_optimizer && IsQDQGraph(subgraph);
-  [[maybe_unused]] std::optional<bool> enable_compiler_qdq_optimization = queryOVProperty("NPU_QDQ_OPTIMIZATION", session_context_.device_type);
+  [[maybe_unused]] std::optional<bool> enable_compiler_qdq_optimization = false;
+  if (session_context_.device_type.find("NPU") != std::string::npos)
+     enable_compiler_qdq_optimization = queryOVProperty("NPU_QDQ_OPTIMIZATION", "NPU");
 #if (((OPENVINO_VERSION_MAJOR == 2025) && (OPENVINO_VERSION_MINOR > 0)) || (OPENVINO_VERSION_MAJOR > 2025))
   if (session_context_.device_type.find("NPU") != std::string::npos && session_context_.enable_qdq_optimizer) {
     if (enable_compiler_qdq_optimization.has_value() && enable_compiler_qdq_optimization.value()) {
