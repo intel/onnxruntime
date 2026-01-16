@@ -30,9 +30,9 @@ ONNX Runtime OpenVINO™ Execution Provider is compatible with three latest rele
 
 |ONNX Runtime|OpenVINO™|Notes|
 |---|---|---| 
+|1.24.0|2025.4.1|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.9)|
 |1.23.0|2025.3|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.8)|
 |1.22.0|2025.1|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.7)|
-|1.21.0|2025.0|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.6)|
 
 ## Build
 
@@ -147,7 +147,7 @@ Runs the same model on multiple devices in parallel to improve device utilizatio
 ---
 
 ### `precision`
-**DEPRECATED:** This option is deprecated and can be set via `load_config` using the `INFERENCE_PRECISION_HINT` property.
+**DEPRECATED:** This option is deprecated since OpenVINO 2025.3/ORT 1.23 and can be set via `load_config` using the `INFERENCE_PRECISION_HINT` property.
 - Controls numerical precision during inference, balancing **performance** and **accuracy**.
 
 **Precision Support on Devices:**
@@ -167,7 +167,7 @@ Runs the same model on multiple devices in parallel to improve device utilizatio
 ---
 ### `num_of_threads` & `num_streams`
 
-**DEPRECATED:** These options are deprecated and can be set via `load_config` using the `INFERENCE_NUM_THREADS` and `NUM_STREAMS` properties respectively.
+**DEPRECATED:** These options are deprecated since OpenVINO 2025.3/ORT 1.23 and can be set via `load_config` using the `INFERENCE_NUM_THREADS` and `NUM_STREAMS` properties respectively.
 
 **Multi-Threading**
 
@@ -185,9 +185,10 @@ Manages parallel inference streams for throughput optimization (default: `1` for
 
 ### `cache_dir`
 
-**DEPRECATED:** This option is deprecated and can be set via `load_config` using the `CACHE_DIR` property.
+**DEPRECATED:** This option is deprecated since OpenVINO 2025.3/ORT 1.23 and can be set via `load_config` using the `CACHE_DIR` property. `cache_dir` is configured **per-session** rather than globally.
 
-Enables model caching to significantly reduce subsequent load times. Supports CPU, NPU, and GPU devices with kernel caching on iGPU/dGPU.
+
+Enables model caching to significantly reduce subsequent load times. Supports CPU, NPU, and GPU devices with kernel caching on iGPU/dGPU.  
 
 **Benefits**
 - Saves compiled models and `cl_cache` files for dynamic shapes
@@ -210,12 +211,42 @@ Enables model caching to significantly reduce subsequent load times. Supports CP
 - Better compatibility with future OpenVINO releases
 - No property name translation required
 
+
+
 #### JSON Configuration Format
 ```json
 {
   "DEVICE_NAME": {
     "PROPERTY_KEY": "value"
   }
+}
+```
+
+`load_config` now supports nested JSON objects up to **8 levels deep** for complex device configurations.
+
+**Maximum Nesting:** 8 levels deep.
+
+**Example: Multi-Level Nested Configuration**
+```python
+import onnxruntime as ort
+import json
+
+# Complex nested configuration for AUTO device
+config = {
+    "AUTO": {
+        "PERFORMANCE_HINT": "THROUGHPUT",
+        "DEVICE_PROPERTIES": {
+            "CPU": {
+                "INFERENCE_PRECISION_HINT": "f32",
+                "NUM_STREAMS": "3",
+                "INFERENCE_NUM_THREADS": "8"
+            },
+            "GPU": {
+                "INFERENCE_PRECISION_HINT": "f16",
+                "NUM_STREAMS": "5"
+            }
+        }
+    }
 }
 ```
 
@@ -327,7 +358,7 @@ Property keys used in `load_config` JSON must match the string literal defined i
 
 ### `enable_qdq_optimizer`
 
-**DEPRECATED:** This option is deprecated and can be set via `load_config` using the `NPU_QDQ_OPTIMIZATION` property.
+**DEPRECATED:** This option is deprecated since OpenVINO 2025.3/ORT 1.23 and can be set via `load_config` using the `NPU_QDQ_OPTIMIZATION` property.
 
 NPU-specific optimization for Quantize-Dequantize (QDQ) operations in the inference graph. This optimizer enhances ORT quantized models by:
 
@@ -362,7 +393,7 @@ This configuration is required for optimal NPU memory allocation and management.
 
 ### `model_priority`
 
-**DEPRECATED:** This option is deprecated and can be set via `load_config` using the `MODEL_PRIORITY` property.
+**DEPRECATED:** This option is deprecated since OpenVINO 2025.3/ORT 1.23 and can be set via `load_config` using the `MODEL_PRIORITY` property.
 
 Configures resource allocation priority for multi-model deployment scenarios.
 
@@ -401,18 +432,18 @@ Configures resource allocation priority for multi-model deployment scenarios.
 
 `input_image[NCHW],output_tensor[NC]`
 
+
 ---
 
 ## Examples
-
 ### Python
-
-#### Using load_config with JSON file
+#### Using load_config with JSON string
 ```python
 import onnxruntime as ort
 import json
+import openvino
 
-# Create config file
+# Create config
 config = {
     "AUTO": {
         "PERFORMANCE_HINT": "THROUGHPUT",
@@ -420,20 +451,16 @@ config = {
         "DEVICE_PROPERTIES": "{CPU:{INFERENCE_PRECISION_HINT:f32,NUM_STREAMS:3},GPU:{INFERENCE_PRECISION_HINT:f32,NUM_STREAMS:5}}"
     }
 }
-
-with open("ov_config.json", "w") as f:
-    json.dump(config, f)
-
 # Use config with session
-options = {"device_type": "AUTO", "load_config": "ov_config.json"}
+options = {"device_type": "AUTO", "load_config": json.dumps(config)}
 session = ort.InferenceSession("model.onnx", 
                                 providers=[("OpenVINOExecutionProvider", options)])
 ```
-
 #### Using load_config for CPU
 ```python
 import onnxruntime as ort
 import json
+import openvino
 
 # Create CPU config
 config = {
@@ -443,19 +470,15 @@ config = {
         "INFERENCE_NUM_THREADS": "8"
     }
 }
-
-with open("cpu_config.json", "w") as f:
-    json.dump(config, f)
-
-options = {"device_type": "CPU", "load_config": "cpu_config.json"}
+options = {"device_type": "CPU", "load_config": json.dumps(config)}
 session = ort.InferenceSession("model.onnx", 
                                 providers=[("OpenVINOExecutionProvider", options)])
 ```
-
 #### Using load_config for GPU
 ```python
 import onnxruntime as ort
 import json
+import openvino
 
 # Create GPU config with caching
 config = {
@@ -465,15 +488,10 @@ config = {
         "PERFORMANCE_HINT": "LATENCY"
     }
 }
-
-with open("gpu_config.json", "w") as f:
-    json.dump(config, f)
-
-options = {"device_type": "GPU", "load_config": "gpu_config.json"}
+options = {"device_type": "GPU", "load_config": json.dumps(config)}
 session = ort.InferenceSession("model.onnx", 
                                 providers=[("OpenVINOExecutionProvider", options)])
 ```
-
 
 --- 
 ### Python API
