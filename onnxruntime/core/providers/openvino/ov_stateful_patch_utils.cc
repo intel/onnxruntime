@@ -77,8 +77,13 @@ void FuseCacheReorder(std::shared_ptr<ov::Model> ov_model,
                       const std::vector<std::string>& key_value_input_names,
                       int gather_dim,
                       const bool should_add_kvcache_reorder) {
-  if (ModelHasInputOutputNames(ov_model, "beam_idx") || ModelHasInputOutputNames(ov_model, "src_idx")) {
+  if (ModelHasInputOutputNames(ov_model, "beam_idx")) {
     throw std::runtime_error("Model already has fused cache");
+  }
+
+  if (ModelHasInputOutputNames(ov_model, "src_idx")
+      || ModelHasInputOutputNames(ov_model, "dst_idx")) {
+    throw std::runtime_error("Model already has reorder feature for KV cache");
   }
 
   // Define input name candidates in priority order
@@ -303,10 +308,6 @@ void PatchStatefulDecoder(std::shared_ptr<ov::Model> model, const bool should_ad
   auto batch_dim = 0;
 
   FuseCacheReorder(model, not_kv_inputs, key_value_input_names, batch_dim, should_add_kvcache_reorder);
-
-  printf("##$$before MakeStateful\n");
-  getchar();
-
   MakeStateful(model, key_value_input_names, key_value_output_names);
 }
 
