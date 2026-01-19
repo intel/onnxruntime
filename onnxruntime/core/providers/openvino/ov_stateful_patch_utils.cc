@@ -81,8 +81,7 @@ void FuseCacheReorder(std::shared_ptr<ov::Model> ov_model,
     throw std::runtime_error("Model already has fused cache");
   }
 
-  if (ModelHasInputOutputNames(ov_model, "src_idx")
-      || ModelHasInputOutputNames(ov_model, "dst_idx")) {
+  if (ModelHasInputOutputNames(ov_model, "src_idx")|| ModelHasInputOutputNames(ov_model, "dst_idx")) {
     throw std::runtime_error("Model already has reorder feature for KV cache");
   }
 
