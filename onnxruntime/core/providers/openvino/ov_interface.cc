@@ -469,7 +469,6 @@ std::optional<ov::Tensor> StatefulOVInferRequest::FindTensor(const std::string& 
 }
 
 void StatefulOVInferRequest::PreProcessInferRequest() {
-
   if (is_kvcache_reorder_added) {
     ov::Shape dst_idx_shape = ovInfReq.get_tensor("dst_idx").get_shape();
     const auto kv_num_heads = dst_idx_shape[1];
@@ -494,7 +493,9 @@ void StatefulOVInferRequest::PreProcessInferRequest() {
       FillTensor("src_idx", ov::element::i32, {0}, 0);
       FillTensor("dst_idx", ov::element::i32, {1, kv_num_heads, 0, kv_head_size}, 0);
     }
-  } else {
+  }
+
+  if (FindTensor("beam_idx")) {
     // Workaround: Setting the value here as it cannot be set at the ORT GenAI layer currently.
     // TODO(ankit): Address this issue and implement the fix at the appropriate layer.
     FillTensor("beam_idx", ov::element::i32, {1}, 0);
