@@ -469,12 +469,12 @@ std::optional<ov::Tensor> StatefulOVInferRequest::FindTensor(const std::string& 
 }
 
 void StatefulOVInferRequest::PreProcessInferRequest() {
-  // Workaround: Setting the value here as it cannot be set at the ORT GenAI layer currently.
-  // TODO(ankit): Address this issue and implement the fix at the appropriate layer.
-  FillTensor("beam_idx", ov::element::i32, {1}, 0);
-
   if (is_kvcache_reorder_added) {
     ov::Shape dst_idx_shape = ovInfReq.get_tensor("dst_idx").get_shape();
+    if (dst_idx_shape.size() < 4) {
+      ORT_THROW(log_tag + "dst_idx tensor shape must have at least 4 dimensions, but got " +
+                std::to_string(dst_idx_shape.size()) + " dimensions");
+    }
     const auto kv_num_heads = dst_idx_shape[1];
     const auto kv_head_size = dst_idx_shape[3];
     if (kv_src_indices.size() > 0) {
@@ -497,6 +497,12 @@ void StatefulOVInferRequest::PreProcessInferRequest() {
       FillTensor("src_idx", ov::element::i32, {0}, 0);
       FillTensor("dst_idx", ov::element::i32, {1, kv_num_heads, 0, kv_head_size}, 0);
     }
+  }
+
+  if (FindTensor("beam_idx")) {
+    // Workaround: Setting the value here as it cannot be set at the ORT GenAI layer currently.
+    // TODO(ankit): Address this issue and implement the fix at the appropriate layer.
+    FillTensor("beam_idx", ov::element::i32, {1}, 0);
   }
 
   // If 'prefill use full chat history' mode is enabled, we need to cache input_ids and position_ids.
