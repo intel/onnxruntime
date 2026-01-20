@@ -471,6 +471,10 @@ std::optional<ov::Tensor> StatefulOVInferRequest::FindTensor(const std::string& 
 void StatefulOVInferRequest::PreProcessInferRequest() {
   if (is_kvcache_reorder_added) {
     ov::Shape dst_idx_shape = ovInfReq.get_tensor("dst_idx").get_shape();
+    if (dst_idx_shape.size() < 4) {
+      ORT_THROW(log_tag + "dst_idx tensor shape must have at least 4 dimensions, but got " +
+                std::to_string(dst_idx_shape.size()) + " dimensions");
+    }
     const auto kv_num_heads = dst_idx_shape[1];
     const auto kv_head_size = dst_idx_shape[3];
     if (kv_src_indices.size() > 0) {
