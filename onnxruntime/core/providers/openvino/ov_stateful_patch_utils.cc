@@ -122,6 +122,8 @@ void FuseCacheReorder(std::shared_ptr<ov::Model> ov_model,
     not_kv_inputs.push_back(beam_idx->get_friendly_name());
   }
 
+
+
   // Go over all cache parameters and fuse _reorder_cache with indices provided by the new parameter beam_idx
   for (const auto& input_name : key_value_input_names) {
     auto parameter_output_port = ov_model->input(input_name);
