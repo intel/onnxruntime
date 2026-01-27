@@ -122,6 +122,23 @@ void FuseCacheReorder(std::shared_ptr<ov::Model> ov_model,
     not_kv_inputs.push_back(beam_idx->get_friendly_name());
   }
 
+  std::shared_ptr<ov::opset13::Parameter> src_idx;
+  std::shared_ptr<ov::opset13::Parameter> dst_idx;
+
+  if (should_add_kvcache_reorder) {
+    src_idx = std::make_shared<ov::opset13::Parameter>(ov::element::i32, ov::PartialShape({update_shape[2]}));
+    src_idx->set_friendly_name("src_idx");
+    src_idx->output(0).get_tensor().add_names({"src_idx"});
+    ov_model->add_parameters({src_idx});
+    not_kv_inputs.push_back(src_idx->get_friendly_name());
+
+    dst_idx = std::make_shared<ov::opset13::Parameter>(ov::element::i32, update_shape);
+    dst_idx->set_friendly_name("dst_idx");
+    dst_idx->output(0).get_tensor().add_names({"dst_idx"});
+    ov_model->add_parameters({dst_idx});
+    not_kv_inputs.push_back(dst_idx->get_friendly_name());
+  }
+
   // Go over all cache parameters and fuse _reorder_cache with indices provided by the new parameter beam_idx
   for (const auto& input_name : key_value_input_names) {
     auto parameter_output_port = ov_model->input(input_name);
@@ -143,6 +160,22 @@ void FuseCacheReorder(std::shared_ptr<ov::Model> ov_model,
       output_node = std::make_shared<ov::opset13::Gather>(parameter_output_port,
                                                           beam_idx,
                                                           ov::opset13::Constant::create(ov::element::i64, {}, {gather_dim}));
+    }
+
+    std::shared_ptr<ov::Node> output_node;
+    if (should_add_kvcache_reorder) {
+      auto updatekv_gather_op =
+          std::make_shared<ov::opset13::Gather>(gather_op,
+                                                src_idx,
+                                                ov::opset13::Constant::create(ov::element::i64, {}, {2}));
+
+      auto updatekv_op = std::make_shared<ov::opset12::ScatterElementsUpdate>(gather_op,
+                                                                              dst_idx,
+                                                                              updatekv_gather_op,
+                                                                              ov::opset13::Constant::create(ov::element::i64, {}, {2}));
+      output_node = updatekv_op;
+    } else {
+      output_node = gather_op;
     }
 
     // Replace the source output for all consumers of the input tensor
@@ -307,6 +340,7 @@ void PatchStatefulDecoder(std::shared_ptr<ov::Model> model, const bool should_ad
   auto batch_dim = 0;
 
   FuseCacheReorder(model, not_kv_inputs, key_value_input_names, batch_dim, should_add_kvcache_reorder);
+
   MakeStateful(model, key_value_input_names, key_value_output_names);
 }
 
