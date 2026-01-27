@@ -1,4 +1,19 @@
+---
+title: Plugin Execution Provider Packaging Guidance
+description: Packaging guidance for plugin EP packages
+parent: Execution Providers
+nav_order: 18
+redirect_from: /docs/reference/execution-providers/Plugin-EP-Packaging
+---
+
 # ONNX Runtime Plugin Execution Provider Packaging Guidance
+{: .no_toc }
+
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
 
 ## Overview
 
