@@ -307,6 +307,7 @@ void PatchStatefulDecoder(std::shared_ptr<ov::Model> model, const bool should_ad
   auto batch_dim = 0;
 
   FuseCacheReorder(model, not_kv_inputs, key_value_input_names, batch_dim, should_add_kvcache_reorder);
+
   MakeStateful(model, key_value_input_names, key_value_output_names);
 }
 
