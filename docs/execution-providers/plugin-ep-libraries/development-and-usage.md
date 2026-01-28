@@ -1,24 +1,22 @@
 ---
-title: Plugin EP libraries
-description: Plugin EP libraries
-parent: Execution Providers
-nav_order: 17
+title: Development and Usage
+description: Development and Usage
+grand_parent: Execution Providers
+parent: Plugin Execution Provider Libraries
+nav_order: 1
 redirect_from: /docs/reference/execution-providers/Plugin-EP-Libraries
 ---
 
-# Plugin Execution Provider Libraries
+# Plugin Execution Provider Library Development and Usage
 {: .no_toc }
+
+This page provides a reference for the APIs necessary to develop and use plugin EP libraries with ONNX Runtime.
 
 ## Contents
 {: .no_toc }
 
 * TOC placeholder
 {:toc}
-
-## Background
-An ONNX Runtime Execution Provider (EP) executes model operations on one or more hardware accelerators (e.g., GPU, NPU, etc.). ONNX Runtime provides a variety of built-in EPs, such as the default CPU EP. To enable further extensibility, ONNX Runtime supports user-defined plugin EP libraries that an application can register with ONNX Runtime for use in an ONNX Runtime inference session.<br/>
-
-This page provides a reference for the APIs necessary to develop and use plugin EP libraries with ONNX Runtime.
 
 ## Creating a plugin EP library
 A plugin EP is built as a dynamic/shared library that exports the functions `CreateEpFactories()` and `ReleaseEpFactory()`. ONNX Runtime calls `CreateEpFactories()` to obtain one or more instances of `OrtEpFactory`. An `OrtEpFactory` creates `OrtEp` instances and specifies the hardware devices supported by the EPs it creates.
@@ -45,7 +43,7 @@ The following table lists the **required** variables and functions that an imple
 
 <tr>
 <td>GetName</td>
-<td>Get the execution provider name.<br/><br/>The recommended convention for a plugin execution provider name is to have the name end with the suffix "PluginExecutionProvider". E.g., "ContosoAiPluginExecutionProvider".</td>
+<td>Get the execution provider name.<br/><br/>The recommended convention for an execution provider name is to have the name end with the suffix "ExecutionProvider". E.g., "ContosoAiExecutionProvider".</td>
 <td><a href="https://github.com/microsoft/onnxruntime/blob/16ae99ede405d3d6c59d7cce80c53f5f7055aeed/onnxruntime/test/autoep/library/ep.cc#L181">ExampleEp::GetNameImpl()</a></td>
 </tr>
 
@@ -330,7 +328,7 @@ For example, if a single factory instance supports both CPU and NPU, then the ca
   - ep_device_1: (factory_0, NPU)
 
 <br/>
-<p align="center"><img width="100%" src="../../images/plugin_ep_sd_lib_reg.png" alt="Sequence diagram showing registration and unregistration of a plugin EP library"/></p>
+<p align="center"><img width="100%" src="../../../images/plugin_ep_sd_lib_reg.png" alt="Sequence diagram showing registration and unregistration of a plugin EP library"/></p>
 
 ### Session creation with explicit OrtEpDevice(s)
 The application code below uses the API function [SessionOptionsAppendExecutionProvider_V2](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a285a5da8c9a63eff55dc48e4cf3b56f6) to add an EP from a library to an ONNX Runtime session.
@@ -374,7 +372,7 @@ env.UnregisterExecutionProviderLibrary(/*...*/);
 As shown in the following sequence diagram, ONNX Runtime calls `OrtEpFactory::CreateEp()` during session creation in order to create an instance of the plugin EP.
 
 <br/>
-<p align="center"><img width="100%" src="../../images/plugin_ep_sd_appendv2.png" alt="Sequence diagram showing session creation with explicit ep devices"/></p>
+<p align="center"><img width="100%" src="../../../images/plugin_ep_sd_appendv2.png" alt="Sequence diagram showing session creation with explicit ep devices"/></p>
 
 ### Session creation with automatic EP selection
 The application code below uses the API function [SessionOptionsSetEpSelectionPolicy](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a2ae116df2c6293e4094a6742a6c46f7e) to have ONNX Runtime automatically select an EP based on the user's policy (e.g., PREFER_NPU).
@@ -397,7 +395,7 @@ env.UnregisterExecutionProviderLibrary(/*...*/);
 ```
 
 <br/>
-<p align="center"><img width="100%" src="../../images/plugin_ep_sd_autoep.png" alt="Sequence diagram showing session creation with automatic EP selection"/></p>
+<p align="center"><img width="100%" src="../../../images/plugin_ep_sd_autoep.png" alt="Sequence diagram showing session creation with automatic EP selection"/></p>
 
 ## API reference
 API header files:
