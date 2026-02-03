@@ -10,7 +10,7 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
-SharedContext::SharedContext(const std::filesystem::path &bin_path)
+SharedContext::SharedContext(const std::filesystem::path& bin_path)
     : bin_path_(bin_path),
       bin_manager_(bin_path_),
       weight_file_manager_(WeightFileManager::Get()) {
