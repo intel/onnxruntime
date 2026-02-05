@@ -7,7 +7,10 @@
 #include <string>
 #include "core/framework/provider_options.h"
 #include "core/framework/tensor_shape.h"
+#include "core/graph/model.h"
+#include "core/common/logging/logging.h"
 #include "test/util/include/test_utils.h"
+#include "test/util/include/asserts.h"
 #include "test/util/include/test/test_environment.h"
 #include "test/util/include/default_providers.h"
 #include "core/session/onnxruntime_cxx_api.h"
@@ -15,6 +18,8 @@
 #include "core/session/inference_session.h"
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
+#include "test/unittest_util/qdq_test_utils.h"
+
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::logging;
