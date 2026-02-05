@@ -103,6 +103,7 @@ class SharedContext : public std::enable_shared_from_this<SharedContext> {
       const void* ptr_{nullptr};
       ov::Tensor tensor_;
     };
+    mutable std::mutex mutex_;
     std::map<std::string, MappingContainer> imported_device_tensors_;
   };
 
