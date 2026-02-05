@@ -38,7 +38,6 @@ class DataSetBuffer {
   void Set(size_t index, std::shared_ptr<DataSet> data_set) {
     std::unique_lock<std::mutex> lk(mutex_);
     data_sets_[index] = data_set;
-    lk.unlock();
     cv_.notify_all();
   }
 

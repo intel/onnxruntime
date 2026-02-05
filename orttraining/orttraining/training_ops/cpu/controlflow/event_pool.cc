@@ -18,7 +18,6 @@ void OrtEventPool::SignalEvent(int64_t id) {
   CheckRange(id);
   std::unique_lock<std::mutex> lock(pool_[id].mutex);
   pool_[id].signaled.store(true);
-  lock.unlock();
   pool_[id].cv.notify_all();
 };
 
