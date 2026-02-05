@@ -207,6 +207,8 @@ OVExeNetwork OVCore::ImportModel(ModelBlobWrapper& model_blob,
                                  std::string name) {
   return OvExceptionBoundary<true>([&]() {
     ov::CompiledModel obj;
+    // Import from tensor enables file mapping and should be used as primary option. Import from stream is only used for OV versions prior to OV25.3.
+    // Todo: Remove import from stream when OV26.0 support is added and OV 2025.2 support is removed.
 #if (OPENVINO_VERSION_MAJOR > 2025 || (OPENVINO_VERSION_MAJOR == 2025 && OPENVINO_VERSION_MINOR >= 3))
     if (model_blob.tensor_) {
       obj = core.import_model(model_blob.tensor_, hw_target, device_config);
