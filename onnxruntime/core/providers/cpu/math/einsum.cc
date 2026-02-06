@@ -65,8 +65,7 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
     einsum_compute_processor.SetDeviceHelpers(EinsumOp::DeviceHelpers::CpuDeviceHelpers::Transpose,
                                               EinsumOp::DeviceHelpers::CpuDeviceHelpers::MatMul<float>,
                                               EinsumOp::DeviceHelpers::CpuDeviceHelpers::ReduceSum<float>,
-                                              EinsumOp::DeviceHelpers::CpuDeviceHelpers::DataCopy,
-                                              EinsumOp::DeviceHelpers::CpuDeviceHelpers::ZeroBuffer);
+                                              EinsumOp::DeviceHelpers::CpuDeviceHelpers::DataCopy);
     return einsum_compute_processor.Run();
   } else if (inputs[0]->IsDataType<int32_t>()) {
     auto einsum_compute_processor = EinsumTypedComputeProcessor<int32_t>(context,
@@ -79,8 +78,7 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
     einsum_compute_processor.SetDeviceHelpers(EinsumOp::DeviceHelpers::CpuDeviceHelpers::Transpose,
                                               EinsumOp::DeviceHelpers::CpuDeviceHelpers::MatMul<int32_t>,
                                               EinsumOp::DeviceHelpers::CpuDeviceHelpers::ReduceSum<int32_t>,
-                                              EinsumOp::DeviceHelpers::CpuDeviceHelpers::DataCopy,
-                                              EinsumOp::DeviceHelpers::CpuDeviceHelpers::ZeroBuffer);
+                                              EinsumOp::DeviceHelpers::CpuDeviceHelpers::DataCopy);
 
     return einsum_compute_processor.Run();
   } else if (inputs[0]->IsDataType<double>()) {
@@ -94,8 +92,7 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
     einsum_compute_processor.SetDeviceHelpers(EinsumOp::DeviceHelpers::CpuDeviceHelpers::Transpose,
                                               EinsumOp::DeviceHelpers::CpuDeviceHelpers::MatMul<double>,
                                               EinsumOp::DeviceHelpers::CpuDeviceHelpers::ReduceSum<double>,
-                                              EinsumOp::DeviceHelpers::CpuDeviceHelpers::DataCopy,
-                                              EinsumOp::DeviceHelpers::CpuDeviceHelpers::ZeroBuffer);
+                                              EinsumOp::DeviceHelpers::CpuDeviceHelpers::DataCopy);
     return einsum_compute_processor.Run();
   } else if (inputs[0]->IsDataType<int64_t>()) {
     auto einsum_compute_processor = EinsumTypedComputeProcessor<int64_t>(context,
@@ -107,8 +104,7 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
     einsum_compute_processor.SetDeviceHelpers(EinsumOp::DeviceHelpers::CpuDeviceHelpers::Transpose,
                                               EinsumOp::DeviceHelpers::CpuDeviceHelpers::MatMul<int64_t>,
                                               EinsumOp::DeviceHelpers::CpuDeviceHelpers::ReduceSum<int64_t>,
-                                              EinsumOp::DeviceHelpers::CpuDeviceHelpers::DataCopy,
-                                              EinsumOp::DeviceHelpers::CpuDeviceHelpers::ZeroBuffer);
+                                              EinsumOp::DeviceHelpers::CpuDeviceHelpers::DataCopy);
 
     return einsum_compute_processor.Run();
   }

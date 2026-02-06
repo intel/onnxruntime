@@ -10,10 +10,9 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
-SharedContext::SharedContext(const std::filesystem::path& bin_path)
-    : bin_path_(bin_path),
-      bin_manager_(bin_path_),
-      weight_file_manager_(WeightFileManager::Get()) {
+SharedContext::SharedContext(std::filesystem::path bin_path)
+    : bin_path_(std::move(bin_path)),
+      bin_manager_(bin_path_) {
 }
 
 static bool InRange(size_t offset, size_t size, size_t total_size) {
@@ -75,7 +74,7 @@ void SharedContext::LoadTensorFromFile(
   const auto weights_location = model_dir / value.serialized.location;
   auto& weights_file = weight_files_[weights_location];
   if (!weights_file) {
-    weights_file = weight_file_manager_->GetOrCreateWeightsFile(weights_location);
+    weights_file = std::make_unique<WeightsFile>(weights_location);
   }
 
   ov::Tensor tensor;

@@ -34,8 +34,8 @@ ShaderHelper::ShaderHelper(const ProgramBase& program,
       dispatch_group_size_z_{dispatch_group_size_z},
       program_{program},
       program_metadata_{program_metadata},
-      additional_implementation_ss_{kStringInitialSizeShaderSourceCodeAdditionalImplementation},
-      body_ss_{kStringInitialSizeShaderSourceCodeMain} {}
+      additional_implementation_ss_{&additional_implementation_},
+      body_ss_{&body_} {}
 
 Status ShaderHelper::Init() {
   // dispatch group size is normalized so no need to validate it here
@@ -59,6 +59,8 @@ Status ShaderHelper::Init() {
   // init body string stream
   bool is_1d_dispatch = dispatch_group_size_y_ == 1 && dispatch_group_size_z_ == 1;
   bool use_indirect_dispatch = program_.IndirectDispatchTensor() != nullptr;
+  body_.reserve(4096);
+  additional_implementation_.reserve(1024);
 
   // append header for main function so it is ready for user to append main function body
   body_ss_ << "@compute @workgroup_size(workgroup_size_x, workgroup_size_y, workgroup_size_z)\n"
@@ -382,7 +384,7 @@ Status ShaderHelper::ValidateIndices() const {
   return Status::OK();
 }
 
-Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& shape_uniform_ranks) {
+Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& shape_uniform_ranks) const {
   SS(ss, kStringInitialSizeShaderSourceCode);
 
   //
@@ -631,12 +633,12 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
   //
   // Additional Implementation
   //
-  ss << SS_GET(additional_implementation_ss_);
+  ss << additional_implementation_;
 
   //
   // Main Function Body
   //
-  ss << SS_GET(body_ss_);
+  ss << body_;
   ss << "\n"
         "}\n";
 
