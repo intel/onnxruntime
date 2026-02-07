@@ -134,30 +134,25 @@ class OVEP_ExtInit_Tests : public ::testing::TestWithParam<std::string> {
 
       // Save model
       std::ofstream model_file(model_path_, std::ios::binary);
-      if (!model_proto.SerializeToOstream(&model_file)) {
-        throw std::runtime_error("Failed to serialize model");
-      }
-      model_file.close();
+      ASSERT_TRUE(model_file.is_open()) << "Failed to open model file";
+      ASSERT_TRUE(model_proto.SerializeToOstream(&model_file)) << "Failed to serialize model";
     }
 
     // 3. Save weights file (concatenate all initializers)
     {
       std::ofstream weights_file(weights_path_, std::ios::binary);
-      if (!weights_file.is_open()) {
-        throw std::runtime_error("Failed to open weights file");
-      }
+      ASSERT_TRUE(weights_file.is_open()) << "Failed to open weights file";
       for (const auto& w : initializer_data_) {
         weights_file.write(reinterpret_cast<const char*>(w.data()), w.size() * sizeof(float));
       }
-      weights_file.close();
+      ASSERT_TRUE(weights_file.good()) << "Failed to write all weights to file";
     }
 
     // 4. Load model and weights into memory (once for all tests)
     model_data_ = LoadFileToMemory(model_path_);
     weights_data_ = LoadFileToMemory(weights_path_);
-    if (!model_data_.has_value() || !weights_data_.has_value()) {
-      throw std::runtime_error("Failed to load model or weights into memory");
-    }
+    ASSERT_TRUE(model_data_.has_value()) << "Failed to load model into memory";
+    ASSERT_TRUE(weights_data_.has_value()) << "Failed to load weights into memory";
   }
 
   static void TearDownTestSuite() {
