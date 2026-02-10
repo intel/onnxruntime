@@ -156,12 +156,12 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
       if (has_producer) {
         outputs.push_back(output_name);
       }
-#ifndef NDEBUG
       else {
-        std::cout << "WARNING: Skipping orphaned graph output '" << output_name
-                  << "' - no node produces this output" << std::endl;
+        if (backend_utils::IsCILogEnabled()) {
+           std::cout << "Skipping graph output without a producer node " << output_name << std::endl;
+        }
       }
-#endif
+
     }
 
     // Create and add this graph to result.
