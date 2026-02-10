@@ -137,8 +137,32 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
       }
     }
 
-    // Fill outputs with names
-    Iterable2String(outputs, graph_viewer_.GetOutputs());
+    for (const auto& output_node_arg : graph_viewer_.GetOutputs()) {
+      const auto& output_name = output_node_arg->Name();
+
+      // Search for a node that produces this output
+      bool has_producer = false;
+      for (const auto& node_idx : nodes) {
+        const Node* n = graph_viewer_.GetNode(node_idx);
+        for (const auto* output_def : n->OutputDefs()) {
+          if (output_def && output_def->Name() == output_name) {
+            has_producer = true;
+            break;
+          }
+        }
+        if (has_producer) break;
+      }
+
+      if (has_producer) {
+        outputs.push_back(output_name);
+      }
+#ifndef NDEBUG
+      else {
+        std::cout << "WARNING: Skipping orphaned graph output '" << output_name
+                  << "' - no node produces this output" << std::endl;
+      }
+#endif
+    }
 
     // Create and add this graph to result.
     AppendClusterToSubGraph(graph_viewer_.GetNodesInTopologicalOrder(), inputs, outputs, result);
