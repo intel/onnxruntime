@@ -79,7 +79,7 @@ Runtime parameters set during OpenVINO Execution Provider initialization to cont
 | [**num_of_threads**](#num_of_threads--num_streams) | string | Any positive integer > 0 | size_t | Control number of inference threads |
 | [**num_streams**](#num_of_threads--num_streams) | string | Any positive integer > 0 | size_t | Set parallel execution streams for throughput |
 | [**cache_dir**](#cache_dir) | string | Valid filesystem path | string | Enable openvino model caching for improved latency  |
-| [**load_config**](#load_config) | string | JSON file path | string | Load and set custom/HW specific OpenVINO properties from JSON |
+| [**load_config**](#load_config) | string | JSON string | string | Load and set custom/HW specific OpenVINO properties from JSON |
 | [**enable_qdq_optimizer**](#enable_qdq_optimizer) | string | True/False | boolean | Enable QDQ optimization for NPU |
 | [**disable_dynamic_shapes**](#disable_dynamic_shapes) | string | True/False | boolean | Convert dynamic models to static shapes |
 | [**reshape_input**](#reshape_input) | string | input_name[shape_bounds] | string | Specify upper and lower bound for dynamic shaped inputs for improved performance with NPU |
@@ -87,7 +87,7 @@ Runtime parameters set during OpenVINO Execution Provider initialization to cont
 
 **Deprecation Notice**
 
-The following provider options are **deprecated** and should be migrated to `load_config` for better compatibility with future releases.
+The following provider options are **deprecated since ORT 1.23** and should be migrated to `load_config` for better compatibility with future releases.
 
 | Deprecated Provider Option | `load_config` Equivalent | Recommended Migration |
 |---------------------------|------------------------|----------------------|
@@ -185,26 +185,25 @@ Manages parallel inference streams for throughput optimization (default: `1` for
 
 ### `cache_dir`
 
-**DEPRECATED:** This option is deprecated since OpenVINO 2025.3/ORT 1.23 and can be set via `load_config` using the `CACHE_DIR` property. `cache_dir` is configured **per-session** rather than globally.
+**DEPRECATED:** This option is deprecated since OpenVINO 2025.3/ORT 1.23 and can be set via `load_config` using the `CACHE_DIR` property.
 
 
 Enables model caching to significantly reduce subsequent load times. Supports CPU, NPU, and GPU devices with kernel caching on iGPU/dGPU.  
 
 **Benefits**
-- Saves compiled models and `cl_cache` files for dynamic shapes
+- Saves compiled models for faster subsequent loading
 - Eliminates recompilation overhead on subsequent runs
-- Particularly useful for complex models and frequent application restarts
-
+- Particularly useful for optimizing application startup latencies, especially for complex models
 
 ---
 
 ### `load_config`
 
-**Recommended Configuration Method** for setting OpenVINO runtime properties. Provides direct access to OpenVINO properties through a JSON configuration file during runtime.
+**Recommended Configuration Method** for setting OpenVINO runtime properties. Provides direct access to OpenVINO properties through a JSON String during runtime.
 
 #### Overview
 
-`load_config` enables fine-grained control over OpenVINO inference behavior by loading properties from a JSON file. This is the **preferred method** for configuring advanced OpenVINO features, offering:
+`load_config` enables fine-grained control over OpenVINO inference behavior by loading properties from a JSON String. This is the **preferred method** for configuring advanced OpenVINO features, offering:
 
 - Direct access to OpenVINO runtime properties
 - Device-specific configuration
@@ -237,13 +236,12 @@ config = {
         "PERFORMANCE_HINT": "THROUGHPUT",
         "DEVICE_PROPERTIES": {
             "CPU": {
-                "INFERENCE_PRECISION_HINT": "f32",
-                "NUM_STREAMS": "3",
-                "INFERENCE_NUM_THREADS": "8"
+                "PERFORMANCE_HINT": "LATENCY",
+                "NUM_STREAMS": "3"
             },
             "GPU": {
-                "INFERENCE_PRECISION_HINT": "f16",
-                "NUM_STREAMS": "5"
+                "EXECUTION_MODE_HINT": "ACCURACY",
+                "PERFORMANCE_HINT": "LATENCY"
             }
         }
     }
@@ -441,14 +439,12 @@ Configures resource allocation priority for multi-model deployment scenarios.
 ```python
 import onnxruntime as ort
 import json
-import openvino
 
 # Create config
 config = {
     "AUTO": {
         "PERFORMANCE_HINT": "THROUGHPUT",
-        "PERF_COUNT": "NO",
-        "DEVICE_PROPERTIES": "{CPU:{INFERENCE_PRECISION_HINT:f32,NUM_STREAMS:3},GPU:{INFERENCE_PRECISION_HINT:f32,NUM_STREAMS:5}}"
+        "DEVICE_PROPERTIES": "{GPU:{EXECUTION_MODE_HINT:ACCURACY,PERFORMANCE_HINT:LATENCY}}"
     }
 }
 # Use config with session
@@ -456,18 +452,17 @@ options = {"device_type": "AUTO", "load_config": json.dumps(config)}
 session = ort.InferenceSession("model.onnx", 
                                 providers=[("OpenVINOExecutionProvider", options)])
 ```
+
 #### Using load_config for CPU
 ```python
 import onnxruntime as ort
 import json
-import openvino
 
 # Create CPU config
 config = {
     "CPU": {
-        "INFERENCE_PRECISION_HINT": "f32",
-        "NUM_STREAMS": "3",
-        "INFERENCE_NUM_THREADS": "8"
+        "PERFORMANCE_HINT": "LATENCY",
+        "NUM_STREAMS": "1"
     }
 }
 options = {"device_type": "CPU", "load_config": json.dumps(config)}
@@ -478,12 +473,11 @@ session = ort.InferenceSession("model.onnx",
 ```python
 import onnxruntime as ort
 import json
-import openvino
 
 # Create GPU config with caching
 config = {
     "GPU": {
-        "INFERENCE_PRECISION_HINT": "f16",
+        "EXECUTION_MODE_HINT": "ACCURACY",
         "CACHE_DIR": "./model_cache",
         "PERFORMANCE_HINT": "LATENCY"
     }
@@ -491,6 +485,7 @@ config = {
 options = {"device_type": "GPU", "load_config": json.dumps(config)}
 session = ort.InferenceSession("model.onnx", 
                                 providers=[("OpenVINOExecutionProvider", options)])
+
 ```
 
 --- 
