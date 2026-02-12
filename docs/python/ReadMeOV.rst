@@ -16,7 +16,7 @@ Requirements
 ^^^^^^^^^^^^
 
 - Ubuntu 18.04 or above, or Windows 10 or above - 64 bit
-- Python 3.11, 3.12 and 3.13 for Windows and Linux
+- Python 3.11, 3.12, 3.13 and 3.14 for Windows and Linux
 
 This package supports:
  - Intel® CPUs
