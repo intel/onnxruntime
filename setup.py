@@ -510,6 +510,9 @@ if is_manylinux:
             "libopenvino.so.2025.4.1",
             "libopenvino_c.so.2025.4.1",
             "libopenvino_onnx_frontend.so.2025.4.1",
+            "libopenvino.so.2541",
+            "libopenvino_c.so.2541",
+            "libopenvino_onnx_frontend.so.2541",     
         ]
         for x in ov_libs:
             y = "onnxruntime/capi/" + x
