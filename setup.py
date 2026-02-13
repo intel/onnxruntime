@@ -500,8 +500,9 @@ if is_manylinux:
             "libopenvino_intel_gpu_plugin.so",
             "libopenvino_auto_plugin.so",
             "libopenvino_hetero_plugin.so",
-            "libtbb.so.2",
-            "libtbbmalloc.so.2",
+            "libtbb.so",                       
+            "libtbbmalloc.so",
+            "libtbb.so.12",
             "libopenvino.so",
             "libopenvino_c.so",
             "libopenvino_onnx_frontend.so",
@@ -509,7 +510,6 @@ if is_manylinux:
             "libopenvino.so.2025.4.1",
             "libopenvino_c.so.2025.4.1",
             "libopenvino_onnx_frontend.so.2025.4.1",
-            "libtbb.so.12"
         ]
         for x in ov_libs:
             y = "onnxruntime/capi/" + x
