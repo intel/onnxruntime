@@ -506,15 +506,12 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
       }
     }
 
-    // when we have external weights in memory, the model proto will actually embed those
+    // when we have external weights in memory, by default the model proto will embed those
     // and bloat the serialized string. We can avoid that by not including the data in the proto
-    // but then we have to update those initializers and set the external_data fields to mem_addr tag...
-    // proto is limited to 2GB, but let's use 32MB as threshold to be conservative and still gain some memory reductions.
+    // and use external initializers with external_data fields set to mem_addr tag...
 #if (((OPENVINO_VERSION_MAJOR == 2025) && (OPENVINO_VERSION_MINOR > 3)) || (OPENVINO_VERSION_MAJOR > 2025))
-    constexpr size_t MAX_EMBEDDED_INITIALIZER_SIZE = 1024 * 1024 * 32;
     const bool include_initializer_data_in_proto = !(session_context_.has_external_weights &&
-                                                     external_initializers_offset_and_length.size() > 1 &&
-                                                     extInitializerTotalSize >= MAX_EMBEDDED_INITIALIZER_SIZE);
+                                                     external_initializers_offset_and_length.size() > 1);
 #else
     const bool include_initializer_data_in_proto = true;
 #endif
