@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-
 #include <chrono>
 #include <cmath>
 #include <string>
@@ -16,7 +15,6 @@ extern std::unique_ptr<Ort::Env> ort_env;
 
 constexpr const ORTCHAR_T* kSqueezeNetModelUri =
     ORT_TSTR("testdata/squeezenet/model.onnx");
-
 
 class OVEPWorkloadTypeTests : public ::testing::Test {
  protected:
@@ -120,7 +118,6 @@ class OVEPWorkloadTypeTests : public ::testing::Test {
 
 namespace onnxruntime {
 namespace test {
-
 
 // Test 1: Dynamic workload-type switching with consistency check
 //   Baseline (no workload type) → Efficient → Default
