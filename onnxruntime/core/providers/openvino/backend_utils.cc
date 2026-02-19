@@ -38,6 +38,16 @@ bool IsCILogEnabled() {
   return false;
 }
 
+std::string get_shapes_string(const reshape_t& shapes) {
+  std::stringstream ss;
+  for (auto& shape : shapes) {
+    if (!ss.str().empty())
+      ss << ", ";
+    ss << "\'" << shape.first << "': " << shape.second;
+  }
+  return ss.str();
+}
+
 std::shared_ptr<const OVNetwork>
 CreateOVModel(std::string&& model,
               const SessionContext& session_context,
@@ -46,17 +56,27 @@ CreateOVModel(std::string&& model,
     std::cout << "CreateNgraphFunc" << std::endl;
   }
   try {
-    auto ov_model = OVCore::Get()->ReadModel(std::move(model), session_context.onnx_model_path_name.string());
+     auto ov_model = OVCore::Get()->ReadModel(std::move(model), session_context.onnx_model_path_name.string());
+
+     if (!session_context.affinity.empty()) {
+       LOGS_DEFAULT(INFO) << log_tag << "Setting the ov nodes to specified affinity";
+       Set_Affinity(ov_model, session_context);
+     }
 
     if (!session_context.reshape.empty()) {
       LOGS_DEFAULT(INFO) << log_tag << "Reshaping the ov tensor to specified shape";
       ov_model->reshape(session_context.reshape);
     }
 
+     ov::preprocess::PrePostProcessor preproc(ov_model);
+     ov_model = preproc.build();
+
+
     if (!session_context.layout.empty()) {
       LOGS_DEFAULT(INFO) << log_tag << "Setting the ov tensor layout to specified layout";
       ov_model = Set_Layout(ov_model, session_context.layout);
     }
+
     // Check for Constant Folding
     if ((session_context.device_type != "NPU") && !session_context.is_wholly_supported_graph) {
       ov::pass::ConstantFolding pass_const_obj;
@@ -139,6 +159,33 @@ std::shared_ptr<OVNetwork> Set_Layout(std::shared_ptr<OVNetwork> ov_model, const
   }
 
   return preproc.build();
+}
+
+void Set_Affinity(std::shared_ptr<OVNetwork> ov_model, const SessionContext& session_context) {
+
+  std::string selected_device = "CPU";
+  if (auto delimit = session_context.device_type.find(":"); delimit != std::string::npos) {
+    auto device_mode = session_context.device_type.substr(0, delimit);
+    if (device_mode.find("HETERO") != std::string::npos) {
+      const auto& devices = session_context.device_type.substr(delimit + 1);
+      auto delimit_comma = devices.find(",");
+      selected_device = devices.substr(0, delimit_comma);
+    } else {
+      ORT_THROW("[ERROR] [OpenVINO] Invalid device_type is selected. Supported modes is HETERO");
+    }
+  } else {
+    ORT_THROW("[ERROR] [OpenVINO] Invalid device_type is selected. Supported modes is HETERO");
+  }
+
+  for (auto&& ov_node : ov_model->get_ops()) {
+     auto name = ov_node->get_friendly_name();
+     auto it = session_context.affinity.find(name);
+     if (it != session_context.affinity.end()) {
+       ov_node->get_rt_info()["affinity"] = it->second;
+     } else {
+       ov_node->get_rt_info()["affinity"] = selected_device;
+     }
+  }
 }
 
 int GetFirstAvailableDevice(SessionContext& session_context) {

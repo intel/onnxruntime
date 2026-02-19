@@ -100,6 +100,7 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
                                !session_context_.so_context_enable &&
                                session_context_.reshape.empty() &&
                                session_context_.layout.empty() &&
+                               session_context_.affinity.empty() &&
                                !enable_causallm &&
                                !eligible_for_cpu_fallback &&
                                auto_unified_compile);
