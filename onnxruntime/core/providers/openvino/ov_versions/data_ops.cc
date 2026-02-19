@@ -77,7 +77,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Atanh", V_2020_4, {"CPU"}},
     {"Atanh", V_2022_1, {"GPU"}},
     {"Attention", V_2023_0, {"CPU", "GPU"}},
-    {"GroupQueryAttention", V_2025_1, {"GPU"}},
+    {"GroupQueryAttention", V_2025_1, {"CPU", "GPU"}},
     {"AveragePool", V_2020_4, {"CPU", "GPU"}},
     {"BatchNormalization", V_2020_4, {"CPU", "GPU"}},
     {"BiasGelu", V_2023_0, {"CPU", "GPU"}},
@@ -382,6 +382,7 @@ void DataOps::populate_op_mode_supported() {
   no_dimension_supported_.push_back({"Sub", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Unsqueeze", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Where", V_2021_2, {"All"}});
+  no_dimension_supported_.push_back({"GroupQueryAttention", V_2025_1, {"All"}});
 
   subgraph_supported_.push_back({"Cast", V_2020_4, {"All"}});
   subgraph_supported_.push_back({"Concat", V_2020_4, {"All"}});
