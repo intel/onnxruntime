@@ -16,7 +16,8 @@ namespace onnxruntime {
 namespace openvino_ep {
 
 struct ModelBlobWrapper {
-  ModelBlobWrapper(std::unique_ptr<std::istream> stream, const ov::Tensor& tensor) : stream_(std::move(stream)), tensor_(tensor) {}
+  explicit ModelBlobWrapper(std::unique_ptr<std::istream> stream, const ov::Tensor& tensor) : stream_(std::move(stream)), tensor_(tensor) {}
+  explicit ModelBlobWrapper(const ov::Tensor& tensor) : tensor_(tensor) {};
   std::unique_ptr<std::istream> stream_;
   ov::Tensor tensor_;  // May be empty if model blob is provided as stream only.
 };
