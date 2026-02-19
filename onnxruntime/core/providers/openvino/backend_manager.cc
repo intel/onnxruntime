@@ -159,8 +159,8 @@ BackendManager::BackendManager(SessionContext& session_context,
     } else {
       ORT_THROW(
           "Exporting dynamically compiled models at runtime is not supported. "
-          "Cannot export blobs of dynamic models that request static shape inference. "
-          "To export this model, set disable_dynamic_shapes to False");
+          "If appropriate, use the reshape_input provider option to compile with lower/upper bounds "
+          "to create a concrete backend which can be exported");
     }
   }
 }
