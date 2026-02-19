@@ -159,8 +159,8 @@ BackendManager::BackendManager(SessionContext& session_context,
     } else {
       ORT_THROW(
           "Exporting dynamically compiled models at runtime is not supported. "
-          "If appropriate, use the reshape_input provider option to compile with lower/upper bounds
-           to create a concrete backend which can be exported");
+          "If appropriate, use the reshape_input provider option to compile with lower/upper bounds "
+          "to create a concrete backend which can be exported");
     }
   }
 }
