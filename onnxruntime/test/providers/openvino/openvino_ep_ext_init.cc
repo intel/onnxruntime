@@ -60,12 +60,12 @@ namespace test {
 class OVEP_ExtInit_Tests : public ::testing::TestWithParam<std::string> {
  public:
   static void SetUpTestSuite() {
-    // 1. Create initializers
+    // Create initializers
     initializer_data_.reserve(num_initializers_);
     for (size_t i = 0; i < num_initializers_; ++i)
       initializer_data_.emplace_back(floats_per_initializer_, static_cast<float>(i + 1));  // W0:1, W1:2...
 
-    // 2. Build ONNX model with external initializers, and ADD nodes
+    // Build ONNX model with external initializers, and ADD nodes
     {
       ModelProto model_proto;
       model_proto.set_ir_version(7);
@@ -138,7 +138,7 @@ class OVEP_ExtInit_Tests : public ::testing::TestWithParam<std::string> {
       ASSERT_TRUE(model_proto.SerializeToOstream(&model_file)) << "Failed to serialize model";
     }
 
-    // 3. Save weights file (concatenate all initializers)
+    // Save weights file (concatenate all initializers)
     {
       std::ofstream weights_file(weights_path_, std::ios::binary);
       ASSERT_TRUE(weights_file.is_open()) << "Failed to open weights file";
@@ -148,7 +148,7 @@ class OVEP_ExtInit_Tests : public ::testing::TestWithParam<std::string> {
       ASSERT_TRUE(weights_file.good()) << "Failed to write all weights to file";
     }
 
-    // 4. Load model and weights into memory (once for all tests)
+    // Load model and weights into memory (once for all tests)
     model_data_ = LoadFileToMemory(model_path_);
     weights_data_ = LoadFileToMemory(weights_path_);
     ASSERT_TRUE(model_data_.has_value()) << "Failed to load model into memory";
@@ -259,11 +259,10 @@ class OVEP_ExtInit_DynamicEmbed_Tests : public ::testing::TestWithParam<std::str
     }
 
     model_data_ = LoadFileToMemory(model_path_);
-    weights_data_ = LoadFileToMemory(weights_path_);
+    auto weights_data = LoadFileToMemory(weights_path_);
     ASSERT_TRUE(model_data_.has_value()) << "Failed to load model into memory";
-    ASSERT_TRUE(weights_data_.has_value()) << "Failed to load weights into memory";
-    mutable_weights_ = std::move(weights_data_.value());
-    weights_data_.reset();
+    ASSERT_TRUE(weights_data.has_value()) << "Failed to load weights into memory";
+    mutable_weights_ = std::move(weights_data.value());
   }
 
   static void TearDownTestSuite() {
@@ -280,7 +279,6 @@ class OVEP_ExtInit_DynamicEmbed_Tests : public ::testing::TestWithParam<std::str
   inline static constexpr size_t floats_in_weight_ = 64 * 1024 * 1024;
   inline static constexpr size_t num_weights_ = 9;
   inline static std::optional<std::vector<uint8_t>> model_data_;
-  inline static std::optional<std::vector<uint8_t>> weights_data_;
   inline static std::vector<uint8_t> mutable_weights_;
 };
 
@@ -368,6 +366,7 @@ class OVEP_ExtInit_EmptyRawData_Tests : public ::testing::TestWithParam<std::str
         ext = initializer->add_external_data();
         ext->set_key("length");
         ext->set_value(std::to_string(floats_per_weight_ * sizeof(float)));
+        offset += floats_per_weight_ * sizeof(float);
       }
 
       {
@@ -458,14 +457,14 @@ TEST_P(OVEP_ExtInit_Tests, ModelFromExtInit) {
   if (!ProbeDevice(device))
     GTEST_SKIP() << device + " is not available on this machine";
 
-  // 5. Prepare external initializer info
+  // Prepare external initializer info
   std::string temp_name(weights_path_);
   PathString weights_name_path(temp_name.begin(), temp_name.end());
   std::vector<PathString> names_path = {weights_name_path};
   std::vector<char*> buffers = {reinterpret_cast<char*>(weights_data_.value().data())};
   std::vector<size_t> buffer_sizes = {weights_data_.value().size()};
 
-  // 6. Set up session options with OpenVINO
+  // Set up session options with OpenVINO
   Ort::SessionOptions session_options;
   session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
   session_options.SetIntraOpNumThreads(1);
@@ -473,10 +472,10 @@ TEST_P(OVEP_ExtInit_Tests, ModelFromExtInit) {
   session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
   session_options.AddExternalInitializersFromFilesInMemory(names_path, buffers, buffer_sizes);
 
-  // 7. Create session from memory
+  // Create session from memory
   Ort::Session session(*ort_env, model_data_.value().data(), model_data_.value().size(), session_options);
 
-  // 8. Run inference to verify weights are loaded
+  // Run inference to verify weights are loaded
   std::vector<float> input_data(floats_per_initializer_, 2.0f);
   std::vector<int64_t> input_shape = {static_cast<int64_t>(floats_per_initializer_)};
   Ort::MemoryInfo mem_info = Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtDeviceAllocator, OrtMemTypeDefault);
@@ -517,10 +516,8 @@ TEST_P(OVEP_ExtInit_DynamicEmbed_Tests, ModelWithDynamicShapeEmbedsWeights) {
   session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
   session_options.AddExternalInitializersFromFilesInMemory(names_path, buffers, buffer_sizes);
 
-  EXPECT_THROW({
-    Ort::Session session(*ort_env, model_data_.value().data(), model_data_.value().size(), session_options);
-  }, Ort::Exception) << "Expected Ort::Exception when creating session with dynamic shape and >2GB weights, "
-                     << "as weights should be embedded in proto causing it to exceed protobuf's 2GB limit";
+  EXPECT_THROW({ Ort::Session session(*ort_env, model_data_.value().data(), model_data_.value().size(), session_options); }, Ort::Exception) << "Expected Ort::Exception when creating session with dynamic shape and >2GB weights, "
+                                                                                                                                             << "as weights should be embedded in proto causing it to exceed protobuf's 2GB limit";
 }
 
 TEST_P(OVEP_ExtInit_EmptyRawData_Tests, ModelWithEmptyRawDataInitializer) {
@@ -534,8 +531,9 @@ TEST_P(OVEP_ExtInit_EmptyRawData_Tests, ModelWithEmptyRawDataInitializer) {
   std::vector<char*> buffers = {reinterpret_cast<char*>(weights_data_.value().data())};
   std::vector<size_t> buffer_sizes = {weights_data_.value().size()};
 
-  // 6. Set up session options
+  // Set up session options
   Ort::SessionOptions session_options;
+  session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
   session_options.SetIntraOpNumThreads(1);
   std::unordered_map<std::string, std::string> ov_options = {{"device_type", device}};
   session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
@@ -543,7 +541,7 @@ TEST_P(OVEP_ExtInit_EmptyRawData_Tests, ModelWithEmptyRawDataInitializer) {
 
   Ort::Session session(*ort_env, model_data_.value().data(), model_data_.value().size(), session_options);
 
-  // 8. Run inference
+  // Run inference
   std::vector<float> input_data(floats_per_weight_, 5.0f);
   std::vector<int64_t> input_shape = {1, 1, static_cast<int64_t>(floats_per_weight_), 1};
   Ort::MemoryInfo mem_info = Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtDeviceAllocator, OrtMemTypeDefault);
@@ -561,7 +559,6 @@ TEST_P(OVEP_ExtInit_EmptyRawData_Tests, ModelWithEmptyRawDataInitializer) {
     ASSERT_FLOAT_EQ(out_data[i], 8.0f) << "Empty raw_data initializer should be skipped during backend initialization";
   }
 }
-
 
 INSTANTIATE_TEST_SUITE_P(OVEP_Tests,
                          OVEP_ExtInit_Tests,
