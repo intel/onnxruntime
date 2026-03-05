@@ -615,7 +615,12 @@ void StatefulOVInferRequest::RewindKVCache(size_t index) {
     if (index == 0) {
       // In this case, since we're resetting the entire KVCache, simply reset the state.
       ovInfReq.reset_state();
+      if (is_kvcache_reorder_added) {
+        kv_src_indices.clear();
+        kv_dst_indices.clear();
+      }
     } else {
+      // TODO for is_kvcache_reorder_added: do inference once to make sure the KV cache state is updated with the latest generated token before we the KV cache
       // Retrieve KVCache states and trim them to the specified index.
       // The following logic is adapted from:
       // https://github.com/openvinotoolkit/openvino.genai/blob/releases/2025/1/src/cpp/src/utils.cpp#L329
