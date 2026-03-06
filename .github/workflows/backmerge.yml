@@ -1,0 +1,67 @@
+name: Daily Backmerge ORT main to ovep-develop
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  backmerge:
+    runs-on: [self-hosted, Linux, X64]
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git identity
+        run: |
+          git config --global user.email "jaswanth.gannamaneni@intel.com"
+          git config --global user.name "Jaswanth Gannamaneni"
+
+      - name: Fetch all branches
+        run: git fetch --all
+
+      - name: Create sync branch and merge master
+        run: |
+          DATE=$(date +'%d%m%Y')
+          BRANCH="sync_msft_${DATE}"
+          echo "BRANCH=${BRANCH}" >> $GITHUB_ENV
+          git checkout ovep-develop
+          git checkout -b $BRANCH
+          git merge origin/master --no-edit && echo "STATUS=success" >> $GITHUB_ENV || echo "STATUS=conflict" >> $GITHUB_ENV
+
+      - name: Push sync branch
+        run: git push origin ${{ env.BRANCH }}
+
+      - name: Create PR - clean merge
+        if: env.STATUS == 'success'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ env.BRANCH }}
+          base: ovep-develop
+          title: "Sync with Microsoft ONNX Runtime - ${{ env.BRANCH }}"
+          body: |
+            Automated daily backmerge from ORT main to ovep-develop.
+            No conflicts detected. Use merge commit only - do NOT squash or rebase.
+          reviewers: ankitm3k, jaswanth-gannamaneni, jatin-wadhwa
+
+      - name: Create PR - conflict
+        if: env.STATUS == 'conflict'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ env.BRANCH }}
+          base: ovep-develop
+          title: "[CONFLICT] Sync with Microsoft ONNX Runtime - ${{ env.BRANCH }}"
+          body: |
+            Automated daily backmerge failed due to merge conflicts.
+            Manual resolution needed. Do NOT squash or rebase - use merge commit only.
+          reviewers: ankitm3k, jaswanth-gannamaneni, jatin-wadhwa
