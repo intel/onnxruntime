@@ -18,49 +18,46 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.FACELESS_ACCOUNT_PAT }}
 
       - name: Configure Git identity
         run: |
-          git config --global user.email "jaswanth.gannamaneni@intel.com"
-          git config --global user.name "Jaswanth Gannamaneni"
+          git config --global user.email "sys_ai_fw_intg@intel.com"
+          git config --global user.name "sys_ai_fw_intg"
 
       - name: Fetch all branches
         run: git fetch --all
 
-      - name: Create sync branch and merge master
+      - name: Checkout ovep-develop
+        run: git checkout ovep-develop
+
+      - name: Merge master into sync branch
         run: |
           DATE=$(date +'%d%m%Y')
-          BRANCH="sync_msft_${DATE}"
-          echo "BRANCH=${BRANCH}" >> $GITHUB_ENV
-          git checkout ovep-develop
-          git checkout -b $BRANCH
+          echo "DATE=${DATE}" >> $GITHUB_ENV
           git merge origin/master --no-edit && echo "STATUS=success" >> $GITHUB_ENV || echo "STATUS=conflict" >> $GITHUB_ENV
-
-      - name: Push sync branch
-        run: git push origin ${{ env.BRANCH }}
 
       - name: Create PR - clean merge
         if: env.STATUS == 'success'
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          branch: ${{ env.BRANCH }}
+          token: ${{ secrets.FACELESS_ACCOUNT_PAT }}
+          branch: sync_msft_${{ env.DATE }}
           base: ovep-develop
-          title: "Sync with Microsoft ONNX Runtime - ${{ env.BRANCH }}"
+          title: "Sync with Microsoft ONNX Runtime - ${{ env.DATE }}"
           body: |
             Automated daily backmerge from ORT main to ovep-develop.
-            No conflicts detected. Use merge commit only - do NOT squash or rebase.
+            No conflicts detected. Do NOT squash or rebase - use merge commit only.
           reviewers: ankitm3k, jaswanth-gannamaneni, jatin-wadhwa
 
       - name: Create PR - conflict
         if: env.STATUS == 'conflict'
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          branch: ${{ env.BRANCH }}
+          token: ${{ secrets.FACELESS_ACCOUNT_PAT }}
+          branch: sync_msft_${{ env.DATE }}
           base: ovep-develop
-          title: "[CONFLICT] Sync with Microsoft ONNX Runtime - ${{ env.BRANCH }}"
+          title: "[CONFLICT] Sync with Microsoft ONNX Runtime - ${{ env.DATE }}"
           body: |
             Automated daily backmerge failed due to merge conflicts.
             Manual resolution needed. Do NOT squash or rebase - use merge commit only.
