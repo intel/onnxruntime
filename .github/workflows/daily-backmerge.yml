@@ -54,7 +54,7 @@ jobs:
           body: |
             Automated daily backmerge from ORT main to ovep-develop.
             No conflicts detected. Do NOT squash or rebase - use merge commit only.
-          reviewers: ankitm3k, jwadhwa, jgannama, vthaniel
+          reviewers: ankitm3k, jatinwadhwa921, Jaswanth51, vthaniel
 
       - name: Create PR - conflict
         if: env.STATUS == 'conflict'
