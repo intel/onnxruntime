@@ -1,5 +1,7 @@
 name: Daily Backmerge ORT main to ovep-develop
 on:
+  pull_request:
+    branches: [master]
   schedule:
     - cron: '0 2 * * *'
   workflow_dispatch:
