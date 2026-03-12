@@ -178,15 +178,15 @@ ov::Tensor BinManager::GetNativeBlob(const std::string& blob_name) {
     const uint8_t* src = mapped_bin_.data<const uint8_t>() + blob_offset;
 
     blob_container.tensor = ov::Tensor(
-      ov::element::u8,
-      ov::Shape{blob_size},
-      const_cast<uint8_t*>(src));
+        ov::element::u8,
+        ov::Shape{blob_size},
+        const_cast<uint8_t*>(src));
   } else {
     // Create a tensor from embedded data vector
     blob_container.tensor = ov::Tensor(
-      ov::element::u8,
-      ov::Shape{blob_container.data.size()},
-      const_cast<uint8_t*>(blob_container.data.data()));
+        ov::element::u8,
+        ov::Shape{blob_container.data.size()},
+        const_cast<uint8_t*>(blob_container.data.data()));
   }
 
   return blob_container.tensor;
