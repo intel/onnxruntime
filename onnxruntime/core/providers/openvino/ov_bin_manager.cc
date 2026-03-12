@@ -175,15 +175,18 @@ ov::Tensor BinManager::GetNativeBlob(const std::string& blob_name) {
     // Create tensor view from mapped_bin_ (which holds the underlying buffer)
     auto blob_offset = blob_container.serialized_info.file_offset;
     auto blob_size = blob_container.serialized_info.size;
-    ov::Coordinate begin{blob_offset};
-    ov::Coordinate end{blob_offset + blob_size};
-    blob_container.tensor = ov::Tensor(mapped_bin_, begin, end);
+    const uint8_t* src = mapped_bin_.data<const uint8_t>() + blob_offset;
+
+    blob_container.tensor = ov::Tensor(
+      ov::element::u8,
+      ov::Shape{blob_size},
+      const_cast<uint8_t*>(src));
   } else {
     // Create a tensor from embedded data vector
     blob_container.tensor = ov::Tensor(
-        ov::element::u8,
-        ov::Shape{blob_container.data.size()},
-        blob_container.data.data());
+      ov::element::u8,
+      ov::Shape{blob_container.data.size()},
+      const_cast<uint8_t*>(blob_container.data.data()));
   }
 
   return blob_container.tensor;
