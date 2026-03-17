@@ -71,6 +71,10 @@ RunTiming OnnxRuntimeTestSession::Run() {
     io_binding.SynchronizeOutputs();
     timing.total_timing = std::chrono::high_resolution_clock::now() - start;
   } else {
+    // For outputs with data-dependent shapes (e.g. NonZero), the shape changes
+    // between runs. ORT caches the allocated tensor and fails shape verification
+    // on the next run. Reset all outputs so ORT always allocates fresh buffers.
+    for (auto& output : outputs_) output = Ort::Value(nullptr);
     session_.Run(run_options, input_names_.data(), input.data(), input_names_.size(),
                  output_names_raw_ptr.data(), outputs_.data(), output_names_raw_ptr.size());
     timing.submit_timing = std::chrono::high_resolution_clock::now() - start;
@@ -940,8 +944,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     } else {
       auto new_value = Ort::Value::CreateTensor(allocator_, output_shape.data(), output_shape.size(), tensor_info.GetElementType());
       outputs_.emplace_back(std::move(new_value));
-    }
-  }
+    }  }
 }
 
 template <typename T>
