@@ -172,9 +172,12 @@ ov::Tensor BinManager::GetNativeBlob(const std::string& blob_name) {
   }
 
   if (mapped_bin_) {
-    // Create tensor view from mapped_bin_ (which holds the underlying buffer)
     auto blob_offset = blob_container.serialized_info.file_offset;
     auto blob_size = blob_container.serialized_info.size;
+    auto bin_size = mapped_bin_.get_byte_size();
+    ORT_ENFORCE(blob_offset < bin_size && blob_size <= bin_size && blob_offset <= bin_size - blob_size,
+                "Blob offset+size out of bounds for ", blob_name,
+                ". Offset: ", blob_offset, " Size: ", blob_size, " File size: ", bin_size);
     const uint8_t* src = mapped_bin_.data<const uint8_t>() + blob_offset;
 
     blob_container.tensor = ov::Tensor(
@@ -186,7 +189,7 @@ ov::Tensor BinManager::GetNativeBlob(const std::string& blob_name) {
     blob_container.tensor = ov::Tensor(
         ov::element::u8,
         ov::Shape{blob_container.data.size()},
-        const_cast<uint8_t*>(blob_container.data.data()));
+        blob_container.data.data());
   }
 
   return blob_container.tensor;
