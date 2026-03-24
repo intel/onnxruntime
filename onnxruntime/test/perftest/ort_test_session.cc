@@ -944,7 +944,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     } else {
       auto new_value = Ort::Value::CreateTensor(allocator_, output_shape.data(), output_shape.size(), tensor_info.GetElementType());
       outputs_.emplace_back(std::move(new_value));
-    }  }
+    }
+  }
 }
 
 template <typename T>
