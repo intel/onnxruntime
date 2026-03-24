@@ -30,8 +30,8 @@ bool IsDebugEnabled() {
   return false;
 }
 
-std::string IsPerfCountEnabled() {
-  std::string env_name = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_PERF_COUNT");
+std::string GetPerfCountDumpPath() {
+  static std::string env_name = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_PERF_COUNT");
   return env_name;
 }
 
@@ -264,6 +264,8 @@ void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
 }
 
 void printPerformanceCounts(OVInferRequestPtr request, std::ostream& stream) {
+  std::mutex _mutex;
+  std::unique_lock<std::mutex> lock(_mutex);
   auto performanceMap = request->GetInfReq().get_profiling_info();
   if (!performanceMap.empty()) {
     printPerformanceCounts(performanceMap, stream);

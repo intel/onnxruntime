@@ -11,7 +11,7 @@
 #include <vector>
 #include <string>
 #include <string_view>
-
+#include <mutex>
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/openvino/contexts.h"
 #include "core/providers/openvino/ov_interface.h"
@@ -72,7 +72,7 @@ namespace backend_utils {
 
 bool IsDebugEnabled();
 
-std::string IsPerfCountEnabled();
+std::string GetPerfCountDumpPath();
 
 // Internal diagnostic function.
 bool IsCILogEnabled();
