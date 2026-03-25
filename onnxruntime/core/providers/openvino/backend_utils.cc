@@ -231,7 +231,7 @@ void FillInputBlob(OVTensorPtr inputBlob, size_t batch_slice_idx,
 void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
                             std::ostream& stream) {
   // Print performance counts
-  stream << "Layer Name, Status, Layer Type, Real Time (us), Exec Type" << std::endl;
+  stream << "Layer Name,Status,Layer Type,Real Time (us),Exec Type" << std::endl;
 
   for (const auto& it : performanceMap) {
     std::string toPrint(it.node_name);
