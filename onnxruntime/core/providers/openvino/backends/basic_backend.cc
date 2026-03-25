@@ -17,7 +17,6 @@
 #include "core/providers/openvino/onnx_ctx_model_helper.h"
 #include "core/providers/openvino/backend_manager.h"
 #include "core/providers/openvino/ov_stateful_patch_utils.h"
-#include "core/providers/openvino/exceptions.h"
 #include <filesystem>
 
 namespace onnxruntime {
@@ -423,6 +422,8 @@ void BasicBackend::Infer(OrtKernelContext* ctx) {
 
 void BasicBackend::PerfDirCreate(OVInferRequestPtr infer_request, const std::string& perf_count) {
   // Print performance counts before releasing the infer_request for thread safety
+  static std::mutex _mutex;
+  std::unique_lock<std::mutex> lock(_mutex);
   bool is_profiling_enabled = false;
   try {
     is_profiling_enabled = GetOVCompiledModel().get_property(ov::enable_profiling);

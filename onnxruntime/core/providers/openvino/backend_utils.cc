@@ -264,8 +264,6 @@ void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
 }
 
 void printPerformanceCounts(OVInferRequestPtr request, std::ostream& stream) {
-  std::mutex _mutex;
-  std::unique_lock<std::mutex> lock(_mutex);
   auto performanceMap = request->GetInfReq().get_profiling_info();
   if (!performanceMap.empty()) {
     printPerformanceCounts(performanceMap, stream);
