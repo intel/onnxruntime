@@ -374,13 +374,10 @@ static void ParseProviderInfo(const ProviderOptions& provider_options,
   }
 
   // Should likely account for meta devices as well, but for now keep the current behavior.
-  bool target_devices_support_dynamic_shapes =
-      pi.device_type.find("GPU") != std::string::npos ||
-      pi.device_type.find("CPU") != std::string::npos ||
-      (pi.device_type.find("NPU") != std::string::npos &&
-       pi.enable_causallm);
-
-  pi.disable_dynamic_shapes = !target_devices_support_dynamic_shapes;
+  // Respect the user-provided option for CPU/GPU. For NPU, keep the existing constraint:
+  if (pi.device_type.find("NPU") != std::string::npos && !pi.enable_causallm) {
+    pi.disable_dynamic_shapes = true;
+  }
 }
 
 struct OpenVINOProviderFactory : IExecutionProviderFactory {
