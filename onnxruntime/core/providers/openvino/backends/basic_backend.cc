@@ -434,35 +434,29 @@ void BasicBackend::PerfDirCreate(const std::string& perf_count) {
   }
 
   if (!is_profiling_enabled) {
+    LOGS_DEFAULT(WARNING) << log_tag
+                          << "Performance counting was requested, but OpenVINO compiled model profiling "
+                          << "(ov::enable_profiling) is disabled. No perf CSV will be produced.";
     dir_.clear();
     return;
   }
 
-  std::filesystem::path perf_path(perf_count);
-  std::error_code ec;
-  bool exists = std::filesystem::exists(perf_path, ec);
-  if (ec) {
-    LOGS_DEFAULT(INFO) << log_tag << "Failed to check existence of perf count path '" << dir_.string() << "': " << ec.message();
+  try {
+    std::filesystem::path perf_path(perf_count);
+    if (std::filesystem::exists(perf_path)) {
+      if (!std::filesystem::is_directory(perf_path)) {
+        LOGS_DEFAULT(INFO) << log_tag << "Perf count path '" << perf_path.string() << "' exists but is not a directory.";
+        dir_.clear();
+        return;
+      }
+    } else {
+      std::filesystem::create_directories(perf_path);
+    }
+    dir_ = std::move(perf_path);
+  } catch (const std::filesystem::filesystem_error& e) {
+    LOGS_DEFAULT(INFO) << log_tag << "Filesystem error for perf count path '" << perf_count << "': " << e.what();
     dir_.clear();
-    return;
   }
-  if (exists) {
-    bool is_dir = std::filesystem::is_directory(perf_path, ec);
-    if (ec || !is_dir) {
-      LOGS_DEFAULT(INFO) << log_tag << "Perf count path '" << dir_.string() << "' exists but is not a directory.";
-      dir_.clear();
-      return;
-    }
-  } else {
-    std::filesystem::create_directories(perf_path, ec);
-    if (ec) {
-      LOGS_DEFAULT(INFO) << log_tag << "Failed to create perf count directory '" << dir_.string() << "': " << ec.message();
-      return;
-      dir_.clear();
-    }
-  }
-
-  dir_ = perf_path;
 }
 
 void BasicBackend::PerfDump(OVInferRequestPtr infer_request) {
