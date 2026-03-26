@@ -153,7 +153,7 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
   if (!perf_count.empty()) {
     PerfDirCreate(perf_count);
   } else {
-    dir_= "";
+    dir_.clear();
   }
 }
 
@@ -420,8 +420,7 @@ void BasicBackend::Infer(OrtKernelContext* ctx) {
     std::cout << "Inference successful" << std::endl;
   }
 
-  std::string perf_count = openvino_ep::backend_utils::GetPerfCountDumpPath();
-  if (!perf_count.empty()) {
+  if (!dir_.empty()) {
     PerfDump(infer_request);
   }
 }
@@ -433,34 +432,41 @@ void BasicBackend::PerfDirCreate(const std::string& perf_count) {
   } catch (const ov::Exception& e) {
     LOGS_DEFAULT(INFO) << log_tag << e.what();
   }
-  if (is_profiling_enabled) {
-    dir_ = perf_count;
-    std::error_code ec;
-    bool exists = std::filesystem::exists(dir_, ec);
-    if (ec) {
-      LOGS_DEFAULT(INFO) << log_tag << "Failed to check existence of perf count path '" << dir_.string() << "': " << ec.message();
+
+  if (!is_profiling_enabled) {
+    dir_.clear();
+    return;
+  }
+
+  std::filesystem::path perf_path(perf_count);
+  std::error_code ec;
+  bool exists = std::filesystem::exists(perf_path, ec);
+  if (ec) {
+    LOGS_DEFAULT(INFO) << log_tag << "Failed to check existence of perf count path '" << dir_.string() << "': " << ec.message();
+    dir_.clear();
+    return;
+  }
+  if (exists) {
+    bool is_dir = std::filesystem::is_directory(perf_path, ec);
+    if (ec || !is_dir) {
+      LOGS_DEFAULT(INFO) << log_tag << "Perf count path '" << dir_.string() << "' exists but is not a directory.";
+      dir_.clear();
       return;
     }
-    if (exists) {
-      bool is_dir = std::filesystem::is_directory(dir_, ec);
-      if (ec || !is_dir) {
-        LOGS_DEFAULT(INFO) << log_tag << "Perf count path '" << dir_.string() << "' exists but is not a directory.";
-        return;
-      }
-    } else {
-      std::filesystem::create_directories(dir_, ec);
-      if (ec) {
-        LOGS_DEFAULT(INFO) << log_tag << "Failed to create perf count directory '" << dir_.string() << "': " << ec.message();
-        return;
-      }
+  } else {
+    std::filesystem::create_directories(perf_path, ec);
+    if (ec) {
+      LOGS_DEFAULT(INFO) << log_tag << "Failed to create perf count directory '" << dir_.string() << "': " << ec.message();
+      return;
+      dir_.clear();
     }
   }
+
+  dir_ = perf_path;
 }
 
 void BasicBackend::PerfDump(OVInferRequestPtr infer_request) {
   // Print performance counts before releasing the infer_request for thread safety
-  if (dir_.empty())
-    return;
   static std::mutex _mutex;
   const std::string prefix = "OpenVINOExecutionProvider_OpenVINO-EP";
   std::string subgraph_suffix;
@@ -475,8 +481,8 @@ void BasicBackend::PerfDump(OVInferRequestPtr infer_request) {
   std::string filestring = subgraph_suffix + "_perf_count.csv";
   std::filesystem::path filename(session_context_.GetModelPath().stem().string() + filestring);
   filename = dir_ / filename;
-  std::ofstream out(filename);
   std::unique_lock<std::mutex> lock(_mutex);
+  std::ofstream out(filename);
   {
     if (out.is_open()) {
       printPerformanceCounts(infer_request, out);
