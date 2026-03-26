@@ -15,6 +15,7 @@
 #include <functional>
 #include <algorithm>
 #include <utility>
+#include <filesystem>
 
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/openvino/contexts.h"
@@ -155,7 +156,8 @@ class BasicBackend : public IBackend {
   void ReorderKVCache(const std::vector<int32_t>& src_indices, const std::vector<int32_t>& dst_indices) override;
 
  private:
-  void PerfDirCreate(OVInferRequestPtr infer_request, const std::string& perf_count);
+  void PerfDirCreate(const std::string& perf_count);
+  void PerfDump(OVInferRequestPtr infer_request);
   bool ValidateSubgraph(std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map);
   void PopulateConfigValue(ov::AnyMap& device_config);
   void EnableCaching(ov::AnyMap& device_config);
@@ -170,6 +172,7 @@ class BasicBackend : public IBackend {
   OVExeNetwork exe_network_;
   std::map<std::string, std::shared_ptr<ov::Node>> const_outputs_map_;
   std::unique_ptr<InferRequestPool> infer_req_pool_;
+  std::filesystem::path dir_;
 
   using ort_tensor_key_t = const std::string;
   std::unique_ptr<const OnnxToOvNetworkBindings> bindings_;

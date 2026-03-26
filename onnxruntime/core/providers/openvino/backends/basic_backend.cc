@@ -17,7 +17,6 @@
 #include "core/providers/openvino/onnx_ctx_model_helper.h"
 #include "core/providers/openvino/backend_manager.h"
 #include "core/providers/openvino/ov_stateful_patch_utils.h"
-#include <filesystem>
 
 namespace onnxruntime {
 
@@ -149,6 +148,13 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
 
   infer_req_pool_ = std::make_unique<InferRequestPool>(exe_network_, num_infer_req, std::move(initializer));
   bindings_ = std::make_unique<OnnxToOvNetworkBindings>(exe_network_, subgraph_context_, session_context_);
+
+  std::string perf_count = openvino_ep::backend_utils::GetPerfCountDumpPath();
+  if (!perf_count.empty()) {
+    PerfDirCreate(perf_count);
+  } else {
+    dir_= "";
+  }
 }
 
 bool BasicBackend::ValidateSubgraph(std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map) {
@@ -416,14 +422,11 @@ void BasicBackend::Infer(OrtKernelContext* ctx) {
 
   std::string perf_count = openvino_ep::backend_utils::GetPerfCountDumpPath();
   if (!perf_count.empty()) {
-    PerfDirCreate(infer_request, perf_count);
+    PerfDump(infer_request);
   }
 }
 
-void BasicBackend::PerfDirCreate(OVInferRequestPtr infer_request, const std::string& perf_count) {
-  // Print performance counts before releasing the infer_request for thread safety
-  static std::mutex _mutex;
-  std::unique_lock<std::mutex> lock(_mutex);
+void BasicBackend::PerfDirCreate(const std::string& perf_count) {
   bool is_profiling_enabled = false;
   try {
     is_profiling_enabled = GetOVCompiledModel().get_property(ov::enable_profiling);
@@ -431,46 +434,55 @@ void BasicBackend::PerfDirCreate(OVInferRequestPtr infer_request, const std::str
     LOGS_DEFAULT(INFO) << log_tag << e.what();
   }
   if (is_profiling_enabled) {
-    std::filesystem::path dir = perf_count;
+    dir_ = perf_count;
     std::error_code ec;
-    bool exists = std::filesystem::exists(dir, ec);
+    bool exists = std::filesystem::exists(dir_, ec);
     if (ec) {
-      LOGS_DEFAULT(INFO) << log_tag << "Failed to check existence of perf count path '" << dir.string() << "': " << ec.message();
+      LOGS_DEFAULT(INFO) << log_tag << "Failed to check existence of perf count path '" << dir_.string() << "': " << ec.message();
       return;
     }
     if (exists) {
-      bool is_dir = std::filesystem::is_directory(dir, ec);
+      bool is_dir = std::filesystem::is_directory(dir_, ec);
       if (ec || !is_dir) {
-        LOGS_DEFAULT(INFO) << log_tag << "Perf count path '" << dir.string() << "' exists but is not a directory.";
+        LOGS_DEFAULT(INFO) << log_tag << "Perf count path '" << dir_.string() << "' exists but is not a directory.";
         return;
       }
     } else {
-      std::filesystem::create_directories(dir, ec);
+      std::filesystem::create_directories(dir_, ec);
       if (ec) {
-        LOGS_DEFAULT(INFO) << log_tag << "Failed to create perf count directory '" << dir.string() << "': " << ec.message();
+        LOGS_DEFAULT(INFO) << log_tag << "Failed to create perf count directory '" << dir_.string() << "': " << ec.message();
         return;
       }
     }
+  }
+}
 
-    const std::string prefix = "OpenVINOExecutionProvider_OpenVINO-EP";
-    std::string subgraph_suffix;
-    if (subgraph_context_.subgraph_name.size() >= prefix.size() &&
-        subgraph_context_.subgraph_name.compare(0, prefix.size(), prefix) == 0) {
-      subgraph_suffix = subgraph_context_.subgraph_name.substr(prefix.size());
-    } else {
-      // Fallback: use the full subgraph name if it does not start with the expected prefix
-      subgraph_suffix = subgraph_context_.subgraph_name;
-    }
+void BasicBackend::PerfDump(OVInferRequestPtr infer_request) {
+  // Print performance counts before releasing the infer_request for thread safety
+  if (dir_.empty())
+    return;
+  static std::mutex _mutex;
+  const std::string prefix = "OpenVINOExecutionProvider_OpenVINO-EP";
+  std::string subgraph_suffix;
+  if (subgraph_context_.subgraph_name.size() >= prefix.size() &&
+      subgraph_context_.subgraph_name.compare(0, prefix.size(), prefix) == 0) {
+    subgraph_suffix = subgraph_context_.subgraph_name.substr(prefix.size());
+  } else {
+    // Fallback: use the full subgraph name if it does not start with the expected prefix
+    subgraph_suffix = subgraph_context_.subgraph_name;
+  }
 
-    std::string filestring = subgraph_suffix + "_perf_count.csv";
-    std::filesystem::path filename(session_context_.GetModelPath().stem().string() + filestring);
-    filename = dir / filename;
-    std::ofstream out(filename);
+  std::string filestring = subgraph_suffix + "_perf_count.csv";
+  std::filesystem::path filename(session_context_.GetModelPath().stem().string() + filestring);
+  filename = dir_ / filename;
+  std::ofstream out(filename);
+  std::unique_lock<std::mutex> lock(_mutex);
+  {
     if (out.is_open()) {
       printPerformanceCounts(infer_request, out);
       out.close();
     } else {
-      LOGS_DEFAULT(INFO) << log_tag << filename << ": File did not open";
+      LOGS_DEFAULT(INFO) << log_tag << filename << ": File error";
     }
   }
 }
