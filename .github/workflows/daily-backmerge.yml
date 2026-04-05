@@ -1,0 +1,70 @@
+name: Daily Backmerge ORT main to ovep-develop
+on:
+  pull_request:
+    branches: [master]
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  backmerge:
+    runs-on: [self-hosted, Linux, X64]
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.FACELESS_ACCOUNT_PAT }}
+
+      - name: Configure Git identity
+        run: |
+          git config --global user.email "sys_ai_fw_intg@intel.com"
+          git config --global user.name "ai-fw-intg"
+
+      - name: Sync intel master with Microsoft upstream
+        run: |
+          git remote add upstream https://github.com/microsoft/onnxruntime.git || true
+          git fetch upstream
+          git checkout master
+          git merge upstream/main --no-edit
+          git push origin master
+
+      - name: Fetch all branches
+        run: git fetch --all
+
+      - name: Checkout ovep-develop
+        run: git checkout ovep-develop
+
+      - name: Merge master into ovep-develop
+        run: |
+          DATE=$(date +'%d%m%Y')
+          echo "DATE=${DATE}" >> $GITHUB_ENV
+          git merge origin/master --no-edit && echo "STATUS=success" >> $GITHUB_ENV || echo "STATUS=conflict" >> $GITHUB_ENV
+
+      - name: Create PR - clean merge
+        if: env.STATUS == 'success'
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ secrets.FACELESS_ACCOUNT_PAT }}
+          branch: sync_msft_${{ env.DATE }}
+          base: ovep-develop
+          title: "Sync with Microsoft ONNX Runtime - ${{ env.DATE }}"
+          body: |
+            Automated daily backmerge from ORT main to ovep-develop.
+            No conflicts detected. Do NOT squash or rebase - use merge commit only.
+          reviewers: ankitm3k, jatinwadhwa921, Jaswanth51, vthaniel
+
+      - name: Create PR - conflict
+        if: env.STATUS == 'conflict'
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ secrets.FACELESS_ACCOUNT_PAT }}
+          branch: sync_msft_${{ env.DATE }}
+          base: ovep-develop
+          title: "[CONFLICT] Sync with Microsoft ONNX Runtime - ${{ env.DATE }}"
+          body: |
+            Automated daily backmerge failed due to merge conflicts.
+            Manual resolution needed. Do NOT squash or rebase - use merge commit only.
+          reviewers: ankitm3k, jaswanth-gannamaneni, jatin-wadhwa
