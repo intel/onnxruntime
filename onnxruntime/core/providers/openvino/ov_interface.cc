@@ -573,23 +573,27 @@ void StatefulOVInferRequest::Infer() {
 }
 
 void StatefulOVInferRequest::PostProcessInferRequest() {
+  CleanupReorderStatus();
+}
+
+void StatefulOVInferRequest::CleanupReorderStatus() {
   if (is_kvcache_reorder_added) {
     kv_src_indices.clear();
     kv_dst_indices.clear();
   }
 }
 
-void StatefulOVInferRequest::ReorderKVCache(const std::vector<int32_t>& src_indices, const std::vector<int32_t>& dst_indices) {
+void StatefulOVInferRequest::SetReorderKVCacheStatus(const std::vector<int32_t>& src_indices, const std::vector<int32_t>& dst_indices) {
   // Validate input parameters
   if (src_indices.size() != dst_indices.size()) {
     ORT_THROW(log_tag +
-              "ReorderKVCache: src_indices and dst_indices must have the same size. "
+              "SetReorderKVCacheStatus: src_indices and dst_indices must have the same size. "
               "Got src_indices.size()=" +
               std::to_string(src_indices.size()) +
               ", dst_indices.size()=" + std::to_string(dst_indices.size()));
   }
 
-  LOGS_DEFAULT(INFO) << log_tag << "ReorderKVCache: Reordering OpenVINO-internal KVCache state with "
+  LOGS_DEFAULT(INFO) << log_tag << "SetReorderKVCacheStatus: Reordering OpenVINO-internal KVCache state with "
                      << src_indices.size() << " index pairs";
 
   kv_src_indices = src_indices;
@@ -615,7 +619,9 @@ void StatefulOVInferRequest::RewindKVCache(size_t index) {
     if (index == 0) {
       // In this case, since we're resetting the entire KVCache, simply reset the state.
       ovInfReq.reset_state();
+      CleanupReorderStatus();
     } else {
+      // TODO for is_kvcache_reorder_added: do inference once to make sure the KV cache state is updated with the latest generated token before we the KV cache
       // Retrieve KVCache states and trim them to the specified index.
       // The following logic is adapted from:
       // https://github.com/openvinotoolkit/openvino.genai/blob/releases/2025/1/src/cpp/src/utils.cpp#L329
