@@ -573,10 +573,10 @@ void StatefulOVInferRequest::Infer() {
 }
 
 void StatefulOVInferRequest::PostProcessInferRequest() {
-  CleanupReorderStatus();
+  CleanReorderKVCacheStatus();
 }
 
-void StatefulOVInferRequest::CleanupReorderStatus() {
+void StatefulOVInferRequest::CleanReorderKVCacheStatus() {
   if (is_kvcache_reorder_added) {
     kv_src_indices.clear();
     kv_dst_indices.clear();
@@ -603,6 +603,15 @@ void StatefulOVInferRequest::SetReorderKVCacheStatus(const std::vector<int32_t>&
 void StatefulOVInferRequest::RewindKVCache(size_t index) {
   LOGS_DEFAULT(INFO) << log_tag << "RewindKVCache: Rewinding OpenVINO-internal KVCache state to index=" << index;
 
+  if (is_kvcache_reorder_added) {
+    if (index > 0) {
+      // TODO: Trigger a KVCache eviction inference pass here to physically compact the KV cache
+      // by running infer_request with the src_idx/dst_idx reorder tensors set.
+      ORT_THROW(log_tag + "KVCache eviction via reorder inference is not yet implemented which is required to rewind KVCache with index > 0 when KVCache reorder optimization is enabled. Requested index: " + std::to_string(index));
+    }
+    CleanReorderKVCacheStatus();
+  }
+
   if (prefill_use_full_chat_history) {
     // Clear the internal KVCache state. For NPU device, this operation is a no-op.
     ovInfReq.reset_state();
@@ -619,9 +628,7 @@ void StatefulOVInferRequest::RewindKVCache(size_t index) {
     if (index == 0) {
       // In this case, since we're resetting the entire KVCache, simply reset the state.
       ovInfReq.reset_state();
-      CleanupReorderStatus();
     } else {
-      // TODO for is_kvcache_reorder_added: do inference once to make sure the KV cache state is updated with the latest generated token before we the KV cache
       // Retrieve KVCache states and trim them to the specified index.
       // The following logic is adapted from:
       // https://github.com/openvinotoolkit/openvino.genai/blob/releases/2025/1/src/cpp/src/utils.cpp#L329

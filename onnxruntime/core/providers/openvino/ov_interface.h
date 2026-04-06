@@ -157,7 +157,7 @@ class StatefulOVInferRequest : public OVInferRequest {
  private:
   void PreProcessInferRequest();
   void PostProcessInferRequest();
-  void CleanupReorderStatus();
+  void CleanReorderKVCacheStatus();
   std::string target_device;
 
   std::vector<int64_t> cached_input_ids;
