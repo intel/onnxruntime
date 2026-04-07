@@ -47,7 +47,42 @@ void DestroyStrings(void* p_data, int64_t elements) {
 }
 
 bool ProviderIsCpuBased(const IExecutionProvider& provider) {
-  return provider.GetDevice().Type() == OrtDevice::CPU;
+  return provider.GetDevice().UsesCpuMemory();
+}
+
+// Returns true if no data transfer is needed between the two devices.
+// Valid zero-copy cases:
+//   1. Both use CPU-accessible memory (CPU or HOST_ACCESSIBLE):
+//      - CPU <-> CPU: always compatible
+//      - CPU <-> HOST_ACCESSIBLE: always compatible
+//      - HOST_ACCESSIBLE <-> HOST_ACCESSIBLE: only if on the same physical device
+//   2. HOST_ACCESSIBLE <-> DEFAULT on the same physical device:
+//      HOST_ACCESSIBLE memory is a superset — accessible by both host and device,
+//      so it can satisfy DEFAULT memory requirements without a copy.
+static bool DevicesAreMemoryCompatible(const OrtDevice& a, const OrtDevice& b) {
+  const bool a_is_cpu_mem = a.UsesCpuMemory();
+  const bool b_is_cpu_mem = b.UsesCpuMemory();
+
+  // Case 1: both CPU-accessible
+  if (a_is_cpu_mem && b_is_cpu_mem) {
+    if (a.Type() == OrtDevice::CPU || b.Type() == OrtDevice::CPU) {
+      return true;
+    }
+    // Both HOST_ACCESSIBLE on non-CPU devices — only compatible if same physical device.
+    return a.Type() == b.Type() &&
+           a.Vendor() == b.Vendor() &&
+           a.Id() == b.Id();
+  }
+
+  // Case 2: HOST_ACCESSIBLE <-> DEFAULT on the same physical device
+  if ((a_is_cpu_mem || b_is_cpu_mem) &&
+      a.Type() == b.Type() &&
+      a.Vendor() == b.Vendor() &&
+      a.Id() == b.Id()) {
+    return true;
+  }
+
+  return false;
 }
 
 bool IsMemcpyNode(const Node& node) {
@@ -134,6 +169,13 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
 {
   // same device so direct copy
   if (copy_info.source_device == copy_info.target_device) {
+    target_mlvalue = source_mlvalue;
+    return Status::OK();
+  }
+
+  // No data transfer needed if both devices have compatible memory
+  // (e.g., both CPU-accessible, or HOST_ACCESSIBLE <-> DEFAULT on the same physical device).
+  if (DevicesAreMemoryCompatible(copy_info.source_device, copy_info.target_device)) {
     target_mlvalue = source_mlvalue;
     return Status::OK();
   }
@@ -324,7 +366,8 @@ static bool FinalizeCopyInfoForFeeds(gsl::span<const OrtDevice> feed_locations,
   for (size_t i = 0, end = feed_locations.size(); i < end; ++i) {
     copy_info[i].source_device = feed_locations[i];
 
-    if (copy_info[i].source_device != copy_info[i].target_device) {
+    if (copy_info[i].source_device != copy_info[i].target_device &&
+        !DevicesAreMemoryCompatible(copy_info[i].source_device, copy_info[i].target_device)) {
       copy_needed = true;
     }
   }
@@ -345,7 +388,8 @@ static bool FinalizeCopyInfoForFetches(gsl::span<const OrtDevice* const>& fetch_
       copy_info[i].target_device = *alloc_info;
     }
 
-    if (copy_info[i].source_device != copy_info[i].target_device) {
+    if (copy_info[i].source_device != copy_info[i].target_device &&
+        !DevicesAreMemoryCompatible(copy_info[i].source_device, copy_info[i].target_device)) {
       copy_needed = true;
     }
   }
@@ -660,7 +704,14 @@ ExecuteGraphImpl(const SessionState& session_state,
       device_fetches.reserve(num_outputs);
 
       for (size_t i = 0; i < num_outputs; ++i) {
-        if (fetch_copy_info[i].source_device == fetch_copy_info[i].target_device && fetches[i].IsAllocated()) {
+        const auto& src = fetch_copy_info[i].source_device;
+        const auto& tgt = fetch_copy_info[i].target_device;
+        // Reuse the user's pre-allocated buffer if it's on the same device, or if the user provided
+        // HOST_ACCESSIBLE memory for a DEFAULT target (HOST_ACCESSIBLE is a superset the device can
+        // write to directly).
+        bool devices_compatible = (src == tgt) ||
+                                  DevicesAreMemoryCompatible(src, tgt);
+        if (devices_compatible && fetches[i].IsAllocated()) {
           device_fetches.push_back(fetches[i]);
         } else {
           // use temporary value
@@ -816,7 +867,14 @@ common::Status ExecutePartialGraphImpl(const SessionState& session_state, FeedsF
       device_fetches.reserve(num_outputs);
 
       for (size_t i = 0; i < num_outputs; ++i) {
-        if (fetch_copy_info[i].source_device == fetch_copy_info[i].target_device && fetches[i].IsAllocated()) {
+        const auto& src = fetch_copy_info[i].source_device;
+        const auto& tgt = fetch_copy_info[i].target_device;
+        // Reuse the user's pre-allocated buffer if it's on the same device, or if the user provided
+        // HOST_ACCESSIBLE memory for a DEFAULT target (HOST_ACCESSIBLE is a superset the device can
+        // write to directly).
+        bool devices_compatible = (src == tgt) ||
+                                  DevicesAreMemoryCompatible(src, tgt);
+        if (devices_compatible && fetches[i].IsAllocated()) {
           device_fetches.push_back(fetches[i]);
         } else {
           // use temporary value
