@@ -148,6 +148,7 @@ class PluginExecutionProvider : public IExecutionProvider {
   bool IsGraphCaptured(int graph_annotation_id) const override;
   common::Status ReplayGraph(int graph_annotation_id) override;
   OrtGraphCaptureNodeAssignmentPolicy GetGraphCaptureNodeAssignmentPolicy() const override;
+  OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
 
  private:
   const logging::Logger& GetEpLoggerOrDefault() const;
