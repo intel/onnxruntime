@@ -79,8 +79,13 @@ common::Status IOBinding::SynchronizeOutputs() {
 }
 
 common::Status IOBinding::BindOutput(const std::string& name, const OrtValue& ml_value) {
-  // device value is ignored when ml_value is pre-allocated
-  return BindOutputImpl(name, ml_value, {});
+  // Derive the device info from the pre-allocated OrtValue so that the fetch copy logic
+  // sees the correct target device (e.g. HOST_ACCESSIBLE) instead of a default CPU device.
+  OrtDevice device;
+  if (ml_value.IsAllocated() && ml_value.IsTensor()) {
+    device = ml_value.Get<Tensor>().Location().device;
+  }
+  return BindOutputImpl(name, ml_value, device);
 }
 
 common::Status IOBinding::BindOutput(const std::string& name, OrtDevice device) {
