@@ -179,19 +179,37 @@ void addOrtValueMethods(pybind11::module& m) {
                   "Please use the appropriate package of OnnxRuntime for your hardware to use this feature.");
             }
           }
-        } else if (device.Type() == OrtDevice::NPU && device.Vendor() == OrtDevice::VendorIds::HUAWEI) {
+        } else if (device.Type() == OrtDevice::NPU) {
+          if (device.Vendor() == OrtDevice::VendorIds::HUAWEI) {
 #ifdef USE_CANN
-          if (!IsCannDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
-            throw std::runtime_error("The provided device id doesn't match any available NPUs on the machine.");
-          }
+            if (!IsCannDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
+              throw std::runtime_error("The provided device id doesn't match any available NPUs on the machine.");
+            }
 
-          CreateGenericMLValue(nullptr, GetCannAllocator(device.Id()), "", array_on_cpu, ml_value.get(),
-                               true, false, CpuToCannMemCpy);
+            CreateGenericMLValue(nullptr, GetCannAllocator(device.Id()), "", array_on_cpu, ml_value.get(),
+                                 true, false, CpuToCannMemCpy);
 #else
-          throw std::runtime_error(
-              "Can't allocate memory on the CANN device using this package of OnnxRuntime. "
-              "Please use the CANN package of OnnxRuntime to use this feature.");
+            throw std::runtime_error(
+                "Can't allocate memory on the CANN device using this package of OnnxRuntime. "
+                "Please use the CANN package of OnnxRuntime to use this feature.");
 #endif
+          } else {
+            // Generic NPU via plugin EP shared allocator + data transfer
+            auto allocator = GetSharedAllocator(device);
+            auto cpu_to_device_copy_fn = allocator ? CreateDataTransferMemCpy(OrtDevice{}, device) : nullptr;
+            if (cpu_to_device_copy_fn) {
+              CreateGenericMLValue(nullptr, allocator, "", array_on_cpu, ml_value.get(), true, false,
+                                   cpu_to_device_copy_fn);
+            } else if (allocator) {
+              // Allocator exists but no data transfer — HOST_ACCESSIBLE memory, use CPU memcpy
+              CreateGenericMLValue(nullptr, allocator, "", array_on_cpu, ml_value.get(), true, false,
+                                   CpuToCpuMemCpy);
+            } else {
+              throw std::runtime_error(
+                  "Can't allocate memory on the NPU device using this package of OnnxRuntime. "
+                  "No shared allocator found for the specified NPU device.");
+            }
+          }
         } else {
           throw std::runtime_error("Unsupported device: Cannot place the OrtValue on this device");
         }
