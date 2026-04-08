@@ -103,7 +103,17 @@ AllocatorPtr GetSharedAllocator(const OrtDevice& device) {
   auto& env = GetOrtEnv()->GetEnvironment();
 
   OrtMemoryInfo mem_info("ignored", OrtDeviceAllocator, device);
-  return env.GetRegisteredSharedAllocator(mem_info);
+  auto allocator = env.GetRegisteredSharedAllocator(mem_info);
+
+  // Fallback: if no allocator found with DEFAULT memory type, try HOST_ACCESSIBLE.
+  // Some plugin EPs register HOST_ACCESSIBLE allocators for devices that use shared/pinned memory.
+  if (!allocator && device.MemType() == OrtDevice::MemType::DEFAULT) {
+    OrtDevice host_accessible_device(device.Type(), OrtDevice::MemType::HOST_ACCESSIBLE, device.Vendor(), device.Id());
+    OrtMemoryInfo ha_mem_info("ignored", OrtDeviceAllocator, host_accessible_device);
+    allocator = env.GetRegisteredSharedAllocator(ha_mem_info);
+  }
+
+  return allocator;
 }
 
 MemCpyFunc CreateDataTransferMemCpy([[maybe_unused]] const OrtDevice& src_device,
