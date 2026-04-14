@@ -418,6 +418,11 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
       }
     }
 
+    if (provider_options.size() == 0) {
+        //provider_info has the device type
+        provider_options["device_type"] = provider_info_.device_type;
+    }
+
     ProviderInfo provider_info = provider_info_;
     ParseProviderInfo(provider_options, &config_options, provider_info);
     ParseConfigOptions(provider_info);
