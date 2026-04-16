@@ -20,7 +20,7 @@
   },
   "devDependencies": {
     "globby": "^15.0.0",
-    "typedoc": "^0.25.7"
+    "typedoc": "^0.28.18"
   },
   "main": "dist/cjs/index.js",
   "exports": {
