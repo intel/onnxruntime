@@ -694,6 +694,9 @@ void BackendManager::Compute(OrtKernelContext* context) {
                               session_context_.disable_dynamic_shapes && !subgraph_context_.is_ep_ctx_graph;
 
   if (!need_dynamic_backend) {
+    ORT_ENFORCE(concrete_backend_ != nullptr,
+                "[OpenVINO-EP] concrete_backend_ is null in Compute for graph ",
+                subgraph_context_.subgraph_name);
     concrete_backend_->Infer(context);
   } else {
     std::vector<std::vector<int64_t>> tensor_shapes = GetInputTensorShapes(ctx);
@@ -765,6 +768,9 @@ void BackendManager::Compute(OrtKernelContext* context) {
           }
         }
 #endif
+      }
+      if (!dynamic_backend) {
+        ORT_THROW("[OpenVINO-EP] Failed to create dynamic backend for key: " + key);
       }
       std::unique_lock<std::mutex> lock(mutex_);
       backend_map_.insert({key, dynamic_backend});
