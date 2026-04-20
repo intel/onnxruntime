@@ -192,9 +192,9 @@ std::unique_ptr<IExecutionProvider> MakeEp(const logging::Logger* logger, const 
 
   OrtSessionOptions ort_session_options{};
   ORT_THROW_IF_ERROR(AddEpOptionsToSessionOptions(state.ep_name,
-                                                      default_ep_option_key_cstrs,
-                                                      default_ep_option_value_cstrs,
-                                                      ort_session_options.value));
+                                                  default_ep_option_key_cstrs,
+                                                  default_ep_option_value_cstrs,
+                                                  ort_session_options.value));
   
   return state.ep_factory->CreateProvider(ort_session_options, *logger->ToExternal());
 }
