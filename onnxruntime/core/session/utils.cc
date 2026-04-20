@@ -920,24 +920,24 @@ Status CreateIExecutionProviderFactoryForEpDevices(const Environment& env,
 }
 
 Status AddEpOptionsToSessionOptions(const std::string& ep_name,
-    gsl::span<const char* const> ep_option_keys,
-    gsl::span<const char* const> ep_option_vals,
-    SessionOptions& session_options) {
-    const size_t num_ep_options = ep_option_keys.size();
-    if (ep_option_vals.size() != num_ep_options) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-            "Must provide the same number of keys and values for EP options.");
-    }
+                                    gsl::span<const char* const> ep_option_keys,
+                                    gsl::span<const char* const> ep_option_vals,
+                                    SessionOptions& session_options) {
 
-    const std::string prefix = OrtSessionOptions::GetProviderOptionPrefix(ep_name.c_str());
-    auto& config_options = session_options.config_options;
+   const size_t num_ep_options = ep_option_keys.size();
+   if (ep_option_vals.size() != num_ep_options) {
+       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+           "Must provide one or more OrtEpDevice instances.");
+   }
+   const std::string prefix = OrtSessionOptions::GetProviderOptionPrefix(ep_name.c_str());
+   auto& config_options = session_options.config_options;
 
-    for (size_t j = 0; j < num_ep_options; ++j) {
-        if (ep_option_keys[j] == nullptr) continue;
-        ORT_RETURN_IF_ERROR(config_options.AddConfigEntry((prefix + ep_option_keys[j]).c_str(), ep_option_vals[j]));
-    }
+   for (size_t j = 0; j < num_ep_options; ++j) {
+      if (ep_option_keys[j] == nullptr) continue;
+      ORT_RETURN_IF_ERROR(config_options.AddConfigEntry((prefix + ep_option_keys[j]).c_str(), ep_option_vals[j]));
+   }
 
-    return Status::OK();
+  return Status::OK();
 }
 
 Status AddEpCustomDomainsToSessionOptions(gsl::span<const OrtEpDevice* const> ep_devices,
