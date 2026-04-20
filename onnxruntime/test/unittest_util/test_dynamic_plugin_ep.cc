@@ -195,7 +195,7 @@ std::unique_ptr<IExecutionProvider> MakeEp(const logging::Logger* logger, const 
                                                   default_ep_option_key_cstrs,
                                                   default_ep_option_value_cstrs,
                                                   ort_session_options.value));
-  
+
   return state.ep_factory->CreateProvider(ort_session_options, *logger->ToExternal());
 }
 
