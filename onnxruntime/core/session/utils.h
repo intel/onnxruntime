@@ -66,7 +66,7 @@ Status CreateIExecutionProviderFactoryForEpDevices(const Environment& env,
                                                    /*output*/ std::unique_ptr<IExecutionProviderFactory>& out);
 
 // Adds provider options to the OrtSessionOptions configuration.
-Status AddEpOptionsToSessionOptions(gsl::span<const OrtEpDevice* const> ep_devices,
+Status AddEpOptionsToSessionOptions(const std::string& ep_name,
                                     gsl::span<const char* const> ep_options_keys,
                                     gsl::span<const char* const> ep_options_vals,
                                     SessionOptions& session_options);
