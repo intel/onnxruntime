@@ -1370,6 +1370,14 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(const Sessio
         return Status::OK();
       }
 
+      const OrtEpDevice* selected_device = FindRegisteredPluginEpDevice(type, provider_options);
+      if (selected_device == nullptr) {
+        return Status::OK();
+      }
+
+      InlinedVector<const OrtEpDevice*> selected_devices;
+      selected_devices.push_back(selected_device);
+
       std::vector<const char*> ep_option_keys;
       std::vector<const char*> ep_option_vals;
       ep_option_keys.reserve(provider_options->size());
@@ -1379,7 +1387,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(const Sessio
         ep_option_vals.push_back(val.c_str());
       }
 
-      return AddEpOptionsToSessionOptions(type, ep_option_keys, ep_option_vals, ort_session_options.value);
+      return AddEpOptionsToSessionOptions(selected_devices, ep_option_keys, ep_option_vals, ort_session_options.value);
     };
 
     auto status = add_registered_plugin_ep_options_to_session();
@@ -1427,7 +1435,7 @@ static Status AddExplicitEpFactory(PySessionOptions& py_sess_options, const std:
         ep_option_vals.push_back(val.c_str());
       }
 
-      ORT_RETURN_IF_ERROR(AddEpOptionsToSessionOptions(provider_type,
+      ORT_RETURN_IF_ERROR(AddEpOptionsToSessionOptions(selected_devices,
                                                        ep_option_keys,
                                                        ep_option_vals,
                                                        py_sess_options.value));
@@ -1509,11 +1517,11 @@ static Status AddEpFactoryFromEpDevices(PySessionOptions& py_sess_options,
   ORT_RETURN_IF_ERROR(CreateIExecutionProviderFactoryForEpDevices(env,
                                                                   ep_devices,
                                                                   /*output*/ provider_factory));
-  for(auto i = 0; i < ep_devices.size(); i++)
-      ORT_RETURN_IF_ERROR(AddEpOptionsToSessionOptions(ep_devices[i]->ep_name,
-                                                       ep_option_keys,
-                                                       ep_option_vals,
-                                                       py_sess_options.value));
+
+  ORT_RETURN_IF_ERROR(AddEpOptionsToSessionOptions(ep_devices,
+                                                   ep_option_keys,
+                                                   ep_option_vals,
+                                                   py_sess_options.value));
 
   ORT_RETURN_IF_ERROR(AddEpCustomDomainsToSessionOptions(ep_devices,
                                                          py_sess_options));
