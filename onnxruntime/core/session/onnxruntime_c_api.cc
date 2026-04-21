@@ -3641,7 +3641,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_V2, _In_ OrtS
       /*output*/ provider_factory));
 
   ORT_API_RETURN_IF_STATUS_NOT_OK(AddEpOptionsToSessionOptions(
-      ep_devices_span[0]->ep_name,
+      ep_devices_span[0]->ep-name,
       ep_option_keys_span,
       ep_option_vals_span,
       session_options->value));
