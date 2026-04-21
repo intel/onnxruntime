@@ -1510,10 +1510,10 @@ static Status AddEpFactoryFromEpDevices(PySessionOptions& py_sess_options,
                                                                   ep_devices,
                                                                   /*output*/ provider_factory));
   for(auto i = 0; i < ep_devices.size(); i++)
-    ORT_RETURN_IF_ERROR(AddEpOptionsToSessionOptions(ep_devices[i]->ep_name,
-                                                     ep_option_keys,
-                                                     ep_option_vals,
-                                                     py_sess_options.value));
+      ORT_RETURN_IF_ERROR(AddEpOptionsToSessionOptions(ep_devices[i]->ep_name,
+                                                       ep_option_keys,
+                                                       ep_option_vals,
+                                                       py_sess_options.value));
 
   ORT_RETURN_IF_ERROR(AddEpCustomDomainsToSessionOptions(ep_devices,
                                                          py_sess_options));
