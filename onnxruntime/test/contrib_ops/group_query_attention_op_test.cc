@@ -231,8 +231,10 @@ TEST(GroupQueryAttentionTest, TotalSeqLenNegative) {
       "total_sequence_length must be positive");
 }
 
-// Shape validation: seqlens_k with wrong rank (2D instead of 1D) must be rejected.
-TEST(GroupQueryAttentionTest, SeqlensKWrongRank) {
+// Shape compatibility: seqlens_k with rank 2 ({batch_size, 1}) must be accepted because
+// the element count matches batch_size. Per-element bounds are still enforced separately.
+// Regression for GQA models exported with a trailing singleton dim (e.g. Phi-3 / Phi-3.5).
+TEST(GroupQueryAttentionTest, SeqlensKRank2SingletonAccepted) {
   constexpr int num_heads = 1;
   constexpr int kv_num_heads = 1;
   constexpr int head_size = 8;
@@ -248,7 +250,7 @@ TEST(GroupQueryAttentionTest, SeqlensKWrongRank) {
   tester.AddInput<float>("value", {1, 1, kv_hidden_size}, std::vector<float>(kv_hidden_size, 1.0f));
   tester.AddOptionalInputEdge<float>();  // past_key
   tester.AddOptionalInputEdge<float>();  // past_value
-  // 2D shape {1, 1} instead of {1}
+  // 2D shape {1, 1} — element count == batch_size, must be accepted.
   tester.AddInput<int32_t>("seqlens_k", {1, 1}, {0});
   tester.AddInput<int32_t>("total_sequence_length", {1}, {1});
   tester.AddOptionalInputEdge<float>();    // cos_cache
@@ -265,7 +267,8 @@ TEST(GroupQueryAttentionTest, SeqlensKWrongRank) {
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
-  tester.Run(OpTester::ExpectResult::kExpectFailure, "seqlens_k must be shape (batch_size)",
+  // Values are don't-care — just verify the shape check no longer rejects rank-2 seqlens_k.
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "",
              {}, nullptr, &execution_providers);
 }
 
@@ -303,7 +306,7 @@ TEST(GroupQueryAttentionTest, SeqlensKWrongLength) {
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
-  tester.Run(OpTester::ExpectResult::kExpectFailure, "seqlens_k must be shape (batch_size)",
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "seqlens_k must contain batch_size elements",
              {}, nullptr, &execution_providers);
 }
 

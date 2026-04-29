@@ -261,10 +261,13 @@ Status CheckInputs(const T* query,
                            "Input 'past_key' and 'past_value' shall be both present or both absent.");
   }
 
-  const auto& seqlens_k_dim = seqlens_k->Shape().GetDims();
-  if (seqlens_k_dim.size() != 1 || seqlens_k_dim[0] != batch_size) {
+  // Accept any shape whose total element count equals batch_size (e.g. {batch_size},
+  // {batch_size, 1}, or scalar when batch_size == 1). The per-element bounds check in
+  // group_query_attention.cc still enforces 0 <= seqlens_k[b] < present_kv_seqlen,
+  // preserving the OOB protection added in PR #28031.
+  if (seqlens_k->Shape().Size() != static_cast<int64_t>(batch_size)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "seqlens_k must be shape (batch_size).");
+                           "seqlens_k must contain batch_size elements.");
   }
 
   if (!onnxruntime::IsScalarOr1ElementVector(total_seqlen)) {
