@@ -56,6 +56,7 @@ class OnnxRuntimeTestSession : public TestSession {
   std::vector<const char*> input_names_;
   std::vector<std::string> input_names_str_;
   const int input_length_;
+  bool has_dynamic_output_shapes_ = false;
   std::string provider_name_;
   std::string device_memory_name_;  // Device memory type name to use from the list in allocator.h
   const std::unordered_map<std::string, std::string>& run_config_entries_;

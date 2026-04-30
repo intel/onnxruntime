@@ -78,7 +78,11 @@ RunTiming OnnxRuntimeTestSession::Run() {
     // For outputs with data-dependent shapes (e.g. NonZero), the shape changes
     // between runs. ORT caches the allocated tensor and fails shape verification
     // on the next run. Reset all outputs so ORT always allocates fresh buffers.
-    for (auto& output : outputs_) output = Ort::Value(nullptr);
+    // Only do this when the model actually has dynamic output shapes to avoid
+    // unnecessary allocation overhead on fixed-shape models.
+    if (has_dynamic_output_shapes_) {
+      for (auto& output : outputs_) output = Ort::Value(nullptr);
+    }
     session_.Run(run_options, input_names_.data(), input.data(), input_names_.size(),
                  output_names_raw_ptr.data(), outputs_.data(), output_names_raw_ptr.size());
     timing.submit_timing = std::chrono::high_resolution_clock::now() - start;
@@ -987,6 +991,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
     std::vector<int64_t> output_shape = tensor_info.GetShape();
     auto is_dynamic = std::find(output_shape.begin(), output_shape.end(), -1) != output_shape.end();
+    if (is_dynamic) has_dynamic_output_shapes_ = true;
     if (is_dynamic || device_memory_name_.empty()) {
       outputs_.emplace_back(Ort::Value(nullptr));
     } else {
