@@ -1454,6 +1454,9 @@ void QuantizeLinearOp19Test(bool saturate) {
 }
 
 TEST(QuantizeLinearOpTest, Float8) {
+#ifdef USE_OPENVINO
+  GTEST_SKIP() << "Skipping Float8 QuantizeLinear test for OpenVINO EP";
+#endif
   constexpr int min_cuda_architecture = 11080;
   bool enable_cuda = (nullptr != DefaultCpuExecutionProvider().get()) && HasCudaEnvironment(min_cuda_architecture);
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get());
@@ -1496,6 +1499,9 @@ void QuantizeLinearOp19F16Test(bool saturate) {
 }
 
 TEST(QuantizeLinearOpMLFloat16Test, Float8) {
+#ifdef USE_OPENVINO
+  GTEST_SKIP() << "Skipping Float8 QuantizeLinear test for OpenVINO EP";
+#endif
   constexpr int min_cuda_architecture = 11080;
   bool enable_cuda = (nullptr != DefaultCpuExecutionProvider().get()) && HasCudaEnvironment(min_cuda_architecture);
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get());
