@@ -9,6 +9,7 @@
 #else
 #endif
 #include <google/protobuf/message_lite.h>
+#include "core/common/cpuid_info.h"
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
 #endif
@@ -38,6 +39,7 @@ BOOL APIENTRY DllMain(HMODULE /*hModule*/,
         // Cleanup protobuf library.
         // NOTE: it might be too early to do so, as all function local statics and global objects are not destroyed yet.
         ::google::protobuf::ShutdownProtobufLibrary();
+        onnxruntime::CPUIDInfo::ShutdownCpuInfo();
       }
       break;
   }

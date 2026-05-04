@@ -1883,7 +1883,9 @@ Status QnnBackendManager::ExtractBackendProfilingInfo(qnn::profile::ProfilingInf
 
   // ETW enabled previously, but disabled now
   if (ProfilingLevel::INVALID != profiling_level_etw_ && !tracelogging_provider_ep_enabled) {
-    LOGS(*logger_, ERROR) << "ETW enabled previously, but disabled now. Can't do the switch! Won't output any profiling.";
+    // Logging message "ETW enabled previously, but disabled now. Can't do the switch! Won't output any profiling." is disabled,
+    // as telemetry reports it as garrulous event, i.e. it has very high frequency - around 100-200 million events a day.
+    // More precisely: ~42K devices, 183K sessions, ~1.1 billion generic error events in less than week time as of May 2025.
     return Status::OK();
   }
 
