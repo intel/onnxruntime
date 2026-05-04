@@ -28,10 +28,18 @@ void* OVRTAllocator::Alloc(size_t size) {
   try {
     ov::Tensor* tensor = new ov::Tensor(remote_ctx_.create_host_tensor(ov::element::Type_t::u8,
                                                                        {size}));
+    // In OpenVINO 2026.0, Level Zero host tensors throw at runtime when
+    // non-const data() is called (tensor.cpp:118 / make_tensor.cpp:178).
+    // Use the const overload which returns const void* without throwing,
+    // then const_cast since the underlying host memory is writable.
+    const ov::Tensor& const_ref = *tensor;
+    void* ptr = const_cast<void*>(const_ref.data());
     std::lock_guard<std::mutex> lock(mutex_);
-    allocated_.insert({tensor->data(), tensor});
-    return reinterpret_cast<void*>(tensor->data());
+    allocated_.insert({ptr, tensor});
+    return ptr;
   } catch (const ov::Exception& e) {
+    ORT_THROW(std::string("Alloc failed: ") + e.what());
+  } catch (const std::exception& e) {
     ORT_THROW(std::string("Alloc failed: ") + e.what());
   }
 }

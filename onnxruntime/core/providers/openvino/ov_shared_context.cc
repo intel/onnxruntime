@@ -95,7 +95,10 @@ void SharedContext::LoadTensorFromFile(
     // Can't mmap the file to device tensor, create a host tensor and copy the data
     tensor = remote_context->create_host_tensor(element_type, dimensions);
     ORT_ENFORCE(tensor.get_byte_size() == value.serialized.size, "Remote tensor size mismatch");
-    weights_file->LoadWeights(value.serialized.data_offset, tensor.data(), value.serialized.size);
+    // In OpenVINO 2026.0, Level Zero host tensors throw on non-const data().
+    // Use const overload and const_cast since the host memory is writable.
+    const ov::Tensor& const_tensor = tensor;
+    weights_file->LoadWeights(value.serialized.data_offset, const_cast<void*>(const_tensor.data()), value.serialized.size);
   }
 
   ORT_ENFORCE(tensor.get_byte_size() == value.serialized.size, "Tensor size mismatch");

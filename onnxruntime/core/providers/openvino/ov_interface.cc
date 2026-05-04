@@ -429,7 +429,7 @@ void StatefulOVInferRequest::FillTensor(const std::string& tensor_name, const ov
 
 void StatefulOVInferRequest::CacheTensor(const std::string& tensor_name, std::vector<int64_t>& cache) {
   auto tensor = ovInfReq.get_tensor(tensor_name);
-  auto* pData = tensor.data<int64_t>();
+  const auto* pData = static_cast<const ov::Tensor&>(tensor).data<int64_t>();
   for (size_t i = 0; i < tensor.get_size(); i++) {
     cache.emplace_back(pData[i]);
   }
