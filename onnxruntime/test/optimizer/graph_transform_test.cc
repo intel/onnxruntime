@@ -2572,6 +2572,43 @@ TEST_F(GraphTransformationTests, FuseConvClip11Activation) {
   }
 }
 
+// Regression test: when a SelectorActionTransformer fusion runs before partitioning, the
+// target nodes still have empty (unassigned) EP. The replacement node must inherit the empty
+// EP rather than being silently pinned to CPU; otherwise non-CPU EPs cannot claim the new
+// node via GetCapability and the fusion locks them out.
+TEST_F(GraphTransformationTests, FuseConvActivationPreEpAssignmentLeavesEpEmpty) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/conv_relu.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  // Sanity: nodes start with empty EP (loaded from disk, not yet partitioned).
+  for (const Node& node : graph.Nodes()) {
+    ASSERT_TRUE(node.GetExecutionProviderType().empty())
+        << "expected empty EP on freshly loaded node " << node.Name();
+  }
+
+  // Register at Level1 so the transformer runs before EP assignment, mirroring
+  // the regression scenario this test guards against. Level2+ runs after
+  // GraphPartitioner::Partition in the real session pipeline, so it would not
+  // exercise the empty-EP code path.
+  //
+  // Note: ConvActivationFusion is currently registered at Level2 in production;
+  // this test validates the fix for any SelectorActionTransformer-based fusion
+  // that may be registered pre-partitioning in the future (e.g., for CoreML EP).
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ConvActivationFusion>(),
+                                                     TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  ASSERT_EQ(graph.NumberOfNodes(), 1);
+  const Node& fused = *graph.Nodes().begin();
+  ASSERT_EQ(fused.OpType(), "FusedConv");
+  EXPECT_TRUE(fused.GetExecutionProviderType().empty())
+      << "FusedConv replacement should inherit the target's empty EP, got '"
+      << fused.GetExecutionProviderType() << "'";
+}
+
 TEST_F(GraphTransformationTests, FuseConvActivationPreservingAttributes) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/conv_with_padding_relu.onnx";
   std::shared_ptr<Model> p_model;
@@ -4711,6 +4748,81 @@ TEST_F(GraphTransformationTests, ReshapeFusionConcatSubgraph) {
       EXPECT_EQ(val[2], -1);
     }
   }
+}
+
+// Regression test: FuseContiguousReshapes must not collapse a chain of Reshapes
+// when the inferred output shape contains a literal 0 dim. Doing so would create
+// a single Reshape whose shape data contains 0 and (because allowzero defaults
+// to 0) be misinterpreted as "copy from input dim", silently producing wrong shape.
+// See https://github.com/microsoft/onnxruntime/issues/28348.
+TEST_F(GraphTransformationTests, ReshapeFusionContiguousReshapesWithZeroDim) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 21;
+  Model model("ReshapeFusionContiguousReshapesWithZeroDim", false, ModelMetaData(),
+              PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+              std::vector<ONNX_NAMESPACE::FunctionProto>(), *logger_);
+  auto& graph = model.MainGraph();
+
+  // X: float[0, 6, 2]  (zero-sized first dim, fully concrete)
+  TypeProto x_type;
+  x_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  x_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(0);
+  x_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(6);
+  x_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
+
+  TypeProto y_type;
+  y_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+
+  auto& X = graph.GetOrCreateNodeArg("X", &x_type);
+  auto& mid = graph.GetOrCreateNodeArg("mid", &y_type);
+  auto& Y = graph.GetOrCreateNodeArg("Y", &y_type);
+
+  // shape1 = [3, 2, -1]  -> mid shape (3, 2, 0)
+  ONNX_NAMESPACE::TensorProto shape1_proto;
+  shape1_proto.set_name("shape1");
+  shape1_proto.set_data_type(TensorProto_DataType_INT64);
+  shape1_proto.add_dims(3);
+  for (int64_t v : {3, 2, -1}) shape1_proto.add_int64_data(v);
+  graph.AddInitializedTensor(shape1_proto);
+
+  // shape2 = [0, 0, 3] with allowzero=1 -> Y shape (0, 0, 3)
+  ONNX_NAMESPACE::TensorProto shape2_proto;
+  shape2_proto.set_name("shape2");
+  shape2_proto.set_data_type(TensorProto_DataType_INT64);
+  shape2_proto.add_dims(3);
+  for (int64_t v : {0, 0, 3}) shape2_proto.add_int64_data(v);
+  graph.AddInitializedTensor(shape2_proto);
+
+  auto& shape1 = graph.GetOrCreateNodeArg("shape1", nullptr);
+  auto& shape2 = graph.GetOrCreateNodeArg("shape2", nullptr);
+
+  graph.AddNode("reshape1", "Reshape", "first reshape", {&X, &shape1}, {&mid});
+  auto& reshape2 = graph.AddNode("reshape2", "Reshape", "second reshape (allowzero=1)",
+                                 {&mid, &shape2}, {&Y});
+  reshape2.AddAttribute("allowzero", static_cast<int64_t>(1));
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::map<std::string, int> op_to_count_before = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count_before["Reshape"], 2);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ReshapeFusion>(),
+                                                     TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  // Fusion must NOT collapse the two reshapes, otherwise the resulting single
+  // Reshape would (mis)compute output shape (0, 6, 3) instead of (0, 0, 3).
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Reshape"], 2);
+
+  // Y's inferred shape must remain (0, 0, 3).
+  const auto* y_shape = graph.GetNodeArg("Y")->Shape();
+  ASSERT_NE(y_shape, nullptr);
+  ASSERT_EQ(y_shape->dim_size(), 3);
+  EXPECT_EQ(y_shape->dim(0).dim_value(), 0);
+  EXPECT_EQ(y_shape->dim(1).dim_value(), 0);
+  EXPECT_EQ(y_shape->dim(2).dim_value(), 3);
 }
 
 TEST_F(GraphTransformationTests, ReshapeFusionWithSlice1) {
