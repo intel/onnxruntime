@@ -49,6 +49,7 @@ class OnnxRuntimeTestSession : public TestSession {
   Ort::UnownedAllocator allocator_{default_allocator_};
   std::vector<std::vector<Ort::Value>> test_inputs_;
   std::vector<Ort::Value> outputs_;
+  bool has_dynamic_outputs_{false};
   std::vector<std::string> output_names_;
   // The same size with output_names_.
   // TODO: implement a customized allocator, then we can remove output_names_ to simplify this code
