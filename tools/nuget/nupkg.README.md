@@ -31,8 +31,8 @@ Learn more &rarr; [here](https://www.onnxruntime.ai/docs)
 
 #### Microsoft.ML.OnnxRuntime.DirectML
   - Windows
-  - DirectML Execution Provider
-    - https://onnxruntime.ai/docs/execution-providers/DirectML-ExecutionProvider.html
+  - DirectML Execution Provider (Legacy)
+  - https://onnxruntime.ai/docs/execution-providers/DirectML-ExecutionProvider.html
   - CPU Execution Provider
 
 #### Microsoft.ML.OnnxRuntime.QNN
@@ -46,6 +46,21 @@ Learn more &rarr; [here](https://www.onnxruntime.ai/docs)
   - OpenVINO Execution Provider
     - https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html
   - CPU Execution Provider
+
+### Usage and Installation Instructions
+
+#### WinML Execution Provider
+- Install:
+  - `dotnet add package Microsoft.AI.MachineLearning`
+- Usage:
+  - https://learn.microsoft.com/windows/ai/windows-ml/
+
+#### OpenVINO Execution Provider
+- Install:
+  - `dotnet add package Intel.ML.OnnxRuntime.OpenVino`
+- Usage:
+  - https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html
+  - https://onnxruntime.ai/docs/build/eps.html#openvino
 
 
 ### Other packages
