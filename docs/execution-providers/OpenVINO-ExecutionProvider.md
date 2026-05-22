@@ -10,7 +10,7 @@ redirect_from: /docs/reference/execution-providers/OpenVINO-ExecutionProvider
 {: .no_toc }
 
 {: .note }
-**Note: The built-in OpenVINO™ Execution Provider in the upstream ONNX Runtime repository is now in legacy mode.** Active development and releases have moved to the Intel-maintained fork at [intel/onnxruntime](https://github.com/intel/onnxruntime). For new projects on Windows, consider [WinML](WinML-ExecutionProvider.md), which provides automatic hardware-aware EP selection including support for Intel devices. See the [WinML install section](../install/#winml-recommended-for-windows) for installation instructions.
+**Note: The built-in OpenVINO™ Execution Provider in the upstream ONNX Runtime repository is now in legacy mode.** Active development and releases have moved to the Intel-maintained fork at [intel/onnxruntime](https://github.com/intel/onnxruntime). For new projects on Windows, consider [WinML](WinML-ExecutionProvider.md), which provides automatic hardware-aware EP selection including support for Intel devices. 
 
 Accelerate ONNX models on Intel CPUs, GPUs, NPU with Intel OpenVINO™ Execution Provider. Please refer to [this](https://software.intel.com/en-us/openvino-toolkit/hardware) page for details on the Intel hardware supported.
 
