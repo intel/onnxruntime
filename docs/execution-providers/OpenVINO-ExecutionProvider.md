@@ -39,7 +39,7 @@ See the [WinML install section](https://onnxruntime.ai/docs/install/#cccwinml-in
 To explicitly use the Intel OpenVINO™ EP from Python, install:
 
 ```bash
-pip install onnxruntime-openvino
+pip install onnxruntime-ep-openvino
 ```
 
 ### NuGet (C#)
