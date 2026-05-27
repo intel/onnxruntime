@@ -321,6 +321,24 @@ std::unique_ptr<ComputeCapability> MakeComputeCapability(const GraphViewer& grap
       }
     }
 
+    // Include implicit inputs (outer-scope values consumed by subgraphs of If/Loop/Scan nodes).
+    // These must be surfaced as fused subgraph inputs so the EP receives them at runtime.
+    // Currently only enabled for the OpenVINO EP which compiles subgraphs containing control
+    // flow nodes and needs all referenced values as explicit parameters.
+    if (execution_provider_name == "OpenVINOExecutionProvider") {
+      for (const auto* implicit_input : node->ImplicitInputDefs()) {
+        if (!implicit_input->Exists()) {
+          continue;
+        }
+        if (!Contains(node_outputs, implicit_input)) {
+          if (!Contains(subgraph_inputs, implicit_input)) {
+            subgraph_inputs.insert(implicit_input);
+            ordered_subgraph_inputs.push_back(implicit_input);
+          }
+        }
+      }
+    }
+
     const auto& output_defs = node->OutputDefs();
     for (const auto* output_def : output_defs) {
       node_outputs.insert(output_def);
