@@ -421,11 +421,10 @@ bool PerformanceRunner::Initialize() {
     std::cout << "there is no test data for model " << test_case_->GetTestCaseName() << std::endl;
     return false;
   }
+  int input_count = test_model_info->GetInputCount();
   for (size_t test_data_id = 0; test_data_id != test_data_count; ++test_data_id) {
     std::unordered_map<std::string, Ort::Value> feeds;
     test_case_->LoadTestData(test_data_id /* id */, b_, feeds, true);
-    // Discard the names in feeds
-    int input_count = test_model_info->GetInputCount();
     for (int i = 0; i != input_count; ++i) {
       auto iter = feeds.find(test_model_info->GetInputName(i));
       if (iter == feeds.end()) {
@@ -435,6 +434,65 @@ bool PerformanceRunner::Initialize() {
       }
       session_->PreLoadTestData(test_data_id, static_cast<size_t>(i), std::move(iter->second));
     }
+  }
+
+  // When --data_shape is specified without -I, select only the test data sets
+  // whose tensor shapes match the requested shape groups.
+  const auto& data_shape_groups = performance_test_config_.run_config.data_shape_groups;
+  if (!data_shape_groups.empty()) {
+    auto* ort_session = static_cast<OnnxRuntimeTestSession*>(session_.get());
+    size_t num_groups = data_shape_groups.begin()->second.size();
+
+    // Build input name -> index map
+    std::unordered_map<std::string, size_t> input_name_to_idx;
+    for (int i = 0; i < input_count; ++i) {
+      input_name_to_idx[test_model_info->GetInputName(i)] = static_cast<size_t>(i);
+    }
+
+    // Validate that all names in data_shape_groups exist in the model
+    for (const auto& [name, groups] : data_shape_groups) {
+      if (input_name_to_idx.find(name) == input_name_to_idx.end()) {
+        std::cerr << "Error: --data_shape specifies unknown input '" << name << "'." << std::endl;
+        return false;
+      }
+    }
+
+    // For each shape group, find the matching test data set
+    std::vector<size_t> selected_ids;
+    for (size_t g = 0; g < num_groups; ++g) {
+      bool found = false;
+      for (size_t test_data_id = 0; test_data_id < test_data_count; ++test_data_id) {
+        bool match = true;
+        for (const auto& [input_name, shape_list] : data_shape_groups) {
+          size_t input_idx = input_name_to_idx[input_name];
+          auto loaded_shape = ort_session->GetLoadedInputShape(test_data_id, input_idx);
+          if (loaded_shape != shape_list[g]) {
+            match = false;
+            break;
+          }
+        }
+        if (match) {
+          selected_ids.push_back(test_data_id);
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        std::cerr << "No test data found matching shape [";
+        const auto& first_input = data_shape_groups.begin();
+        const auto& dims = first_input->second[g];
+        for (size_t d = 0; d < dims.size(); ++d) {
+          if (d > 0) std::cerr << ",";
+          std::cerr << dims[d];
+        }
+        std::cerr << "] for input '" << first_input->first << "'." << std::endl;
+        return false;
+      }
+    }
+
+    ort_session->SelectTestDataSets(selected_ids);
+    ort_session->SetUseRoundRobin(true);
+    performance_result_.per_shape_time_costs_total.resize(num_groups);
   }
 
   return true;

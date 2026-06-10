@@ -1211,6 +1211,19 @@ bool OnnxRuntimeTestSession::PopulateMultiShapeInputTestData(
   return true;
 }
 
+std::vector<int64_t> OnnxRuntimeTestSession::GetLoadedInputShape(size_t test_data_id, size_t input_id) const {
+  return test_inputs_.at(test_data_id).at(input_id).GetTensorTypeAndShapeInfo().GetShape();
+}
+
+void OnnxRuntimeTestSession::SelectTestDataSets(const std::vector<size_t>& selected_ids) {
+  std::vector<std::vector<Ort::Value>> filtered;
+  filtered.reserve(selected_ids.size());
+  for (size_t id : selected_ids) {
+    filtered.push_back(std::move(test_inputs_.at(id)));
+  }
+  test_inputs_ = std::move(filtered);
+}
+
 OnnxRuntimeTestSession::~OnnxRuntimeTestSession() {
 #ifdef USE_CUDA
   if (device_memory_name_ == CUDA && stream_ != nullptr) {

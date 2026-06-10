@@ -36,6 +36,10 @@ class OnnxRuntimeTestSession : public TestSession {
       int32_t seed,
       const std::map<std::string, std::vector<std::vector<int64_t>>>& data_shape_groups);
 
+  std::vector<int64_t> GetLoadedInputShape(size_t test_data_id, size_t input_id) const;
+  void SelectTestDataSets(const std::vector<size_t>& selected_ids);
+  void SetUseRoundRobin(bool v) { use_round_robin_ = v; }
+
   ~OnnxRuntimeTestSession();
 
   RunTiming Run() override;
