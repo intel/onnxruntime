@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Windows SxS private assembly manifest for the OpenVINO runtime bundled with
+  onnxruntime_providers_openvino.dll (legacy EP).
+  Installed as bin/openvino_runtime.manifest alongside the provider DLL.
+  Version matches the ORT version (MAJOR.MINOR.PATCH.0).
+  Configured at build time by CMakeLists.txt — do not edit by hand.
+-->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <assemblyIdentity type="win32" name="openvino_runtime"
+                    version="@ORT_SXS_VERSION@.0" processorArchitecture="amd64" />
+@ORT_SXS_ASSEMBLY_FILE_ENTRIES@</assembly>
