@@ -1173,6 +1173,12 @@ bool OnnxRuntimeTestSession::PopulateMultiShapeInputTestData(
       auto it = data_shape_groups.find(input_names_str_[i]);
       if (it != data_shape_groups.end()) {
         input_node_dim = it->second[g];
+        const auto model_shape = tensor_info.GetShape();
+        if (!model_shape.empty() && input_node_dim.size() != model_shape.size()) {
+          std::cerr << "Error: --data_shape rank mismatch for input '" << input_names_str_[i]
+                    << "': expected " << model_shape.size() << " dims but got " << input_node_dim.size() << "." << std::endl;
+          return false;
+        }
       } else {
         input_node_dim = tensor_info.GetShape();
         auto transform_fcn = [](int64_t input) { return (input == -1) ? -input : input; };

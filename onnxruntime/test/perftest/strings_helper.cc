@@ -208,6 +208,10 @@ bool ParseDataShapeGroups(const std::string& input,
     // Extract bracket-delimited shape groups: [d0,d1,...][d0,d1,...]
     size_t pos = 0;
     while (pos < shapes_str.size()) {
+      while (pos < shapes_str.size() && (shapes_str[pos] == ' ' || shapes_str[pos] == '\t')) {
+        ++pos;
+      }
+      if (pos >= shapes_str.size()) break;
       if (shapes_str[pos] != '[') {
         std::cerr << "Error parsing --data_shape: expected '[' at position " << pos
                   << " in shapes for input '" << input_name << "'." << std::endl;

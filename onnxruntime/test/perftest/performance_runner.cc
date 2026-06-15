@@ -472,6 +472,12 @@ bool PerformanceRunner::Initialize() {
           }
         }
         if (match) {
+          if (std::find(selected_ids.begin(), selected_ids.end(), test_data_id) != selected_ids.end()) {
+            std::cerr << "Error: --data_shape shape group " << (g + 1)
+                      << " matches a test data set already selected. "
+                      << "Duplicate shape groups are not supported when selecting from test data." << std::endl;
+            return false;
+          }
           selected_ids.push_back(test_data_id);
           found = true;
           break;
