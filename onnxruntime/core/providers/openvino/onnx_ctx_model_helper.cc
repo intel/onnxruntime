@@ -254,7 +254,7 @@ std::shared_ptr<SharedContext> EPCtxHandler::Initialize(const std::vector<IExecu
                                                               ? session_context.GetModelPath()
                                                               : session_context.GetOutputModelPath();
       ORT_THROW_IF_ERROR(utils::ValidateExternalDataPath(validation_base_path, cache_context_path));
-      std::filesystem::path ep_context_path = validation_base_path.parent_path() / cache_context_path;
+      const std::filesystem::path ep_context_path = validation_base_path.parent_path() / cache_context_path;
       if (!is_xml) {
         shared_context = shared_context_manager_->GetOrCreateSharedContext(ep_context_path);
         shared_context->Deserialize();

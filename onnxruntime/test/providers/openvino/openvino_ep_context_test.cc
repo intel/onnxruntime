@@ -33,7 +33,7 @@ namespace {
 
 // Runs a mul_1-style model (X[3,2] -> Y[3,2], Y = X * {1,2,3,4,5,6}) with
 // X = all 2.0f and validates that Y == {2,4,6,8,10,12}.
-void RunMul1AndValidate(Ort::Session& session) {
+void RunAndValidate(Ort::Session& session) {
   const std::array<int64_t, 2> input_shape = {3, 2};
   std::vector<float> input_data(6, 2.0f);
   Ort::MemoryInfo mem_info = Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtDeviceAllocator, OrtMemTypeDefault);
@@ -111,23 +111,20 @@ TEST_F(OVEPEPContextTests, OVEPEPContextFolderPath) {
 // OVIR detection is filename-based (".onnx" -> ".xml"), so the model must be
 // loaded from a path with the ".xml"/".bin" siblings next to it.
 //
-// CPU only. Parameter: weight_sharing_enabled.
-class OVEPEPContextOVIRTests : public ::testing::TestWithParam<bool> {
+// CPU only.
+class OVEPEPContextOVIRTests : public ::testing::Test {
  protected:
   static constexpr const char* kDevice = "CPU";
   static constexpr const ORTCHAR_T* kOvirModelPath = ORT_TSTR("testdata/mul_1_ep_ctx_ovir.onnx");
 };
 
-TEST_P(OVEPEPContextOVIRTests, RunEpCtxOvirModel) {
-  const bool weight_sharing = GetParam();
-
+TEST_F(OVEPEPContextOVIRTests, RunEpCtxOvirModel) {
   ASSERT_TRUE(std::filesystem::exists(kOvirModelPath))
       << "Missing OVIR EP context model. Expected testdata/mul_1_ep_ctx_ovir.onnx "
          "(with sibling .xml and .bin files).";
 
-  // Set up session options targeting CPU and toggle EP context weight sharing.
+  // Set up session options targeting CPU.
   Ort::SessionOptions session_options;
-  session_options.AddConfigEntry(kOrtSessionOptionShareEpContexts, weight_sharing ? "1" : "0");
   std::unordered_map<std::string, std::string> ov_options = {{"device_type", kDevice}};
   session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
 
@@ -135,16 +132,8 @@ TEST_P(OVEPEPContextOVIRTests, RunEpCtxOvirModel) {
   // OVIR encapsulation detection).
   Ort::Session session(*ort_env, kOvirModelPath, session_options);
 
-  RunMul1AndValidate(session);
+  RunAndValidate(session);
 }
-
-INSTANTIATE_TEST_SUITE_P(
-    OVEP_Tests,
-    OVEPEPContextOVIRTests,
-    ::testing::Bool(),
-    [](const ::testing::TestParamInfo<OVEPEPContextOVIRTests::ParamType>& info) {
-      return std::string("weight_share_") + (info.param ? "on" : "off");
-    });
 
 // Generates an EP context model from the OVIR-encapsulated source model and
 // then loads + runs the generated model, covering both EP context embed modes:
@@ -157,13 +146,13 @@ INSTANTIATE_TEST_SUITE_P(
 // than by setting the option on a run-only session.
 //
 // CPU only. Parameter: embed_mode_enabled.
-class OVEPEPContextOVIRGenTests : public ::testing::TestWithParam<bool> {
+class OVEPOVIRModelsExportEPContextTests : public ::testing::TestWithParam<bool> {
  protected:
   static constexpr const char* kDevice = "CPU";
   static constexpr const ORTCHAR_T* kOvirModelPath = ORT_TSTR("testdata/mul_1_ep_ctx_ovir.onnx");
 };
 
-TEST_P(OVEPEPContextOVIRGenTests, GenerateAndRunEpCtxOvirModel) {
+TEST_P(OVEPOVIRModelsExportEPContextTests, ExportEpCtxFromOVIRModel) {
   const bool embed_mode = GetParam();
 
   ASSERT_TRUE(std::filesystem::exists(kOvirModelPath))
@@ -173,10 +162,10 @@ TEST_P(OVEPEPContextOVIRGenTests, GenerateAndRunEpCtxOvirModel) {
   // Generate the EP context model into a dedicated subfolder so that the
   // separately-dumped blob (embed_mode = 0) doesn't collide with testdata.
   const std::filesystem::path out_dir =
-      std::filesystem::path("testdata") / (std::string("ovir_epctx_gen_embed_") + (embed_mode ? "on" : "off"));
+      std::filesystem::path("testdata") / (std::string("ovir_epctx_export_embed_") + (embed_mode ? "on" : "off"));
   std::filesystem::remove_all(out_dir);
   std::filesystem::create_directories(out_dir);
-  const std::filesystem::path epctx_model = out_dir / "mul_1_ep_ctx_ovir_gen.onnx";
+  const std::filesystem::path epctx_model = out_dir / "mul_1_ovir_epctx_export.onnx";
 
   // --- Generate EP context model ---
   {
@@ -202,7 +191,7 @@ TEST_P(OVEPEPContextOVIRGenTests, GenerateAndRunEpCtxOvirModel) {
 
     Ort::Session session(*ort_env, epctx_model.c_str(), session_options);
 
-    RunMul1AndValidate(session);
+    RunAndValidate(session);
   }
 
   std::filesystem::remove_all(out_dir);
@@ -210,9 +199,9 @@ TEST_P(OVEPEPContextOVIRGenTests, GenerateAndRunEpCtxOvirModel) {
 
 INSTANTIATE_TEST_SUITE_P(
     OVEP_Tests,
-    OVEPEPContextOVIRGenTests,
+    OVEPOVIRModelsExportEPContextTests,
     ::testing::Bool(),
-    [](const ::testing::TestParamInfo<OVEPEPContextOVIRGenTests::ParamType>& info) {
+    [](const ::testing::TestParamInfo<OVEPOVIRModelsExportEPContextTests::ParamType>& info) {
       return std::string("embed_") + (info.param ? "on" : "off");
     });
 
