@@ -347,6 +347,22 @@ void BinManager::DeserializeImpl(std::istream& stream, const std::shared_ptr<Sha
   ORT_ENFORCE(header.version == to_underlying(BinVersion::current), "Error: Unsupported file version: ", header.version);
   ORT_ENFORCE(header.header_size == sizeof(header_t), "Error: Header size mismatch.");
 
+  // Determine the actual size of the stream so that all offsets/sizes read from
+  // the (untrusted) file can be validated before being used as allocation sizes.
+  stream.seekg(0, std::ios::end);
+  ORT_ENFORCE(stream.good(), "Error: Failed to seek to end of stream.");
+  const uint64_t stream_size = static_cast<uint64_t>(stream.tellg());
+
+  // Overflow-safe check that [offset, offset + size) fits within the stream.
+  auto range_within_stream = [stream_size](uint64_t offset, uint64_t size) {
+    return offset <= stream_size && size <= stream_size - offset;
+  };
+
+  // Validate the BSON region lies fully within the file before allocating for it.
+  ORT_ENFORCE(range_within_stream(header.bson_start_offset, header.bson_size),
+              "Error: BSON region out of bounds. Offset: ", header.bson_start_offset,
+              " Size: ", header.bson_size, " File size: ", stream_size);
+
   // Seek to BSON metadata and read it
   stream.seekg(header.bson_start_offset);
   ORT_ENFORCE(stream.good(), "Error: Failed to seek to BSON metadata.");
@@ -417,6 +433,11 @@ void BinManager::DeserializeImpl(std::istream& stream, const std::shared_ptr<Sha
 
     // If no external file, extract blob data into vector
     if (!has_external_file) {
+      // Validate the blob range lies fully within the file before allocating for it.
+      ORT_ENFORCE(range_within_stream(blob_offset, blob_size),
+                  "Error: Blob range out of bounds for ", blob_name,
+                  ". Offset: ", blob_offset, " Size: ", blob_size, " File size: ", stream_size);
+
       // Seek to blob offset and read data into vector
       auto current_pos = stream.tellg();
       stream.seekg(blob_offset);
