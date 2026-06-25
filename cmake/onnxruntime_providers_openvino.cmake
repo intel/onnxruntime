@@ -105,14 +105,38 @@ set_target_properties(onnxruntime_providers_openvino PROPERTIES
 # Embeds private-assembly manifests into OV/TBB DLLs and the provider DLL so
 # that Windows loads them from the EP's own directory, avoiding DLL collisions
 # when another application in the same process also uses OpenVINO.
+#
+# Build-time approach: OV/TBB DLLs are staged into <build>/sxs_staging/<config>/,
+# Authenticode signatures are stripped, and SxS dep manifests are embedded.
+# The provider DLL gets its dep manifest via a POST_BUILD step.
 # ---------------------------------------------------------------------------
 if(WIN32)
-  # Require mt.exe for manifest embedding
-  if(NOT CMAKE_MT)
-    message(FATAL_ERROR
-      "mt.exe not found — SxS manifest embedding is required on Windows.\n"
-      "Set -DCMAKE_MT=<path/to/mt.exe> or ensure the Windows SDK is on PATH.")
-  endif()
+  # --- Locate Windows SDK tools ---
+  # Locate a tool in the newest available Windows SDK x64 bin directory.
+  function(ort_find_winsdk_tool out_var exe_name)
+    if(${out_var})
+      return()
+    endif()
+    set(_hints "")
+    if(DEFINED ENV{WDKBinRoot})
+      list(APPEND _hints "$ENV{WDKBinRoot}/x64")
+    endif()
+    file(GLOB _glob_hints
+      "C:/Program Files (x86)/Windows Kits/10/bin/10.*/x64"
+      "C:/Program Files/Windows Kits/10/bin/10.*/x64")
+    list(SORT _glob_hints COMPARE NATURAL ORDER DESCENDING)
+    list(APPEND _hints ${_glob_hints})
+    find_program(${out_var} "${exe_name}" HINTS ${_hints} NO_DEFAULT_PATH)
+    if(NOT ${out_var})
+      message(FATAL_ERROR
+        "${exe_name}.exe not found in known Windows SDK paths.\n"
+        "Set -D${out_var}=<path/to/${exe_name}.exe> to override.")
+    endif()
+    message(STATUS "Found ${exe_name}.exe: ${${out_var}}")
+  endfunction()
+
+  ort_find_winsdk_tool(CMAKE_MT mt)
+  ort_find_winsdk_tool(ORT_SIGNTOOL_EXE signtool)
 
   # --- Enumerate OV and TBB DLL filenames for the SxS assembly manifest ---
   # Glob patterns selecting the OV binaries needed by the EP.
@@ -155,17 +179,17 @@ if(WIN32)
 
     if(EXISTS "${_ov_bin}/Release")
       _ort_glob_ov(_ov_release "${_ov_bin}/Release")
-      set(ORT_OV_INSTALL_FILES_Release ${_ov_release} ${_tbb_release})
+      set(ORT_OV_TBB_INSTALL_FILES_Release ${_ov_release} ${_tbb_release})
     endif()
     if(EXISTS "${_ov_bin}/Debug")
       _ort_glob_ov(_ov_debug "${_ov_bin}/Debug")
-      set(ORT_OV_INSTALL_FILES_Debug ${_ov_debug} ${_tbb_debug})
+      set(ORT_OV_TBB_INSTALL_FILES_Debug ${_ov_debug} ${_tbb_debug})
     endif()
     if(EXISTS "${_ov_bin}/RelWithDebInfo")
       _ort_glob_ov(_ov_rwdi "${_ov_bin}/RelWithDebInfo")
-      set(ORT_OV_INSTALL_FILES_RelWithDebInfo ${_ov_rwdi} ${_tbb_release})
-    elseif(DEFINED ORT_OV_INSTALL_FILES_Release)
-      set(ORT_OV_INSTALL_FILES_RelWithDebInfo ${ORT_OV_INSTALL_FILES_Release})
+      set(ORT_OV_TBB_INSTALL_FILES_RelWithDebInfo ${_ov_rwdi} ${_tbb_release})
+    elseif(DEFINED ORT_OV_TBB_INSTALL_FILES_Release)
+      set(ORT_OV_TBB_INSTALL_FILES_RelWithDebInfo ${ORT_OV_TBB_INSTALL_FILES_Release})
     endif()
   else()
     # Python wheel layout — all binaries flat in <site-packages>/openvino/libs/
@@ -185,17 +209,17 @@ if(WIN32)
       if(EXISTS "${_libs}")
         _ort_glob_ov(_ov_wheel "${_libs}")
         file(GLOB _tbb_wheel "${_libs}/tbb*.dll")
-        set(ORT_OV_INSTALL_FILES_wheel ${_ov_wheel} ${_tbb_wheel})
+        set(ORT_OV_TBB_INSTALL_FILES_wheel ${_ov_wheel} ${_tbb_wheel})
       endif()
     endif()
   endif()
 
   # Collect unique DLL filenames for SxS dep manifest embedding
   set(_all_files
-    ${ORT_OV_INSTALL_FILES_Release}
-    ${ORT_OV_INSTALL_FILES_Debug}
-    ${ORT_OV_INSTALL_FILES_RelWithDebInfo}
-    ${ORT_OV_INSTALL_FILES_wheel})
+    ${ORT_OV_TBB_INSTALL_FILES_Release}
+    ${ORT_OV_TBB_INSTALL_FILES_Debug}
+    ${ORT_OV_TBB_INSTALL_FILES_RelWithDebInfo}
+    ${ORT_OV_TBB_INSTALL_FILES_wheel})
   set(ORT_OV_TBB_DLL_NAMES "")
   foreach(_f IN LISTS _all_files)
     get_filename_component(_ext  "${_f}" EXT)
@@ -209,41 +233,143 @@ if(WIN32)
   if(ORT_OV_TBB_DLL_NAMES)
     message(STATUS "OpenVINO SxS: DLLs for manifest: ${ORT_OV_TBB_DLL_NAMES}")
 
-    # --- Generate assembly manifest ---
-    set(ORT_SXS_VERSION "${ORT_VERSION}")
-    set(_file_entries "")
-    foreach(_dll IN LISTS ORT_OV_TBB_DLL_NAMES)
-      string(APPEND _file_entries "  <file name=\"${_dll}\" />\n")
+    # --- Pre-generate SxS manifests at configure time ---
+    set(_sxs_manifest_dir "${CMAKE_BINARY_DIR}/sxs_manifests")
+    file(MAKE_DIRECTORY "${_sxs_manifest_dir}")
+    set(_ep_file_version "${ORT_VERSION}.0")
+
+    # Per-DLL dep manifests (dep.manifest.in uses ${DLL_BASE_NAME} and ${EP_FILE_VERSION})
+    foreach(_dll_name IN LISTS ORT_OV_TBB_DLL_NAMES)
+      get_filename_component(_dll_we "${_dll_name}" NAME_WE)
+      set(DLL_BASE_NAME   "${_dll_we}")
+      set(EP_FILE_VERSION "${_ep_file_version}")
+      configure_file(
+        "${CMAKE_CURRENT_LIST_DIR}/sxs/dep.manifest.in"
+        "${_sxs_manifest_dir}/${_dll_we}.dep.manifest"
+      )
     endforeach()
-    set(ORT_SXS_ASSEMBLY_FILE_ENTRIES "${_file_entries}")
 
+    # Per-config assembly manifests (only list DLLs that belong to each config)
+    set(ORT_SXS_VERSION "${ORT_VERSION}")
+    set(_asm_configs Release Debug RelWithDebInfo)
+    if(DEFINED ORT_OV_TBB_INSTALL_FILES_wheel)
+      set(_asm_configs wheel)
+    endif()
+
+    foreach(_cfg IN LISTS _asm_configs)
+      set(ORT_SXS_ASSEMBLY_FILE_ENTRIES "")
+      foreach(_f IN LISTS ORT_OV_TBB_INSTALL_FILES_${_cfg})
+        get_filename_component(_ext  "${_f}" EXT)
+        get_filename_component(_name "${_f}" NAME)
+        if(_ext STREQUAL ".dll")
+          string(APPEND ORT_SXS_ASSEMBLY_FILE_ENTRIES "  <file name=\"${_name}\" />\n")
+        endif()
+      endforeach()
+      configure_file(
+        "${CMAKE_CURRENT_LIST_DIR}/sxs/assembly.manifest.in"
+        "${_sxs_manifest_dir}/openvino_runtime_${_cfg}.manifest"
+        @ONLY)
+      set(ORT_SXS_ASSEMBLY_MANIFEST_${_cfg} "${_sxs_manifest_dir}/openvino_runtime_${_cfg}.manifest")
+    endforeach()
+
+    # --- Build-time staging: copy, strip signatures, embed dep manifests ---
+    set(_sxs_staging_root "${CMAKE_BINARY_DIR}/sxs_staging")
+
+    function(_ort_sxs_stage_file _out_dst _cfg _src)
+      get_filename_component(_name "${_src}" NAME)
+      get_filename_component(_ext  "${_src}" EXT)
+      set(_dst "${_sxs_staging_root}/${_cfg}/${_name}")
+
+      if(_ext STREQUAL ".dll")
+        get_filename_component(_name_we "${_src}" NAME_WE)
+        add_custom_command(
+          OUTPUT "${_dst}"
+          COMMAND "${CMAKE_COMMAND}" -E make_directory "${_sxs_staging_root}/${_cfg}"
+          COMMAND "${CMAKE_COMMAND}" -E copy "${_src}" "${_dst}"
+          COMMAND "${CMAKE_COMMAND}"
+            "-DSIGNTOOL=${ORT_SIGNTOOL_EXE}"
+            "-DDLL_PATH=${_dst}"
+            -P "${CMAKE_CURRENT_LIST_DIR}/sxs/remove_signature.cmake"
+          COMMAND "${CMAKE_COMMAND}"
+            "-DCMAKE_MT=${CMAKE_MT}"
+            "-DDLL_PATH=${_dst}"
+            "-DMANIFEST_PATH=${_sxs_manifest_dir}/${_name_we}.dep.manifest"
+            -P "${CMAKE_CURRENT_LIST_DIR}/sxs/embed_manifest.cmake"
+          DEPENDS "${_src}" "${_sxs_manifest_dir}/${_name_we}.dep.manifest"
+          COMMENT "SxS ${_cfg}/${_name}: remove signature + embed manifest"
+          VERBATIM
+        )
+      else()
+        add_custom_command(
+          OUTPUT "${_dst}"
+          COMMAND "${CMAKE_COMMAND}" -E make_directory "${_sxs_staging_root}/${_cfg}"
+          COMMAND "${CMAKE_COMMAND}" -E copy "${_src}" "${_dst}"
+          DEPENDS "${_src}"
+          COMMENT "SxS ${_cfg}/${_name}: copy"
+          VERBATIM
+        )
+      endif()
+      set(${_out_dst} "${_dst}" PARENT_SCOPE)
+    endfunction()
+
+    if(DEFINED ORT_OV_TBB_INSTALL_FILES_wheel)
+      set(_staged_wheel "")
+      foreach(_src IN LISTS ORT_OV_TBB_INSTALL_FILES_wheel)
+        _ort_sxs_stage_file(_dst "$<CONFIG>" "${_src}")
+        list(APPEND _staged_wheel "${_dst}")
+      endforeach()
+      set(ORT_OV_TBB_STAGED_FILES_wheel "${_staged_wheel}")
+      add_custom_target(ort_embed_ov_tbb_manifests ALL DEPENDS ${ORT_OV_TBB_STAGED_FILES_wheel})
+    else()
+      set(_all_staged "")
+      foreach(_cfg IN ITEMS Release Debug RelWithDebInfo)
+        foreach(_src IN LISTS ORT_OV_TBB_INSTALL_FILES_${_cfg})
+          _ort_sxs_stage_file(_dst "${_cfg}" "${_src}")
+          list(APPEND _all_staged "${_dst}")
+          list(APPEND ORT_OV_TBB_STAGED_FILES_${_cfg} "${_dst}")
+        endforeach()
+      endforeach()
+      add_custom_target(ort_embed_ov_tbb_manifests ALL DEPENDS ${_all_staged})
+    endif()
+
+    # --- Post-build: embed dep manifest into onnxruntime_providers_openvino.dll ---
+    set(DLL_BASE_NAME "onnxruntime_providers_openvino")
+    set(EP_FILE_VERSION "${_ep_file_version}")
     configure_file(
-      "${CMAKE_CURRENT_LIST_DIR}/sxs/assembly.manifest.in"
-      "${CMAKE_BINARY_DIR}/cmake/sxs/openvino_runtime.manifest"
-      @ONLY)
-    install(FILES "${CMAKE_BINARY_DIR}/cmake/sxs/openvino_runtime.manifest"
-      DESTINATION ${CMAKE_INSTALL_BINDIR})
+      "${CMAKE_CURRENT_LIST_DIR}/sxs/dep.manifest.in"
+      "${_sxs_manifest_dir}/onnxruntime_providers_openvino.dep.manifest"
+    )
+    add_custom_command(TARGET onnxruntime_providers_openvino POST_BUILD
+      COMMAND "${CMAKE_COMMAND}"
+        "-DCMAKE_MT=${CMAKE_MT}"
+        "-DDLL_PATH=$<TARGET_FILE:onnxruntime_providers_openvino>"
+        "-DMANIFEST_PATH=${_sxs_manifest_dir}/onnxruntime_providers_openvino.dep.manifest"
+        -P "${CMAKE_CURRENT_LIST_DIR}/sxs/embed_manifest.cmake"
+      COMMENT "SxS: embedding dep manifest into onnxruntime_providers_openvino.dll"
+      VERBATIM
+    )
 
-    # --- Install OV+TBB binaries alongside the provider DLL ---
-    if(DEFINED ORT_OV_INSTALL_FILES_wheel)
-      install(FILES ${ORT_OV_INSTALL_FILES_wheel} DESTINATION ${CMAKE_INSTALL_BINDIR})
+    # --- Install staged OV+TBB binaries and assembly manifest ---
+    if(DEFINED ORT_OV_TBB_STAGED_FILES_wheel)
+      install(FILES ${ORT_OV_TBB_STAGED_FILES_wheel} DESTINATION ${CMAKE_INSTALL_BINDIR})
+      install(FILES "${ORT_SXS_ASSEMBLY_MANIFEST_wheel}"
+        RENAME "openvino_runtime.manifest"
+        DESTINATION ${CMAKE_INSTALL_BINDIR})
     else()
       foreach(_config IN ITEMS Release Debug RelWithDebInfo)
-        if(ORT_OV_INSTALL_FILES_${_config})
-          install(FILES ${ORT_OV_INSTALL_FILES_${_config}}
+        if(ORT_OV_TBB_STAGED_FILES_${_config})
+          install(FILES ${ORT_OV_TBB_STAGED_FILES_${_config}}
+            DESTINATION ${CMAKE_INSTALL_BINDIR}
+            CONFIGURATIONS ${_config})
+        endif()
+        if(ORT_SXS_ASSEMBLY_MANIFEST_${_config})
+          install(FILES "${ORT_SXS_ASSEMBLY_MANIFEST_${_config}}"
+            RENAME "openvino_runtime.manifest"
             DESTINATION ${CMAKE_INSTALL_BINDIR}
             CONFIGURATIONS ${_config})
         endif()
       endforeach()
     endif()
-
-    # --- Embed SxS manifests at install time ---
-    install(CODE "set(CMAKE_MT         \"${CMAKE_MT}\")")
-    install(CODE "set(SXS_SOURCE_DIR   \"${CMAKE_CURRENT_LIST_DIR}/sxs\")")
-    install(CODE "set(EP_FILE_VERSION  \"${ORT_VERSION}.0\")")
-    install(CODE "set(OV_TBB_DLL_NAMES \"${ORT_OV_TBB_DLL_NAMES}\")")
-    install(CODE "set(ORT_SXS_BIN_DIR  \"\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}\")")
-    install(SCRIPT "${CMAKE_CURRENT_LIST_DIR}/sxs/embed_manifests.cmake")
   else()
     message(WARNING "OpenVINO SxS: No OV/TBB DLLs found — SxS manifest embedding skipped.\n"
       "Ensure INTEL_OPENVINO_DIR is set (setupvars.bat) or the openvino wheel is installed.")
