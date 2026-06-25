@@ -12,8 +12,10 @@
 #include <psapi.h>
 
 #include <algorithm>
+#include <cwctype>
 #include <filesystem>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "core/session/onnxruntime_cxx_api.h"
@@ -34,20 +36,30 @@ static fs::path GetExeDir() {
 // Returns full paths of all loaded DLLs whose name contains the given fragment.
 static std::vector<std::wstring> FindLoadedModules(std::wstring_view name_fragment_lower) {
   std::vector<std::wstring> result;
-  std::vector<HMODULE> modules(4096);
+  std::vector<HMODULE> modules(1024);
   DWORD cbNeeded = 0;
-  if (!EnumProcessModulesEx(GetCurrentProcess(), modules.data(),
-                            static_cast<DWORD>(modules.size() * sizeof(HMODULE)),
-                            &cbNeeded, LIST_MODULES_ALL)) {
-    return result;
+
+  // Retry with a larger buffer if the initial allocation is too small.
+  for (int attempt = 0; attempt < 3; ++attempt) {
+    if (!EnumProcessModulesEx(GetCurrentProcess(), modules.data(),
+                              static_cast<DWORD>(modules.size() * sizeof(HMODULE)),
+                              &cbNeeded, LIST_MODULES_ALL)) {
+      return result;
+    }
+    if (cbNeeded <= modules.size() * sizeof(HMODULE)) break;
+    modules.resize(cbNeeded / sizeof(HMODULE) + 64);
   }
-  DWORD count = cbNeeded / sizeof(HMODULE);
+
+  DWORD count = std::min<DWORD>(cbNeeded / sizeof(HMODULE),
+                                static_cast<DWORD>(modules.size()));
   for (DWORD i = 0; i < count; ++i) {
     wchar_t path[MAX_PATH] = {};
-    GetModuleFileNameExW(GetCurrentProcess(), modules[i], path, MAX_PATH);
+    if (!GetModuleFileNameExW(GetCurrentProcess(), modules[i], path, MAX_PATH)) {
+      continue;
+    }
     std::wstring wpath(path);
     std::wstring lower = wpath;
-    for (auto& c : lower) c = towlower(c);
+    for (auto& c : lower) c = static_cast<wchar_t>(std::towlower(c));
     if (lower.find(name_fragment_lower) != std::wstring::npos) {
       result.push_back(wpath);
     }
@@ -79,7 +91,8 @@ struct SxsIsolationFixture : public ::testing::Test {
     // Copy openvino.dll to a temp folder and pre-load it.
     // This simulates another app having already loaded
     // its own openvino.dll into this process.
-    temp_dir_ = bin_dir_ / L"sxs_test_temp";
+    temp_dir_ = fs::temp_directory_path() /
+                (std::wstring(L"ort_openvino_sxs_test_") + std::to_wstring(GetCurrentProcessId()));
     fs::create_directories(temp_dir_);
 
     preloaded_ov_ = temp_dir_ / L"openvino.dll";
