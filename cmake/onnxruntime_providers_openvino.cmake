@@ -315,21 +315,24 @@ if(WIN32)
     if(DEFINED ORT_OV_TBB_INSTALL_FILES_wheel)
       set(_staged_wheel "")
       foreach(_src IN LISTS ORT_OV_TBB_INSTALL_FILES_wheel)
-        _ort_sxs_stage_file(_dst "$<CONFIG>" "${_src}")
+        _ort_sxs_stage_file(_dst "wheel" "${_src}")
         list(APPEND _staged_wheel "${_dst}")
       endforeach()
       set(ORT_OV_TBB_STAGED_FILES_wheel "${_staged_wheel}")
       add_custom_target(ort_embed_ov_tbb_manifests ALL DEPENDS ${ORT_OV_TBB_STAGED_FILES_wheel})
     else()
-      set(_all_staged "")
       foreach(_cfg IN ITEMS Release Debug RelWithDebInfo)
         foreach(_src IN LISTS ORT_OV_TBB_INSTALL_FILES_${_cfg})
           _ort_sxs_stage_file(_dst "${_cfg}" "${_src}")
-          list(APPEND _all_staged "${_dst}")
           list(APPEND ORT_OV_TBB_STAGED_FILES_${_cfg} "${_dst}")
         endforeach()
       endforeach()
-      add_custom_target(ort_embed_ov_tbb_manifests ALL DEPENDS ${_all_staged})
+      add_custom_target(ort_embed_ov_tbb_manifests ALL
+        DEPENDS
+          $<$<CONFIG:Release>:${ORT_OV_TBB_STAGED_FILES_Release}>
+          $<$<CONFIG:Debug>:${ORT_OV_TBB_STAGED_FILES_Debug}>
+          $<$<CONFIG:RelWithDebInfo>:${ORT_OV_TBB_STAGED_FILES_RelWithDebInfo}>
+      )
     endif()
 
     # --- Post-build: embed dep manifest into onnxruntime_providers_openvino.dll ---

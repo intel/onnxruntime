@@ -119,8 +119,15 @@ struct SxsIsolationFixture : public ::testing::Test {
 // ---------------------------------------------------------------------------
 TEST_F(SxsIsolationFixture, SxsLoadsPrivateAssemblyCopy) {
   // At this point we have 1 openvino.dll loaded (the fake pre-loaded one)
-  auto ov_mods_before = FindLoadedModules(L"openvino.dll");
+  const auto ov_mods_before = FindLoadedModules(L"openvino.dll");
   ASSERT_GE(ov_mods_before.size(), 1u);
+
+  // If a prior test already loaded the bin-dir copy, we can't validate SxS triggers a new load.
+  const auto bin_ov = (bin_dir_ / L"openvino.dll").wstring();
+  if (std::any_of(ov_mods_before.begin(), ov_mods_before.end(),
+                  [&](const auto& p) { return _wcsicmp(p.c_str(), bin_ov.c_str()) == 0; })) {
+    GTEST_SKIP() << "openvino.dll already loaded from bin directory; run in a fresh process";
+  }
 
   // Trigger OpenVINO EP load — SxS should cause a SECOND openvino.dll to
   // load from the bin directory, ignoring the already-loaded copy.
