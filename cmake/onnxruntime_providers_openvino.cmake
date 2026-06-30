@@ -315,25 +315,36 @@ if(WIN32)
 
     if(DEFINED ORT_OV_TBB_INSTALL_FILES_wheel)
       set(_staged_wheel "")
+      set(_direct_install_wheel "")
       foreach(_src IN LISTS ORT_OV_TBB_INSTALL_FILES_wheel)
-        _ort_sxs_stage_file(_dst "wheel" "${_src}")
-        list(APPEND _staged_wheel "${_dst}")
+        get_filename_component(_ext "${_src}" EXT)
+        if(_ext STREQUAL ".dll")
+          _ort_sxs_stage_file(_dst "wheel" "${_src}")
+          list(APPEND _staged_wheel "${_dst}")
+        else()
+          list(APPEND _direct_install_wheel "${_src}")
+        endif()
       endforeach()
       set(ORT_OV_TBB_STAGED_FILES_wheel "${_staged_wheel}")
+      set(ORT_OV_TBB_DIRECT_FILES_wheel "${_direct_install_wheel}")
       add_custom_target(ort_embed_ov_tbb_manifests ALL DEPENDS ${ORT_OV_TBB_STAGED_FILES_wheel})
     else()
       foreach(_cfg IN ITEMS Release Debug RelWithDebInfo)
         foreach(_src IN LISTS ORT_OV_TBB_INSTALL_FILES_${_cfg})
-          _ort_sxs_stage_file(_dst "${_cfg}" "${_src}")
-          list(APPEND ORT_OV_TBB_STAGED_FILES_${_cfg} "${_dst}")
+          get_filename_component(_ext "${_src}" EXT)
+          if(_ext STREQUAL ".dll")
+            _ort_sxs_stage_file(_dst "${_cfg}" "${_src}")
+            list(APPEND ORT_OV_TBB_STAGED_FILES_${_cfg} "${_dst}")
+          else()
+            list(APPEND ORT_OV_TBB_DIRECT_FILES_${_cfg} "${_src}")
+          endif()
         endforeach()
       endforeach()
-      add_custom_target(ort_embed_ov_tbb_manifests ALL
-        DEPENDS
-          $<$<CONFIG:Release>:${ORT_OV_TBB_STAGED_FILES_Release}>
-          $<$<CONFIG:Debug>:${ORT_OV_TBB_STAGED_FILES_Debug}>
-          $<$<CONFIG:RelWithDebInfo>:${ORT_OV_TBB_STAGED_FILES_RelWithDebInfo}>
-      )
+      set(_all_staged
+        ${ORT_OV_TBB_STAGED_FILES_Release}
+        ${ORT_OV_TBB_STAGED_FILES_Debug}
+        ${ORT_OV_TBB_STAGED_FILES_RelWithDebInfo})
+      add_custom_target(ort_embed_ov_tbb_manifests ALL DEPENDS ${_all_staged})
     endif()
 
     # --- Post-build: embed dep manifest into onnxruntime_providers_openvino.dll ---
@@ -353,9 +364,12 @@ if(WIN32)
       VERBATIM
     )
 
-    # --- Install staged OV+TBB binaries and assembly manifest ---
+    # --- Install staged DLLs, direct non-DLL files, and assembly manifest ---
     if(DEFINED ORT_OV_TBB_STAGED_FILES_wheel)
       install(FILES ${ORT_OV_TBB_STAGED_FILES_wheel} DESTINATION ${CMAKE_INSTALL_BINDIR})
+      if(ORT_OV_TBB_DIRECT_FILES_wheel)
+        install(FILES ${ORT_OV_TBB_DIRECT_FILES_wheel} DESTINATION ${CMAKE_INSTALL_BINDIR})
+      endif()
       install(FILES "${ORT_SXS_ASSEMBLY_MANIFEST_wheel}"
         RENAME "openvino_runtime.manifest"
         DESTINATION ${CMAKE_INSTALL_BINDIR})
@@ -363,6 +377,11 @@ if(WIN32)
       foreach(_config IN ITEMS Release Debug RelWithDebInfo)
         if(ORT_OV_TBB_STAGED_FILES_${_config})
           install(FILES ${ORT_OV_TBB_STAGED_FILES_${_config}}
+            DESTINATION ${CMAKE_INSTALL_BINDIR}
+            CONFIGURATIONS ${_config})
+        endif()
+        if(ORT_OV_TBB_DIRECT_FILES_${_config})
+          install(FILES ${ORT_OV_TBB_DIRECT_FILES_${_config}}
             DESTINATION ${CMAKE_INSTALL_BINDIR}
             CONFIGURATIONS ${_config})
         endif()
