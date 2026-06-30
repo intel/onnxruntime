@@ -12,7 +12,7 @@ cmake_minimum_required(VERSION 3.28)
 execute_process(
   COMMAND "${CMAKE_MT}" -nologo
     "-manifest" "${MANIFEST_PATH}"
-    "-outputresource:${DLL_PATH}\;2"
+    "-outputresource:${DLL_PATH};2"
   RESULT_VARIABLE _rc
   OUTPUT_VARIABLE _out
   ERROR_VARIABLE  _err
