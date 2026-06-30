@@ -91,13 +91,18 @@ struct SxsIsolationFixture : public ::testing::Test {
     // Copy openvino.dll to a temp folder and pre-load it.
     // This simulates another app having already loaded
     // its own openvino.dll into this process.
-    temp_dir_ = fs::temp_directory_path() /
+    std::error_code ec;
+    temp_dir_ = fs::temp_directory_path(ec) /
                 (std::wstring(L"ort_openvino_sxs_test_") + std::to_wstring(GetCurrentProcessId()));
-    fs::create_directories(temp_dir_);
+    ASSERT_FALSE(ec) << "Failed to get temp directory: " << ec.message();
+
+    fs::create_directories(temp_dir_, ec);
+    ASSERT_FALSE(ec) << "Failed to create temp dir: " << ec.message();
 
     preloaded_ov_ = temp_dir_ / L"openvino.dll";
     fs::copy_file(bin_dir_ / L"openvino.dll", preloaded_ov_,
-                  fs::copy_options::overwrite_existing);
+                  fs::copy_options::overwrite_existing, ec);
+    ASSERT_FALSE(ec) << "Failed to copy openvino.dll: " << ec.message();
 
     // Load into module list without actually initializing the DLL
     h_preloaded_ov_ = LoadLibraryExW(preloaded_ov_.wstring().c_str(), nullptr,
@@ -111,8 +116,10 @@ struct SxsIsolationFixture : public ::testing::Test {
       FreeLibrary(h_preloaded_ov_);
       h_preloaded_ov_ = nullptr;
     }
-    std::error_code ec;
-    fs::remove_all(temp_dir_, ec);
+    if (!temp_dir_.empty()) {
+      std::error_code ec;
+      fs::remove_all(temp_dir_, ec);
+    }
   }
 };
 
