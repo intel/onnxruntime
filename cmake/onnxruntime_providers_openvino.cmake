@@ -155,6 +155,7 @@ if(WIN32)
       file(GLOB _tmp "${_dir}/${_pat}")
       list(APPEND _result ${_tmp})
     endforeach()
+    list(REMOVE_DUPLICATES _result)
     set(${_out_var} "${_result}" PARENT_SCOPE)
   endfunction()
 
