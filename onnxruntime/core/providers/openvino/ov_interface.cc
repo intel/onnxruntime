@@ -84,7 +84,7 @@ std::shared_ptr<OVNetwork> OVCore::ReadModel(std::string&& model, const std::str
     ov::frontend::InputModel::Ptr inputModel;
 
     ov::AnyVector params{&modelStream, model_path};
-
+    
     FE = manager.load_by_model(params);
     if (FE) {
       inputModel = FE->load(params);
