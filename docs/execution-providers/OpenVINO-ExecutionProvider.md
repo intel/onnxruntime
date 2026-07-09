@@ -80,6 +80,15 @@ for (size_t i = 0; i < num_ep_devices; i++) {
 Ort::Session session(env, ORT_TSTR("model.onnx"), session_options);
 ```
 
+### Python
+
+Register the OpenVINO EP by specifying it in the providers argument when creating an InferenceSession.
+
+```python
+import onnxruntime as ort
+session = ort.InferenceSession(model_path, providers=['OpenvinoExecutionProvider'])
+```
+
 ### Supported OpenVINO target devices
 
 | Device string | Hardware |
