@@ -64,6 +64,7 @@ class PerformanceRunner {
 
  private:
   bool Initialize();
+  void PrintPerShapeStats() const;
 
   template <bool isWarmup>
   Status RunOneIteration() {

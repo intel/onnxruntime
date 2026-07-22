@@ -160,6 +160,57 @@ void PerformanceRunner::LogSessionCreationTime() {
   std::cout << "\nSession creation time cost: " << session_create_duration.count() << " s\n";
 }
 
+void PerformanceRunner::PrintPerShapeStats() const {
+  const auto& shape_groups = performance_test_config_.run_config.data_shape_groups;
+  const auto& per_shape_costs = performance_result_.per_shape_time_costs_total;
+  size_t num_groups = per_shape_costs.size();
+
+  std::cout << "\nLatency per shape group:" << std::endl;
+
+  for (size_t g = 0; g < num_groups; g++) {
+    // Build label: "input_name : [d0,d1,...]"
+    std::string label;
+    for (const auto& [input_name, groups] : shape_groups) {
+      if (!label.empty()) label += ", ";
+      label += input_name + " : [";
+      const auto& dims = groups[g];
+      for (size_t d = 0; d < dims.size(); d++) {
+        if (d > 0) label += ",";
+        label += std::to_string(dims[d]);
+      }
+      label += "]";
+    }
+
+    std::cout << "  " << (g + 1) << ". " << label << std::endl;
+
+    const auto& time_costs = per_shape_costs[g];
+    if (time_costs.empty()) {
+      std::cout << "      (no data)" << std::endl;
+      continue;
+    }
+
+    std::vector<double> sorted_time = time_costs;
+    std::sort(sorted_time.begin(), sorted_time.end());
+    size_t total = sorted_time.size();
+    size_t n50 = static_cast<size_t>(total * 0.5);
+    size_t n90 = static_cast<size_t>(total * 0.9);
+    size_t n95 = static_cast<size_t>(total * 0.95);
+    size_t n99 = static_cast<size_t>(total * 0.99);
+
+    double avg = std::accumulate(sorted_time.begin(), sorted_time.end(), 0.0) / static_cast<double>(total);
+
+    std::cout << "      Iterations: " << total << "\n"
+              << "      Average Latency: " << avg * 1000.0 << " ms\n"
+              << "      Min Latency: " << sorted_time[0] * 1000.0 << " ms\n"
+              << "      Max Latency: " << sorted_time[total - 1] * 1000.0 << " ms\n"
+              << "      P50 Latency: " << sorted_time[n50] * 1000.0 << " ms\n"
+              << "      P90 Latency: " << sorted_time[n90] * 1000.0 << " ms\n"
+              << "      P95 Latency: " << sorted_time[n95] * 1000.0 << " ms\n"
+              << "      P99 Latency: " << sorted_time[n99] * 1000.0 << " ms"
+              << std::endl;
+  }
+}
+
 Status PerformanceRunner::Run() {
   if (!Initialize()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "failed to initialize.");
@@ -220,6 +271,10 @@ Status PerformanceRunner::Run() {
             << "Avg CPU usage: " << performance_result_.average_CPU_usage << " %\n"
             << "Peak working set size: " << performance_result_.peak_workingset_size << " bytes"
             << std::endl;
+
+  if (!performance_result_.per_shape_time_costs_total.empty()) {
+    PrintPerShapeStats();
+  }
 
   return Status::OK();
 }
