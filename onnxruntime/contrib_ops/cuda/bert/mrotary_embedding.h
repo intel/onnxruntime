@@ -2,32 +2,31 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <vector>
 
 #include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
-
-#include <string>
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+using namespace onnxruntime::cuda;
+
 template <typename T>
-class LinearAttention final : public onnxruntime::cuda::CudaKernel {
+class MRotaryEmbedding final : public CudaKernel {
  public:
-  LinearAttention(const OpKernelInfo& info);
+  MRotaryEmbedding(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;
 
- private:
-  int q_num_heads_;
-  int kv_num_heads_;
-  std::string update_rule_;
-  float scale_;
-  int chunk_size_;
-  // Leading (axis-0) extent of past_state / present_state; 0 means no window axis (single state).
-  int state_window_;
-  int decode_seq_threshold_;
-  int row_split_;
+ protected:
+  float scale;
+  int num_heads;
+  int rotary_embedding_dim;
+  bool interleaved;
+  bool is_packed_batching;
+  std::vector<int64_t> mrope_section;
+  int64_t mrope_layout;
 };
 
 }  // namespace cuda
