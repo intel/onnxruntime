@@ -2937,7 +2937,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>output</tt> : T</dt>
-<dd>Attention output with 3D packed shape (B, T, H_q * d_v).</dd>
+<dd>Attention output with 3D packed shape (B, T, max(H_q, H_kv) * d_v). Standard GQA emits one output per query head; inverse GQA, where H_kv exceeds H_q, emits one per KV head.</dd>
 <dt><tt>present_state</tt> : S</dt>
 <dd>Updated recurrent state with shape (B, H_kv, d_k, d_v), or (W, B, H_kv, d_k, d_v) when state_window = W > 0. Slot W-1 is the state after the last token; slot j is the state after token (T - W + j).</dd>
 </dl>
@@ -3079,7 +3079,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   
   For text-only tokens, T == H == W (all three position streams collapse to the ordinary sequential position),
   so this op is a strict superset of RotaryEmbedding: setting `mrope_section` to a single full-width section
-  (or omitting it) reduces this op to standard RoPE.
+  reduces this op to standard RoPE.
   
   `mrope_layout` selects how the three sections are combined:
     - 0 (Sectioned / Chunked): the half_rotary_embedding_dim axis is split into 3 contiguous chunks according to
