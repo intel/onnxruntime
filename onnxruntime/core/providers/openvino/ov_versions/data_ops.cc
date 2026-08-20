@@ -122,6 +122,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"FusedGemm", V_2023_0, {"CPU", "GPU"}},
     {"FusedMatMul", V_2025_0, {"CPU", "GPU"}},
     {"Gather", V_2020_4, {"CPU", "GPU"}},
+    {"GatherBlockQuantized", V_2026_4, {"CPU", "GPU", "NPU"}},
     {"GatherElements", V_2022_2, {"CPU", "GPU"}},
     {"GatherND", V_2021_4, {"CPU", "GPU"}},
     {"Gelu", V_2023_1, {"CPU", "GPU"}},
@@ -408,7 +409,7 @@ void DataOps::populate_op_mode_supported() {
 
   // populate unsupportedmode_t
   {
-    UnsupportedOpMode obj = {{V_2024_1, V_2024_2, V_2024_3, V_2024_4, V_2024_5, V_2024_6, V_2025_0, V_2025_1, V_2025_2, V_2025_3, V_2025_4, V_2026_0, V_2026_1, V_2026_2},
+    UnsupportedOpMode obj = {{V_2024_1, V_2024_2, V_2024_3, V_2024_4, V_2024_5, V_2024_6, V_2025_0, V_2025_1, V_2025_2, V_2025_3, V_2025_4, V_2026_0, V_2026_1, V_2026_2, V_2026_3, V_2026_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                // If the Input of ReduceMax op is UINT8, it is rejected (Due to output mismatch)
                                for (size_t i = 0; i < node->InputDefs().size(); i++) {
@@ -425,7 +426,7 @@ void DataOps::populate_op_mode_supported() {
   {
     UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1, V_2024_2,
                               V_2024_3, V_2024_4, V_2024_5, V_2024_6, V_2025_0, V_2025_1,
-                              V_2025_2, V_2025_3, V_2025_4, V_2026_0, V_2026_1, V_2026_2},
+                              V_2025_2, V_2025_3, V_2025_4, V_2026_0, V_2026_1, V_2026_2, V_2026_3, V_2026_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                const auto& input_args = node->InputDefs();
                                const auto& input_arg = (input_args.size() > 1) ? input_args[1] : input_args[0];
@@ -445,7 +446,7 @@ void DataOps::populate_op_mode_supported() {
   {
     UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1, V_2024_2,
                               V_2024_3, V_2024_4, V_2024_5, V_2024_6, V_2025_0, V_2025_1,
-                              V_2025_2, V_2025_3, V_2025_4, V_2026_0, V_2026_1, V_2026_2},
+                              V_2025_2, V_2025_3, V_2025_4, V_2026_0, V_2026_1, V_2026_2, V_2026_3, V_2026_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                // If the operator is unsqueeze
                                // If axes is an input, then we cannot produce a static graph.
@@ -461,7 +462,7 @@ void DataOps::populate_op_mode_supported() {
   }
   {
     UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1, V_2024_2, V_2024_3, V_2024_4, V_2024_5,
-                              V_2024_6, V_2025_0, V_2025_1, V_2025_2, V_2025_3, V_2025_4, V_2026_0, V_2026_1, V_2026_2},
+                              V_2024_6, V_2025_0, V_2025_1, V_2025_2, V_2025_3, V_2025_4, V_2026_0, V_2026_1, V_2026_2, V_2026_3, V_2026_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                // check for attributes
                                auto& upsample_attr = node->GetAttributes();
@@ -492,7 +493,7 @@ void DataOps::populate_op_mode_supported() {
   {
     UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1, V_2024_2,
                               V_2024_3, V_2024_4, V_2024_5, V_2024_6, V_2025_0, V_2025_1,
-                              V_2025_2, V_2025_3, V_2025_4, V_2026_0, V_2026_1, V_2026_2},
+                              V_2025_2, V_2025_3, V_2025_4, V_2026_0, V_2026_1, V_2026_2, V_2026_3, V_2026_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                auto& attributes = node->GetAttributes();
                                if (attributes.count("coordinate_transformation_mode") > 0) {
@@ -724,6 +725,87 @@ bool DataOps::dimension_unsupported(const Node* node) {
   return true;
 }
 
+bool DataOps::gather_block_quantized_unsupported(const Node* node) {
+  const auto& attributes = node->GetAttributes();
+  // Defaults mirror the contrib op schema (see contrib_defs.cc).
+  auto attr_or = [&attributes](const std::string& name, int64_t default_value) -> int64_t {
+    return attributes.count(name) > 0 ? attributes.at(name).i() : default_value;
+  };
+  const int64_t bits = attr_or("bits", 4);
+  const int64_t block_size = attr_or("block_size", 128);
+  const int64_t gather_axis = attr_or("gather_axis", 0);
+  const int64_t quantize_axis = attr_or("quantize_axis", 1);
+
+  const auto& input_defs = node->InputDefs();
+  // data, indices and scales are required; zero_points is optional.
+  if (input_defs.size() < 3) return true;
+  for (size_t i = 0; i < 3; ++i) {
+    if (input_defs[i] == nullptr || !input_defs[i]->Exists()) return true;
+  }
+
+  // data must be a constant initializer.
+  if (!graph_viewer_.IsConstantInitializer(input_defs[0]->Name(), true)) return true;
+
+  const auto* data_shape = input_defs[0]->Shape();
+  // Shape must be static to validate the layout constraints below.
+  if (data_shape == nullptr) return true;
+  const int rank = data_shape->dim_size();
+  if (rank < 2) return true;
+  for (const auto& dim : data_shape->dim()) {
+    if (!utils::HasDimValue(dim)) return true;
+  }
+
+  // Normalize the negative spellings before comparing axes.
+  const int64_t norm_gather_axis = gather_axis < 0 ? gather_axis + rank : gather_axis;
+  const int64_t norm_quantize_axis = quantize_axis < 0 ? quantize_axis + rank : quantize_axis;
+  if (norm_gather_axis < 0 || norm_gather_axis >= rank) return true;
+  if (norm_quantize_axis < 0 || norm_quantize_axis >= rank) return true;
+  if (norm_gather_axis == norm_quantize_axis) return true;
+
+  // quantize_axis must be the last dimension.
+  if (norm_quantize_axis != rank - 1) return true;
+
+  const auto* data_type = input_defs[0]->TypeAsProto();
+  if (data_type == nullptr) return true;
+  const auto data_elem_type = data_type->tensor_type().elem_type();
+  if (data_elem_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8) {
+    // uint8 data supports bits 2, 4 and 8, and only gathers along axis 0.
+    if (bits != 2 && bits != 4 && bits != 8) return true;
+    if (norm_gather_axis != 0) return true;
+  } else if (data_elem_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT4 ||
+             data_elem_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT4) {
+    if (bits != 4) return true;
+  } else {
+    return true;
+  }
+
+  // block_size must be a power of 2 and at least 16.
+  if (block_size < 16 || (block_size & (block_size - 1)) != 0) return true;
+
+  // The quantized dimension must be an exact multiple of block_size.
+  if (data_shape->dim(rank - 1).dim_value() % block_size != 0) return true;
+
+  // scales, and zero_points when present, must be constants of matching rank.
+  for (size_t i = 2; i < input_defs.size(); ++i) {
+    const auto* input_def = input_defs[i];
+    if (input_def == nullptr || !input_def->Exists()) continue;  // omitted optional input
+    if (!graph_viewer_.IsConstantInitializer(input_def->Name(), true)) return true;
+    const auto* shape = input_def->Shape();
+    if (shape == nullptr || shape->dim_size() != rank) return true;
+    for (const auto& dim : shape->dim()) {
+      if (!utils::HasDimValue(dim)) return true;
+    }
+  }
+
+  // zero_points must have the same type as data.
+  if (input_defs.size() > 3 && input_defs[3] != nullptr && input_defs[3]->Exists()) {
+    const auto* zp_type = input_defs[3]->TypeAsProto();
+    if (zp_type == nullptr || zp_type->tensor_type().elem_type() != data_elem_type) return true;
+  }
+
+  return false;
+}
+
 bool DataOps::node_is_supported(const NodeIndex node_idx, bool& has_external_weights_) {
   const auto& node = graph_viewer_.GetNode(node_idx);
   const auto& optype = node->OpType();
@@ -743,6 +825,7 @@ bool DataOps::node_is_supported(const NodeIndex node_idx, bool& has_external_wei
   3. Check Op is supported
    3a. Check if Op is of known unsupported modes (edge cases). If yes return false right away.
    3b. If above is not true, check if the op is available in nGraph.
+  4. Check contrib op configurations that the OpenVINO ONNX frontend cannot translate.
   */
 
   // Check 0
@@ -857,6 +940,18 @@ bool DataOps::node_is_supported(const NodeIndex node_idx, bool& has_external_wei
 #ifndef NDEBUG
     if (openvino_ep::backend_utils::IsDebugEnabled()) {
       std::cout << "Failed in unsupported op mode" << std::endl;
+    }
+#endif
+    return false;
+  }
+
+  // Check 4: contrib ops with per-configuration limitations. Kept separate from
+  // op_list_ above, which is keyed on op type alone and only consulted for kOnnxDomain.
+  if (domain == kMSDomain && optype == "GatherBlockQuantized" &&
+      gather_block_quantized_unsupported(node)) {
+#ifndef NDEBUG
+    if (openvino_ep::backend_utils::IsDebugEnabled()) {
+      std::cout << "GatherBlockQuantized configuration is not supported" << std::endl;
     }
 #endif
     return false;
