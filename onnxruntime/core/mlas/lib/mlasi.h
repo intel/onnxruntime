@@ -1510,6 +1510,10 @@ extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUdot;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchSdot;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUmmla;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchSmmla;
+#if defined(MLAS_USE_SVE)
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchSmmlaSve;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUmmlaSve;
+#endif
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmSimd;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmRelaxedSimd;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmQuantDispatchRvv;
@@ -1626,6 +1630,7 @@ extern const MLAS_KV_QUANT_GEMM_DISPATCH MlasKVQuantGemmDispatchNeon;
 struct MLAS_LINEAR_ATTENTION_DISPATCH;
 extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchDefault;
 extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchAvx512F;
+extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchNeon;
 
 //
 // Quantized depthwise convolution kernels.
