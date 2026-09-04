@@ -89,6 +89,7 @@ ABSL_FLAG(std::string, i, "",
           "  [OpenVINO only] [enable_opencl_throttling]: Enables OpenCL queue throttling for GPU device(Reduces the CPU Utilization while using GPU) \n"
           "  [OpenVINO only] [reshape_input]: Sets model input shapes with support for bounded dynamic dimensions using 'min..max' syntax (e.g., [1..10,3,224,224]) \n"
           "  [OpenVINO only] [layout]: Specifies the layout for inputs/outputs to interpret tensor dimensions correctly. \n"
+          "  [OpenVINO only] [affinity]: Specifies the affinity of a certain node to a specific device in Hetero Mode. \n"
           "  [Example] [For OpenVINO EP] -e openvino -i \"device_type|CPU num_of_threads|5 enable_opencl_throttling|true reshape_input|<input_name>[1,3,60,60..100] layout|<input_name>[NCHW] cache_dir|\"<path>\"\"\n"
           "\n"
           "  [QNN only] [backend_type]: QNN backend type. E.g., 'cpu', 'htp'. Mutually exclusive with 'backend_path'.\n"
