@@ -177,9 +177,24 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int
       bool shape_matched = true;
 
       if (p_ort_value->IsTensor()) {
+        const TensorShape& existing_shape = p_ort_value->IsTensor()
+                                                ? p_ort_value->Get<Tensor>().Shape()
+#if !defined(DISABLE_SPARSE_TENSORS)
+                                                : p_ort_value->Get<SparseTensor>().DenseShape();
+#endif
+        LOGS_DEFAULT(INFO) << "existing_shape=" << existing_shape.ToString() << ", computed_shape=" << (shape ? shape->ToString() : "<null>");
         ORT_RETURN_IF_NOT(shape != nullptr, "shape must not be null for tensor output that is already allocated");
         const Tensor& tensor = p_ort_value->Get<Tensor>();
         shape_matched = (tensor.Shape() == *shape);
+        LOGS_DEFAULT(INFO) << "existing_shape size=" << existing_shape.Size() << ", computed_shape size =" << shape->Size() << std::endl;
+        // Compare number of elements
+        if (existing_shape.Size() == shape->Size()) {
+          // Reuse buffer, update shape in-place
+          const_cast<Tensor&>(tensor).Reshape(*shape);
+          shape_matched = true;
+        } else {
+          shape_matched = false;
+        }
       } else if (p_ort_value->IsSparseTensor()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
         ORT_RETURN_IF_NOT(shape != nullptr, "shape must not be null for sparse tensor output that is already allocated");
