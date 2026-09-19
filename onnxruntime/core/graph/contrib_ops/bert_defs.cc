@@ -3484,6 +3484,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 
 constexpr const char* GatedDeltaNet_ver1_doc = R"DOC(
 Packed (token-major) gated delta network / linear attention with an explicit recurrent state.
+Implemented by CUDA and native WebGPU execution providers. WebGPU supports float and float16
+with scalar decay and `head_size_qk <= 256`, but rejects `state_update_capacity > 0`.
 
 Layout. Query, key and value are token-major, so head counts are derived from the shapes
 rather than from attributes:
@@ -3790,12 +3792,16 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 constexpr const char* GatedRMSNorm_ver1_doc = R"DOC(
 Gated RMS normalization as used by Mamba2 / gated DeltaNet attention outputs:
 
-  Y = X * rsqrt(mean(X^2) + epsilon) * scale * SiLU(gate)
+  Y = X * rsqrt(mean(X^2) + epsilon) * scale * gate_activation(gate)
+
+where `gate_activation` is one of:
+- `silu` or `swish`: `z * sigmoid(z)`
+- `sigmoid`: `sigmoid(z)`
 
 The mean of squares is taken over the trailing `C` elements of each row, where `C` is the
 length of `scale`; the input's last dimension must be a multiple of `C`, which lets a
 per-head norm run on a packed (B, T, H * C) tensor without any surrounding Reshape.
-All arithmetic including SiLU is done in float32 regardless of the tensor type, matching
+All arithmetic including gate activation is done in float32 regardless of the tensor type, matching
 the reference implementation, so this replaces the exported
 SimplifiedLayerNormalization -> Cast -> Sigmoid -> Mul -> Cast -> Mul -> Cast chain with a
 single launch.
@@ -3809,6 +3815,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Epsilon added to the mean of squares before the reciprocal square root.",
               AttributeProto::FLOAT,
               1e-5f)
+        .Attr("activation",
+              "Fused gate activation. One of: 'silu', 'swish', 'sigmoid'. "
+              "'swish' is an alias of 'silu'.",
+              AttributeProto::STRING,
+              std::string("silu"))
         .Input(0,
                "X",
                "Input tensor with shape (..., H * C). Normalization is applied over each "
