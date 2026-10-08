@@ -41,7 +41,9 @@ enum versionNum {
   V_2025_4,
   V_2026_0,
   V_2026_1,
-  V_2026_2
+  V_2026_2,
+  V_2026_3,
+  V_2026_4
 };
 
 using VersionNum = enum versionNum;
@@ -82,6 +84,7 @@ class DataOps {
   bool op_is_supported(std::string name, std::vector<SupportedOp>& list);
   bool dimension_unsupported(const Node* node);
   bool unsupported_op_mode(const Node* node, bool& has_external_weights_);
+  bool gather_block_quantized_unsupported(const Node* node);
   bool type_is_supported(const NodeArg* node_arg, bool is_initializer);
   bool node_is_supported(const NodeIndex node_idx, bool& has_external_weights_);
 
