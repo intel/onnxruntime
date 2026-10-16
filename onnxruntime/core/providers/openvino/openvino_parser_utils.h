@@ -22,6 +22,7 @@ class OpenVINOParserUtils {
   static std::string TrimWhitespace(const std::string& str);
   static ov::Dimension ParseDimensionRange(const std::string& range_str, const std::string& tensor_name);
   static bool Check_Valid_Layout(const std::string& layout_str, const std::string& tensor_name);
+  static affinity_t ParseAffinity(const std::string& affinity_definition);
 };
 
 }  // namespace openvino_ep
