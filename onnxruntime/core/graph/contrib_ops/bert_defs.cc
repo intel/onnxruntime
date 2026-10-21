@@ -1902,12 +1902,17 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "S")
         .Input(6,
                "past_seqlens",
-               "A tensor with shape (batch_size). It specifies the past lengths of cached sequence in the KV cache.",
+               "A tensor with shape (batch_size). It specifies the past lengths of cached sequences. "
+               "CUDA sanitizes malformed values on device: an invalid value suppresses that sequence's cache writes "
+               "and produces zero output. A backend requiring exact host lengths may instead return INVALID_ARGUMENT "
+               "when attention_metadata is absent.",
                "S")
         .Input(7,
                "block_table",
                "2D tensor with shape (batch_size, max_blocks_per_sequence) that maps each sequence in the batch to its"
-               "corresponding blocks in the KV cache.",
+               "corresponding blocks in the KV cache. -1 denotes an unmapped page. CUDA converts values below -1 or "
+               "greater than or equal to num_blocks to the unmapped sentinel before resolving cache addresses; mapped "
+               "pages remain attendable.",
                "S")
         .Input(8,
                "cos_cache",
@@ -5278,6 +5283,63 @@ their BufferViews have the same Program binding owner, not merely equal raw buff
             }
             if (index == 3 && shape.dim(0).has_dim_value() && shape.dim(0).dim_value() != 11) {
               fail_shape_inference("GatedDeltaNetStateReplay metadata must have shape [11].");
+            }
+          }
+          if (hasInputShape(ctx, 2)) {
+            propagateShapeFromInputToOutput(ctx, 2, 0);
+          }
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    ConvStateReplay, 1,
+    OpSchema()
+        .SetDoc(R"DOC(
+Reconstruct rolling convolution history after retaining a prefix of captured inputs, without
+performing convolution arithmetic. The WebGPU-only implementation copies FP16 or FP32 payload
+bits exactly, including signed zero and NaN payloads, and waits for checked GPU completion.
+
+Inputs 0-2 are full rank-1 backing allocations of the same element type.
+CPU int64 metadata [8] is ordered as:
+  source_offset_bytes, destination_offset_bytes, capture_offset_bytes,
+  batch_size, channels, history_width, capacity, kept_count.
+Offsets are logical byte offsets into the full backing tensors, aligned to the element size
+(two bytes for FP16, four for FP32), not WebGPU storage-binding offsets.
+All fields are nonnegative; channels must be positive; 0 <= kept_count <= capacity.
+Zero batch size, history width, or capture capacity is valid. Zero state size is a no-op.
+Geometry, backing byte extents and metadata must fit the implementation's uint32 indexing range.
+
+The source view is the incoming snapshot immediately before capture, with layout
+[batch_size, channels, history_width]. Captured inputs have layout [batch_size, capacity, channels].
+capacity is the original capture stride, not kept_count. All retained inputs must have been captured.
+For each batch b, channel c and position p, with W = history_width and k = kept_count:
+  destination[b,c,p] = source[b,c,p+k]                 if p+k < W
+                     = capture[b,p+k-W,c]            otherwise.
+For k >= W only the last W inputs of the retained prefix are used; unused capture tails are not read.
+
+The output must be explicitly prebound to the same full allocation as destination_backing.
+Destination backing must be distinct from source and capture backing, even for disjoint logical views.
+Only the designated destination view is modified; neighboring elements and all source/capture data
+are preserved. One descriptor is supported per invocation; graph capture is not supported.
+)DOC")
+        .Input(0, "source_backing", "Full backing tensor containing the incoming convolution history.", "T")
+        .Input(1, "capture_backing", "Full backing tensor containing captured token-major inputs.", "T")
+        .Input(2, "destination_backing", "Full inactive destination-state backing tensor.", "T")
+        .Input(3, "metadata", "CPU int64 [8]: byte offsets, batch, channels, history, capacity, kept_count.", "TI")
+        .Output(0, "destination_out", "Same backing allocation and shape as destination_backing.", "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(float)"}, "State and captured inputs are FP16 or FP32.")
+        .TypeConstraint("TI", {"tensor(int64)"}, "CPU replay metadata is int64.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 2, 0);
+          for (size_t index = 0; index < 4; ++index) {
+            if (!hasInputShape(ctx, index)) {
+              continue;
+            }
+            const auto& shape = getInputShape(ctx, index);
+            if (shape.dim_size() != 1) {
+              fail_shape_inference("ConvStateReplay inputs must have rank 1.");
+            }
+            if (index == 3 && shape.dim(0).has_dim_value() && shape.dim(0).dim_value() != 8) {
+              fail_shape_inference("ConvStateReplay metadata must have shape [8].");
             }
           }
           if (hasInputShape(ctx, 2)) {
