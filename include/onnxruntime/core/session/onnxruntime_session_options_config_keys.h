@@ -43,6 +43,13 @@ static const char* const kOrtSessionOptionsConfigMoeExpertCounterAlpha =
 static const char* const kOrtSessionOptionsConfigMoeExpertCounterBeta =
     "session.moe_expert_counter_beta";
 
+// Controls weight scaling in the shared-layout CPU QMoE INT3/INT4 kernels only.
+// "0" (default): round each dequantized weight to the activation type before multiplication.
+// "1": accumulate the block dot product in FP32, then apply its scale, without per-weight rounding.
+// Deferred scaling can improve throughput but can change results, particularly under cancellation.
+// Currently does not affect NVFP4/MXFP4, legacy CPU QMoE kernels, or CUDA kernels.
+static const char* const kOrtSessionOptionsCpuQmoeDeferredScale = "ep.cpu.qmoe_deferred_scale";
+
 // A value of "1" means allocators registered in the env will be used. "0" means the allocators created in the session
 // will be used. Use this to override the usage of env allocators on a per session level.
 static const char* const kOrtSessionOptionsConfigUseEnvAllocators = "session.use_env_allocators";
@@ -959,3 +966,32 @@ static const char* const kOrtSessionOptionsConfigUseDeterministicCompute = "sess
 // - "1": Skip PagedAttention input sanitization.
 static const char* const kOrtSessionOptionsPagedAttentionSkipInputSanitizer =
     "session.paged_attention.skip_input_sanitizer";
+
+// ---------------------------------------------------------------------------
+// Portable MoE / QMoE Offload v4 Session Configuration Keys
+// ---------------------------------------------------------------------------
+static const char* const kOrtSessionOptionsMoeOffloadMode = "session.moe.offload.mode";
+static const char* const kOrtSessionOptionsMoeOffloadCpuExecution = "session.moe.offload.cpu_execution";
+static const char* const kOrtSessionOptionsMoeOffloadPlacement = "session.moe.offload.placement";
+static const char* const kOrtSessionOptionsMoeOffloadDeviceExpertBytes = "session.moe.offload.device_expert_bytes";
+static const char* const kOrtSessionOptionsMoeOffloadHostExpertBytes = "session.moe.offload.host_expert_bytes";
+static const char* const kOrtSessionOptionsMoeOffloadDeviceWorkingBytes = "session.moe.offload.device_working_bytes";
+static const char* const kOrtSessionOptionsMoeOffloadHostWorkingBytes = "session.moe.offload.host_working_bytes";
+static const char* const kOrtSessionOptionsMoeOffloadPinnedBytes = "session.moe.offload.pinned_bytes";
+static const char* const kOrtSessionOptionsMoeOffloadReserveDeviceBytes = "session.moe.offload.reserve_device_bytes";
+static const char* const kOrtSessionOptionsMoeOffloadBudgetGroup = "session.moe.offload.budget_group";
+// Per-session limit, in bytes, on device memory allocated through the session's CUDA allocators (BFC arena growth,
+// MoE offload buffers, ...). An allocation that would exceed the limit fails.
+// This is not the CUDA EP provider option `gpu_mem_limit`, which only caps the size of the BFC arena.
+// "0" or unset means no limit. Not supported with external CUDA allocators or CUDA memory pools.
+// Honored by both the CUDA EP and the CUDA plugin EP. Must be set before the session is created.
+static const char* const kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit = "session.moe.offload.gpu_device_mem_limit";
+static const char* const kOrtSessionOptionsMoeOffloadAllowFileBacking = "session.moe.offload.allow_file_backing";
+static const char* const kOrtSessionOptionsMoeOffloadCpuThreads = "session.moe.offload.cpu_threads";
+static const char* const kOrtSessionOptionsMoeOffloadAsyncMaxTokens = "session.moe.offload.async_max_tokens";
+static const char* const kOrtSessionOptionsMoeOffloadPrefillWaveExperts = "session.moe.offload.prefill_wave_experts";
+static const char* const kOrtSessionOptionsMoeOffloadSkipZeroColdDoorbell = "session.moe.offload.skip_zero_cold_doorbell";
+static const char* const kOrtSessionOptionsMoeOffloadPopularityFile = "session.moe.offload.popularity_file";
+static const char* const kOrtSessionOptionsMoeOffloadNodeOverrides = "session.moe.offload.node_overrides";
+static const char* const kOrtSessionOptionsMoeOffloadSourceRoot = "session.moe.offload.source_root";
+static const char* const kOrtSessionOptionsMoeOffloadDerivedCacheDir = "session.moe.offload.derived_cache_dir";
