@@ -284,7 +284,11 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False, min_real_range=Non
     dq = numpy.array(qmax, dtype=numpy.float64) - numpy.array(qmin, dtype=numpy.float64)
     scale = numpy.array(dr / dq)
     assert scale >= 0, "scale issue"
-    if scale < numpy.finfo(rmax.dtype).tiny:
+    # FP16 subnormal scales are usable because integer quantization divides FP32 data by the scale.
+    finfo = numpy.finfo(rmax.dtype)
+    min_scale = finfo.smallest_subnormal if rmax.dtype == numpy.float16 else finfo.tiny
+    stored_scale = scale.astype(rmax.dtype)
+    if (stored_scale if rmax.dtype == numpy.float16 else scale) < min_scale:
         scale = numpy.array(1.0, dtype=rmax.dtype)
         zero_point = numpy.array(0, dtype=qmin.dtype)
     else:
@@ -299,7 +303,7 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False, min_real_range=Non
             )
         else:
             zero_point = numpy.array(numpy.round(qmin - rmin / scale), dtype=qmin.dtype)
-        scale = scale.astype(rmax.dtype)
+        scale = stored_scale
 
     return [zero_point, scale]
 
@@ -475,8 +479,9 @@ def compute_scale_zp_blocked(
     dq = qmax_val - qmin_val
     raw_scale = (dr / dq).astype(weight.dtype)
 
-    tiny = numpy.finfo(weight.dtype).tiny
-    degenerate = raw_scale < tiny  # blocks where the float range is essentially zero
+    finfo = numpy.finfo(weight.dtype)
+    min_scale = finfo.smallest_subnormal if weight.dtype == numpy.float16 else finfo.tiny
+    degenerate = raw_scale < min_scale  # blocks where the float range is essentially zero
 
     scales = numpy.where(degenerate, numpy.ones_like(raw_scale), raw_scale)
 
@@ -524,12 +529,12 @@ def compute_data_quant_params(
     if rmin_override is not None:
         rmin = rmin_override
     else:
-        rmin = data.min() if len(data) else 0.0
+        rmin = data.min() if data.size else 0.0
 
     if rmax_override is not None:
         rmax = rmax_override
     else:
-        rmax = data.max() if len(data) else 0.0
+        rmax = data.max() if data.size else 0.0
 
     rmin = numpy.array(rmin, dtype=data.dtype)
     rmax = numpy.array(rmax, dtype=data.dtype)
@@ -551,7 +556,7 @@ def compute_data_quant_params(
         TensorProto.UINT4,
     ):
         qmin, qmax = get_qmin_qmax_for_qType(quant_type, reduce_range, symmetric=symmetric)
-        if len(data):
+        if data.size:
             zero_point, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric, min_real_range)
         else:
             zero_point = numpy.array(0, dtype=qmin.dtype)
@@ -1196,7 +1201,7 @@ def update_opset_version(
         )
         target_opset_version = 21
 
-    elif opset_version < 19 and weight_quant_type == onnx.TensorProto.FLOAT8E4M3FN:
+    elif opset_version < 19 and weight_quant_type == onnx.TensorProto.FLOAT8E4M3FN and not needs_opset21_for_16bit:
         logging.warning(
             f"The original model opset version is {opset_version}, which does not support quantization to float 8. "
             "Please update the model to opset >= 19. Automatically update the model to opset 19. "
