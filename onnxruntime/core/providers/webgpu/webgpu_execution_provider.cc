@@ -77,9 +77,10 @@ class Memcpy final : public OpKernel {
   Memcpy(const OpKernelInfo& info) : OpKernel(info) {}
 
   Status Compute(OpKernelContext* ctx) const override {
+    const auto& ep = *static_cast<const WebGpuExecutionProvider*>(Info().GetExecutionProvider());
+    std::lock_guard<std::recursive_mutex> lock{ep.Recording().mutex};
     const auto* X = ctx->Input<Tensor>(0);
     Tensor* Y = ctx->Output(0, X->Shape());
-    const auto& ep = *static_cast<const WebGpuExecutionProvider*>(Info().GetExecutionProvider());
     DataTransfer transfer(ep.BufferManager(), ep.Recording(), ep.GetDeviceId());
     return transfer.CopyTensor(*X, *Y);
   }
@@ -465,6 +466,7 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
 
     KERNEL_CREATE_INFO_VERSIONED(17, 19, DFT),
     KERNEL_CREATE_INFO(20, DFT),
+    KERNEL_CREATE_INFO(17, STFT),
 
     KERNEL_CREATE_INFO_VERSIONED(1, 9, TopK),
     KERNEL_CREATE_INFO_VERSIONED(10, 10, TopK),
@@ -513,6 +515,8 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture, bool 
 
   // Register int64 Clip kernels with conditional int64 support
   RegisterClipInt64Kernels(*kernel_registry, enable_int64);
+
+  RegisterInt64UnaryKernels(*kernel_registry, enable_int64);
 
   // Register Range kernels with conditional int64 support
   RegisterRangeKernels(*kernel_registry, enable_int64);
@@ -661,6 +665,7 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       multi_rotary_cache_concat_offset_{config.multi_rotary_cache_concat_offset},
       kv_cache_quantization_bits_{config.kv_cache_quantization_bits},
       enable_matmul_fp32_accumulation_{config.enable_matmul_fp32_accumulation},
+      feature_requests_{config.feature_requests},
       forced_matmul_algorithm_{config.forced_matmul_algorithm},
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
       weight_load_acceleration_mode_{config.weight_load_acceleration_mode},
@@ -710,6 +715,13 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
   }
 
   WebGpuContextFactory::RetainContext(context_id_);
+}
+
+bool WebGpuExecutionProvider::DeviceHasFeature(wgpu::FeatureName feature) const {
+  constexpr auto index = static_cast<size_t>(WebGpuFeature::SubgroupMatrix);
+  return context_.DeviceHasFeature(feature) &&
+         (feature != wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix ||
+          feature_requests_[index].value_or(kWebGpuFeatures[index].enabled_by_default));
 }
 
 std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
@@ -944,6 +956,7 @@ std::unique_ptr<profiling::EpProfiler> WebGpuExecutionProvider::GetProfiler() {
 }
 
 Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
+  std::lock_guard<std::recursive_mutex> lock{recording_->mutex};
 #if defined(ORT_USE_EP_API_ADAPTERS)
   const bool serialized = webgpu::ep::UseSerializedExecutionMode();
   if (serialized) {
@@ -1010,6 +1023,7 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
 }
 
 Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxruntime::RunOptions& run_options) {
+  std::lock_guard<std::recursive_mutex> lock{recording_->mutex};
   auto end_run = gsl::finally([&] {
     graph_buffer_mgr_active_ = false;
     run_active_.store(false);
@@ -1084,6 +1098,7 @@ bool WebGpuExecutionProvider::IsGraphCaptured(int graph_annotation_id) const {
 }
 
 Status WebGpuExecutionProvider::ReplayGraph(int graph_annotation_id, bool /*sync*/) {
+  std::lock_guard<std::recursive_mutex> lock{recording_->mutex};
 #if defined(ORT_USE_EP_API_ADAPTERS)
   const bool serialized_replay = webgpu::ep::UseSerializedExecutionMode() && !IsRunActive();
   if (serialized_replay) {
@@ -1117,6 +1132,7 @@ Status WebGpuExecutionProvider::ReplayGraph(int graph_annotation_id, bool /*sync
 }
 
 Status WebGpuExecutionProvider::ReleaseCapturedGraph(int graph_annotation_id) {
+  std::lock_guard<std::recursive_mutex> lock{recording_->mutex};
   // Release captured commands
   auto cmd_it = captured_graphs_.find(graph_annotation_id);
   if (cmd_it != captured_graphs_.end()) {

@@ -20,6 +20,7 @@ namespace rewrite {
 namespace detail {
 class PatternParser;
 class PatternModule;
+struct MatchPlan;
 }  // namespace detail
 
 struct Value {
@@ -88,6 +89,12 @@ class Pattern {
     InlinedVector<Value> inputs;
     InlinedVector<Value> outputs;
     InlinedVector<AttributeMatcher, 1> attributes;
+    struct GraphAttribute {
+      std::string name;
+      std::string instance;
+      std::shared_ptr<const Pattern> pattern;
+    };
+    InlinedVector<GraphAttribute, 1> graphs{};
   };
   const auto& Nodes() const { return nodes_; }
   size_t ValueCount() const { return value_count_; }
@@ -101,9 +108,14 @@ class Pattern {
   const auto& OrderedTypeConstraints() const { return ordered_type_constraints_; }
   // First rewrite-safe match at this root, or nullopt. On error, result is unchanged.
   Status MatchAt(const Graph& graph, NodeIndex root, std::optional<Match>& result) const;
-  // Visit rewrite-safe candidates at one root in expansion order. true continues; false stops.
+  // Root maps to the last expanded operator, independently of return order.
+  // Visit rewrite-safe candidates in expansion order, then deterministic assignment order.
+  // true continues; false stops all enumeration.
   // Requires a resolved graph. The visitor must not mutate it. Does not filter opsets or providers.
   Status VisitMatches(const Graph& graph, NodeIndex root, const std::function<bool(Match&)>& visitor) const;
+  // Match a complete resolved graph, anchored to its ordered outputs.
+  Status MatchGraph(const Graph& graph, std::optional<Match>& result) const;
+  const auto& GraphInputs() const { return graph_inputs_; }
 
  private:
   friend class detail::PatternParser;
@@ -128,6 +140,7 @@ class Pattern {
   InlinedVector<Value> values_;
   InlinedHashMap<int, Literal> constants_;
   InlinedVector<Value> outputs_;
+  InlinedVector<Value> graph_inputs_;
   InlinedHashSet<int> optional_inputs_;
   InlinedHashSet<std::string> attribute_names_;
   InlinedHashMap<int, InlinedVector<TypeConstraint, 1>> type_constraints_;
@@ -154,6 +167,7 @@ class PatternLibrary {
  public:
   explicit PatternLibrary(std::string_view text);
   Pattern GetPattern(std::string_view name) const;
+  Pattern GetGraphPattern(std::string_view name) const;
 
  private:
   std::shared_ptr<const detail::PatternModule> module_;
@@ -170,6 +184,10 @@ class BindingView {
   const Dimension& dimensionOf(std::string_view name) const;
   std::optional<int32_t> elementTypeOf(std::string_view name) const;
   BindingView instance(std::string_view name) const;
+  const Graph& graph() const;
+  // Resolve a tensor input in an ancestor graph using proven lexical-capture identity.
+  // Body-local values return an error. On error result is unchanged.
+  Status resolveInput(std::string_view name, const Graph& target, const NodeArg*& result) const;
   std::string_view definition() const;
   std::string_view interfaceName() const;
   // Empty for a body call; otherwise the selected immediate member name.
@@ -206,6 +224,10 @@ struct Match {
   std::optional<int32_t> elementTypeOf(std::string_view name) const;
   BindingView bindings() const { return BindingView(*this, ""); }
   BindingView instance(std::string_view name) const { return bindings().instance(name); }
+  const Graph& graph() const;
+  // Nested bodies borrow their graphs; they are not part of nodes' deletion set.
+  InlinedHashMap<std::string, std::shared_ptr<const Match>> subgraphs;
+  const Graph* matched_graph = nullptr;
   void ClearUpdates() {
     extra_attributes_.clear();
     rejection_reason_.clear();
@@ -371,18 +393,27 @@ class PatternRewriter final : public GraphTransformer {
   // IDs must initially be live in graph. Empty regions do no work. As with Run,
   // failures do not roll back earlier rewrites; region tracks completed rewrites.
   Status Run(Graph& graph, Statistics& statistics, InlinedHashSet<NodeIndex>& region) const;
+  // Rewrite exactly the original region once, anchored at anchor. Requires a nonempty,
+  // live region containing anchor, a resolved graph and match_only == false.
+  // Exact membership is checked before rule callbacks. Success replaces region with
+  // exactly the emitted IDs. No eligible match returns an error without changing sources
+  // or region; replacement errors retain Run's staging/rollback guarantees.
+  Status RunOnce(Graph& graph, Statistics& statistics, InlinedHashSet<NodeIndex>& region, NodeIndex anchor) const;
 
  private:
   struct Group {
     Pattern pattern;
     InlinedVector<size_t> rules;
   };
-  Status RunImpl(Graph& graph, Statistics& statistics, InlinedHashSet<NodeIndex>* region) const;
+  Status RunImpl(Graph& graph, Statistics& statistics, InlinedHashSet<NodeIndex>* region,
+                 std::optional<NodeIndex> anchor = std::nullopt) const;
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
   Rules rules_;
+  InlinedVector<std::shared_ptr<const detail::MatchPlan>, 1> plans_;
   InlinedVector<Group, 1> groups_;
   InlinedHashMap<std::string, InlinedVector<size_t>> roots_;
   size_t invalidation_depth_ = 0;
+  bool has_multi_sink_plans_ = false;
   Options options_;
 };
 
