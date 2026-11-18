@@ -40,7 +40,7 @@
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 32
+#define ORT_API_VERSION 33
 
 #ifdef __cplusplus
 extern "C" {
@@ -4161,12 +4161,19 @@ struct OrtApi {
    * replace them with the provided tensors. The API verifies that the TensorProto being replaced
    * has an external data reference and has the same name, dimensions and data type as its replacement. The replacement
    * does not apply to initializers in subgraphs and will occur before any of the optimizations take place.
-   * The data will be copied into the graph
-   * since TensorProto can't refer to the user provided buffers.
+   * Only non-owning tensors backed by user-owned buffers are accepted; allocator-owned tensors are rejected.
+   * By default, CPU tensor buffers are copied during session creation. Device tensors are copied to owned CPU staging memory
+   * before graph optimization and shape inference, using a registered execution provider's data-transfer implementation.
+   * Session creation fails if no suitable data-transfer implementation is registered.
    *
-   * Once the model has been loaded, the OrtValue(s) added to SessionOptions instance will be removed
-   * from the internal SessionOptions copy to save memory, the user provided buffers can then be deallocated
-   * and the SessionOptions instance that refers to them can be destroyed.
+   * Setting "session.use_external_initializer_file_buffers_directly" to "1" enables borrowing naturally aligned CPU
+   * buffers larger than 127 bytes on little-endian hosts. Borrowed buffers must remain unchanged and alive until all
+   * sessions using them are released. Other buffers are copied. This option does not enable borrowing device buffers.
+   * Tensors supplied by this API must be contiguous and contain native-endian values.
+   *
+   * After session creation completes, non-owning buffers that were copied can be deallocated. The supplied OrtValue(s)
+   * and SessionOptions instance can be destroyed even when buffers are borrowed; the underlying borrowed buffers must
+   * still satisfy the lifetime requirement above.
    *
    * \param[in] options
    * \param[in] initializer_names Array of null terminated UTF-8 encoded strings of the initializers names.
@@ -8333,6 +8340,46 @@ typedef enum OrtCompileApiFlags {
 } OrtCompileApiFlags;
 
 /**
+ * \brief Describes the weightless modes.
+ *
+ * - An application selects a single mode (OrtWeightlessSupport_NONE, OrtWeightlessSupport_EXTERNAL_ONLY or
+ *   OrtWeightlessSupport_ALL) with OrtCompileApi::ModelCompilationOptions_SetWeightlessMode() or the
+ *   "ep.enable_weightless_mode" session option (kOrtSessionOptionEpEnableWeightlessMode).
+ * - An EP reports the modes it supports, both in OrtEp::GetWeightlessSupport() and in the
+ *   "weightless_supported_modes" EP metadata entry (kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes). Values that
+ *   cover several modes, such as OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY, describe EP capabilities only and can't
+ *   be requested by an application.
+ *
+ * \note Future versions may add values. Applications should expect values they don't recognize and ignore them.
+ *
+ * \since Version 1.29.
+ */
+typedef enum OrtWeightlessSupport {
+  /** Weightless mode is not supported (EP) or not enabled (application). */
+  OrtWeightlessSupport_NONE = 0,
+
+  /** Weightless mode for external initializers only.
+   *  Internal initializers are still copied by the EP during compilation. */
+  OrtWeightlessSupport_EXTERNAL_ONLY = 1,
+
+  /** Weightless mode for all initializers (internal and external).
+   *  When creating a session from an EPContext model compiled in this mode, the EP may need the source model at
+   *  runtime, depending on how it obtains the initializer data: an EP that loads the data itself needs it, while an EP
+   *  that lets ORT provide the initializers gets them from the compiled model. An EP that needs the source model looks
+   *  for it in this order:
+   *  - the buffer set with OrtApi::SessionOptionsSetWeightlessSourceModelBuffer(),
+   *  - the path in the "ep.context_source_model_path" session option (kOrtSessionOptionEpContextSourceModelPath),
+   *  - the "onnx_model_filename" attribute of the EPContext node, resolved against the directory of the compiled
+   *    model if relative. */
+  OrtWeightlessSupport_ALL = 2,
+
+  /** EP capability only: the EP supports both OrtWeightlessSupport_EXTERNAL_ONLY and OrtWeightlessSupport_ALL.
+   *  Applications can't request it.
+   *  \since Version 1.32. */
+  OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY = 3,
+} OrtWeightlessSupport;
+
+/**
  * \brief The OrtCompileApi struct provides functions to compile ONNX models.
  *
  * Execution providers that support compilation fuse a subgraph into an EPContext node that wraps a provider-specific
@@ -8639,6 +8686,9 @@ struct OrtCompileApi {
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
+   * \deprecated Since version 1.32. Use ModelCompilationOptions_SetWeightlessMode instead, which selects a
+   *             specific OrtWeightlessSupport mode.
+   *
    * \since Version 1.29.
    */
   ORT_API2_STATUS(ModelCompilationOptions_SetWeightlessEnabled,
@@ -8719,6 +8769,37 @@ struct OrtCompileApi {
                   _In_ OrtModelCompilationOptions* model_compile_options,
                   size_t alignment,
                   size_t minimum_size);
+
+  /** \brief Select the weightless mode for model compilation.
+   *
+   * When a mode other than OrtWeightlessSupport_NONE is selected, the compiled EPContext model will not embed the
+   * constant initializer data covered by that mode in the EP's compiled binary. Instead, the initializer data must be
+   * provided when creating a session from the compiled model.
+   *
+   * Applications can inspect the "weightless_supported_modes" EP metadata entry
+   * (kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes) of each OrtEpDevice to discover the modes supported by an EP
+   * and choose the one that best fits the use case. If that entry is not present, e.g., for EPs built for versions 1.29
+   * to 1.31, applications must inspect the "weightless_support" entry (kOrtEpDevice_EpMetadataKey_WeightlessSupport)
+   * instead.
+   *
+   * This is equivalent to setting the "ep.enable_weightless_mode" session option
+   * (kOrtSessionOptionEpEnableWeightlessMode) to the given value. Refer to that option for the checks ORT performs.
+   *
+   * ORT verifies that the target EP supports the selected mode during CompileModel() by calling
+   * OrtEp::GetWeightlessSupport(). If the EP does not support it, CompileModel() returns an error.
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] weightless_mode A single OrtWeightlessSupport value. OrtWeightlessSupport_NONE disables weightless
+   *                            mode (default behavior). Combined values such as
+   *                            OrtWeightlessSupport_ALL_OR_EXTERNAL_ONLY are not allowed.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetWeightlessMode,
+                  _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_ OrtWeightlessSupport weightless_mode);
 };
 
 /**
@@ -8999,7 +9080,23 @@ struct OrtInteropApi {
 struct OrtModelPackageApi {
   /** \brief Create model package options from session options.
    *
-   * Captures the execution provider configuration used to select a component variant.
+   * Records the EP configuration used to choose a variant for a model package component and create sessions.
+   * EP priority comes from the selection policy or the order in which EPs were added.
+   * When EPs are added explicitly, only EPs created by the provider factories in the session options are recorded.
+   * Adding the built-in CPU EP as "CPU" through OrtApi::SessionOptionsAppendExecutionProvider does not add a factory.
+   * To make the built-in CPU EP a candidate after other EPs, append it using
+   * OrtApi::SessionOptionsAppendExecutionProvider_V2 or OrtSessionOptionsAppendExecutionProvider_CPU.
+   * If the session options contain no provider factories and no selection policy is enabled, only the built-in CPU EP
+   * is recorded. Built-in selection policies include the built-in CPU EP as the last candidate unless CPU EP fallback
+   * is disabled.
+   * For explicitly added EPs, their provider factories are kept for session creation.
+   * ORT also stores pointers to the selected OrtEpDevice instances for plugin EPs added with
+   * OrtApi::SessionOptionsAppendExecutionProvider_V2 and for EPs selected by a policy.
+   * The options and the component contexts created from them keep pointers to OrtEpDevice and OrtEpFactory instances.
+   * When a selection policy is used, the options and component contexts keep pointers to every OrtEpDevice instance
+   * available in the environment.
+   * EP libraries registered when the options are created must stay registered until the options and all those
+   * component contexts are released.
    *
    * \param[in] env The ORT environment.
    * \param[in] session_options Session options containing the execution provider configuration.
@@ -9167,6 +9264,22 @@ struct OrtModelPackageApi {
 
   /** \brief Select a component and resolve its best matching variant.
    *
+   * EPs are considered in priority order, as determined by the selection policy or the order in which they were added
+   * to the session options. For the first EP with matching variants, the variant with the highest compatibility score
+   * is selected.
+   * If an EP has no variants or all its variants are incompatible, selection continues to the next EP.
+   * If ORT cannot check a variant for an EP and no other variant matches that EP, selection returns an error instead
+   * of considering EPs with lower priority. The error identifies the EP.
+   * ORT cannot check a variant if it requires a device type but no hardware devices were captured for the EP, or if
+   * the EP's compatibility callback returns an error.
+   * Without captured devices, the built-in CPU EP can still match a CPU requirement, but no other device type.
+   * The compatibility callback receives the captured hardware devices matching the variant's declared device type,
+   * or all captured hardware devices if no type is declared.
+   * The compatibility string is not checked if it is empty, no OrtEpFactory was captured for the EP (for example,
+   * for an EP added by name), the factory's ORT API version does not include the callback, or the factory does not
+   * implement it.
+   * In these cases, the compatibility result is OrtCompiledModelCompatibility_EP_NOT_APPLICABLE.
+   *
    * The returned component context is independent of `context` and must be released with
    * ReleaseModelPackageComponentContext().
    *
@@ -9229,6 +9342,37 @@ struct OrtModelPackageApi {
    * session and provider options. When `session_options` is non-NULL, the caller's options are used and package
    * provider options are not applied; package path-valued session options are still added when the caller did not
    * provide them.
+   *
+   * If the effective options contain no EP factories, ONNX Runtime adds only the EP targeted by the selected variant.
+   * It uses the captured devices that match the variant's declared device type, or all captured devices if no type is
+   * declared. The EP is added as in OrtApi::SessionOptionsAppendExecutionProvider_V2. ORT does not run the selection
+   * policy during session creation.
+   * Device defaults are used only for EP options that have not already been set.
+   * Custom operator domains provided by the EP's OrtEpDevice instances are registered before loading the model.
+   * If no OrtEpDevice instances were captured for the EP, ORT uses the provider factory saved from the session options
+   * used to create the model package options. The built-in CPU EP does not require a saved factory.
+   * Some saved provider factories depend on the original session options used to create the model package options.
+   * For example, the XNNPACK factory reads the original session options when creating an EP. Do not release those
+   * session options until all sessions using the saved factories have been created.
+   * Custom operator domain registrations from the original session options are not copied on the default path.
+   * To use TensorRT plugin domains, for example, pass session options containing those domains.
+   * On the default path, non-empty package provider options cause an error if no OrtEpDevice instances were captured for
+   * the selected EP. Devices are captured for the built-in CPU EP only when it is selected by a policy.
+   *
+   * If the caller supplies EP factories, ORT registers the EPs they create in factory order. Factories that return no EP
+   * are skipped.
+   * EPs registered earlier are considered first when assigning model nodes. If the caller passes the same session
+   * options used for variant selection, an EP without a matching variant can be assigned nodes from the selected
+   * variant's model. To let ORT configure the selected EP, pass NULL or session options without EP factories.
+   * If the selected EP is not the built-in CPU EP, at least one factory in the list must create it.
+   *
+   * The CPU registration APIs behave differently here:
+   * - Adding the built-in ORT CPU EP as "CPU" through OrtApi::SessionOptionsAppendExecutionProvider does not add
+   *   a provider factory to the options.
+   * - OrtSessionOptionsAppendExecutionProvider_CPU adds a CPU EP factory.
+   *
+   * ORT automatically adds the built-in CPU EP if it has not already been registered.
+   * If the selected EP is not the built-in CPU EP and cannot be created or registered, session creation fails.
    *
    * \param[in] env The ORT environment.
    * \param[in] context The selected component context.

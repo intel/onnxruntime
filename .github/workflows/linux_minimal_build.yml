@@ -42,49 +42,48 @@ jobs:
         with:
           node-version: 24
 
-      # This job builds with --use_coreml. The coremltools modelpackage sources include <uuid/uuid.h>,
-      # which is provided by uuid-dev on Ubuntu.
-      - name: Install libuuid development files
-        run: sudo apt-get update -y && sudo apt-get install -y uuid-dev
-
-      - name: Setup CCache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          # Fully qualify by workflow. `actions/cache` does not isolate by workflow, unlike ADO cache actions.
-          key: ccache | linux_minimal_build.yml | build_full_ort
-          path: ~/.cache/ccache
-
       - name: Setup VCPKG Cache
         uses: ./.github/actions/setup-vcpkg-cache
         with:
           key: linux-minimal-build-full-ort
 
-      - name: Get vcpkg tool info
-        id: vcpkg-tool-info
-        uses: ./.github/actions/get-vcpkg-tool-info
+      - uses: ./.github/actions/setup-build-tools
 
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
-        with:
-          ccache-version: 4.13.1
-          ccache-hash: 626407a9b81dd86f8ec9867bff396b32dd1f00344f5b323526579a64f6d4104927f83e8d7a05ad9806fd78f4491e0adb4cff73388000a62050cb1b00766214ee
-          vcpkg-version: ${{ steps.vcpkg-tool-info.outputs.release_tag }}
-          vcpkg-hash: ${{ steps.vcpkg-tool-info.outputs.sha512 }}
-          cmake-version: '3.31.6'
-          cmake-hash: '42395e20b10a8e9ef3e33014f9a4eed08d46ab952e02d2c1bbc8f6133eca0d7719fb75680f9bbff6552f20fcd1b73d86860f7f39388d631f98fb6f622b37cf04'
-          add-cmake-to-path: 'true'
-          disable-terrapin: 'true'
+      - name: Install Python requirements
+        run: python3 -m pip install --user -r tools/ci_build/github/linux/python/requirements.txt
 
-      - name: Build Full ORT and Prepare Test Files
-        uses: microsoft/onnxruntime-github-actions/build-and-prep-ort-files@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+      - name: Build Full ORT
+        run: |
+          python3 tools/ci_build/op_registration_validator.py
+          python3 tools/ci_build/build.py \
+            --build_dir "$RUNNER_TEMP" --cmake_generator Ninja --config Debug \
+            --skip_submodule_sync --parallel \
+            --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
+            --use_binskim_compliant_compile_flags \
+            --build_wheel --skip_tests
+
+      - name: Install built ORT wheel
+        shell: bash
+        run: |
+          shopt -s nullglob
+          wheels=("$RUNNER_TEMP"/Debug/dist/onnxruntime-*.whl)
+          if [ "${#wheels[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one onnxruntime wheel, found ${#wheels[@]}"
+            exit 1
+          fi
+          python3 -m pip install --user --force-reinstall --no-deps "${wheels[0]}"
+
+      - name: Prepare Test Files
+        run: python3 tools/ci_build/prepare_minimal_build_test_data.py --build-dir "$RUNNER_TEMP"
 
       - name: Upload Test Data Artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: test_data
           path: ${{ runner.temp }}/minimal_build_test_data/
           if-no-files-found: error # Fail if test data wasn't generated
 
-  # Job 2: Build minimal onnxruntime [exceptions DISABLED, type reduction DISABLED, training ops ENABLED]
+  # Job 2: Build minimal onnxruntime [exceptions DISABLED, type reduction DISABLED]
   build_minimal_exceptions_disabled:
     name: 2. Build Minimal (Exceptions Disabled)
     runs-on: [ort-github-linux-16-amd-wcus-ss]
@@ -102,19 +101,13 @@ jobs:
         with:
           node-version: 24
 
-      - name: Setup CCache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          key: ccache | linux_minimal_build.yml | build_minimal_exceptions_disabled
-          path: ~/.cache/ccache
-
       - name: Setup VCPKG Cache
         uses: ./.github/actions/setup-vcpkg-cache
         with:
           key: linux-minimal-exceptions-disabled
 
       - name: Get Docker Image using Action
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: ./.github/actions/build-docker-image
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
@@ -124,12 +117,20 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Setup CCache
+        id: ccache
+        uses: ./.github/actions/setup-linux-ccache
+        with:
+          key: linux-minimal-${{ github.job }}-${{ hashFiles('.github/workflows/linux_minimal_build.yml', 'cmake/deps.txt', 'tools/ci_build/build_tool_info.json') }}
+          docker-image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
+
       - name: Run Build 2 (Update)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: Debug # From original --config Debug
           mode: 'update' # CMake configure step
+          python_path_prefix: ${{ steps.ccache.outputs.container-prefix }}
           extra_build_flags: >-
             --cmake_generator Ninja
             --parallel
@@ -138,14 +139,14 @@ jobs:
             --skip_tests
             --minimal_build
             --disable_exceptions
-            --enable_training_ops
 
       - name: Run Build 2 (Build)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: Debug # From original --config Debug
           mode: 'build' # Actual build step
+          python_path_prefix: ${{ steps.ccache.outputs.container-prefix }}
           extra_build_flags: >-
             --cmake_generator Ninja
             --parallel
@@ -154,7 +155,13 @@ jobs:
             --skip_tests
             --minimal_build
             --disable_exceptions
-            --enable_training_ops
+
+      - name: Save CCache
+        if: ${{ success() && github.ref == 'refs/heads/main' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
+          path: .cache/ccache
 
   # Job 3a: Build minimal onnxruntime [exceptions ENABLED, type reduction DISABLED, custom ops ENABLED] and run tests
   build_minimal_custom_ops:
@@ -180,34 +187,17 @@ jobs:
         with:
           node-version: 24
 
-      - name: Setup CCache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          key: ccache | linux_minimal_build.yml | build_minimal_custom_ops
-          path: ~/.cache/ccache
-
       - name: Setup VCPKG Cache
         uses: ./.github/actions/setup-vcpkg-cache
         with:
           key: linux-minimal-custom-ops
 
-      - name: Get vcpkg tool info
-        id: vcpkg-tool-info
-        uses: ./.github/actions/get-vcpkg-tool-info
-
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+      - uses: ./.github/actions/setup-build-tools
         with:
-          ccache-version: 4.13.1
-          ccache-hash: 626407a9b81dd86f8ec9867bff396b32dd1f00344f5b323526579a64f6d4104927f83e8d7a05ad9806fd78f4491e0adb4cff73388000a62050cb1b00766214ee
-          vcpkg-version: ${{ steps.vcpkg-tool-info.outputs.release_tag }}
-          vcpkg-hash: ${{ steps.vcpkg-tool-info.outputs.sha512 }}
-          cmake-version: '3.31.6'
-          cmake-hash: '42395e20b10a8e9ef3e33014f9a4eed08d46ab952e02d2c1bbc8f6133eca0d7719fb75680f9bbff6552f20fcd1b73d86860f7f39388d631f98fb6f622b37cf04'
-          add-cmake-to-path: 'true'
-          disable-terrapin: 'true'
+          install-ccache: 'true'
 
       - name: Build Full ORT and Prepare Test Files
-        uses: microsoft/onnxruntime-github-actions/build-minimal-ort-and-run-tests@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/build-minimal-ort-and-run-tests@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           reduced-ops-config-file: required_ops.ort_models.config
           enable-custom-ops: 'true'
@@ -237,34 +227,17 @@ jobs:
         with:
           node-version: 24
 
-      - name: Setup CCache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          key: ccache | linux_minimal_build.yml | build_minimal_type_reduction
-          path: ~/.cache/ccache
-
       - name: Setup VCPKG Cache
         uses: ./.github/actions/setup-vcpkg-cache
         with:
           key: linux-minimal-type-reduction
 
-      - name: Get vcpkg tool info
-        id: vcpkg-tool-info
-        uses: ./.github/actions/get-vcpkg-tool-info
-
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+      - uses: ./.github/actions/setup-build-tools
         with:
-          ccache-version: 4.13.1
-          ccache-hash: 626407a9b81dd86f8ec9867bff396b32dd1f00344f5b323526579a64f6d4104927f83e8d7a05ad9806fd78f4491e0adb4cff73388000a62050cb1b00766214ee
-          vcpkg-version: ${{ steps.vcpkg-tool-info.outputs.release_tag }}
-          vcpkg-hash: ${{ steps.vcpkg-tool-info.outputs.sha512 }}
-          cmake-version: '3.31.6'
-          cmake-hash: '42395e20b10a8e9ef3e33014f9a4eed08d46ab952e02d2c1bbc8f6133eca0d7719fb75680f9bbff6552f20fcd1b73d86860f7f39388d631f98fb6f622b37cf04'
-          add-cmake-to-path: 'true'
-          disable-terrapin: 'true'
+          install-ccache: 'true'
 
       - name: Build Full ORT and Prepare Test Files
-        uses: microsoft/onnxruntime-github-actions/build-minimal-ort-and-run-tests@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/build-minimal-ort-and-run-tests@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           reduced-ops-config-file: required_ops_and_types.ort_models.config
           enable-type-reduction: 'true'
@@ -293,34 +266,17 @@ jobs:
         with:
           node-version: 24
 
-      - name: Setup CCache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          key: ccache | linux_minimal_build.yml | build_minimal_globally_allowed_types
-          path: ~/.cache/ccache
-
       - name: Setup VCPKG Cache
         uses: ./.github/actions/setup-vcpkg-cache
         with:
           key: linux-minimal-globally-allowed-types
 
-      - name: Get vcpkg tool info
-        id: vcpkg-tool-info
-        uses: ./.github/actions/get-vcpkg-tool-info
-
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+      - uses: ./.github/actions/setup-build-tools
         with:
-          ccache-version: 4.13.1
-          ccache-hash: 626407a9b81dd86f8ec9867bff396b32dd1f00344f5b323526579a64f6d4104927f83e8d7a05ad9806fd78f4491e0adb4cff73388000a62050cb1b00766214ee
-          vcpkg-version: ${{ steps.vcpkg-tool-info.outputs.release_tag }}
-          vcpkg-hash: ${{ steps.vcpkg-tool-info.outputs.sha512 }}
-          cmake-version: '3.31.6'
-          cmake-hash: '42395e20b10a8e9ef3e33014f9a4eed08d46ab952e02d2c1bbc8f6133eca0d7719fb75680f9bbff6552f20fcd1b73d86860f7f39388d631f98fb6f622b37cf04'
-          add-cmake-to-path: 'true'
-          disable-terrapin: 'true'
+          install-ccache: 'true'
 
       - name: Build Full ORT and Prepare Test Files
-        uses: microsoft/onnxruntime-github-actions/build-minimal-ort-and-run-tests@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/build-minimal-ort-and-run-tests@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           globally_allowed_types: 'bool,float,int8_t,uint8_t'
           enable-type-reduction: 'true'
@@ -345,19 +301,13 @@ jobs:
         with:
           node-version: 24
 
-      - name: Setup CCache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          key: ccache | linux_minimal_build.yml | build_extended_minimal
-          path: ~/.cache/ccache
-
       - name: Setup VCPKG Cache
         uses: ./.github/actions/setup-vcpkg-cache
         with:
           key: linux-extended-minimal
 
       - name: Get Docker Image using Action
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: ./.github/actions/build-docker-image
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
@@ -368,12 +318,20 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 
+      - name: Setup CCache
+        id: ccache
+        uses: ./.github/actions/setup-linux-ccache
+        with:
+          key: linux-minimal-${{ github.job }}-${{ hashFiles('.github/workflows/linux_minimal_build.yml', 'cmake/deps.txt', 'tools/ci_build/build_tool_info.json') }}
+          docker-image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
+
       - name: Run Build 5 (Update)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: Debug
           mode: 'update'
+          python_path_prefix: ${{ steps.ccache.outputs.container-prefix }}
           extra_build_flags: >-
             --cmake_generator Ninja
             --build_shared_lib
@@ -383,11 +341,12 @@ jobs:
             --minimal_build extended
 
       - name: Run Build 5 (Build)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: Debug
           mode: 'build'
+          python_path_prefix: ${{ steps.ccache.outputs.container-prefix }}
           extra_build_flags: >-
             --cmake_generator Ninja
             --build_shared_lib
@@ -397,11 +356,12 @@ jobs:
             --minimal_build extended
 
       - name: Run Build 5 (Test)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: Debug
           mode: 'test'
+          python_path_prefix: ${{ steps.ccache.outputs.container-prefix }}
           extra_build_flags: >-
             --cmake_generator Ninja
             --build_shared_lib
@@ -409,6 +369,13 @@ jobs:
             --use_binskim_compliant_compile_flags
             --use_cache
             --minimal_build extended
+
+      - name: Save CCache
+        if: ${{ success() && github.ref == 'refs/heads/main' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
+          path: .cache/ccache
 
   # Job 6a: Regular build with python and all optional features disabled.
   build_regular_no_optional:
@@ -426,7 +393,7 @@ jobs:
           submodules: false
 
       - name: Get Docker Image using Action
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: ./.github/actions/build-docker-image
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
@@ -443,10 +410,11 @@ jobs:
           touch ${{ runner.temp }}/.test_data/include_no_operators.config
 
       - name: Setup CCache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: ccache
+        uses: ./.github/actions/setup-linux-ccache
         with:
-          key: ccache | linux_minimal_build.yml | build_regular_no_optional
-          path: ~/.cache/ccache
+          key: linux-minimal-${{ github.job }}-${{ hashFiles('.github/workflows/linux_minimal_build.yml', 'cmake/deps.txt', 'tools/ci_build/build_tool_info.json') }}
+          docker-image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
 
       - name: Setup VCPKG Cache
         uses: ./.github/actions/setup-vcpkg-cache
@@ -454,11 +422,12 @@ jobs:
           key: linux-regular-no-optional
 
       - name: Run Build 6a (Update)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: MinSizeRel
           mode: 'update'
+          python_path_prefix: ${{ steps.ccache.outputs.container-prefix }}
           extra_build_flags: >-
             --cmake_generator Ninja
             --build_wheel
@@ -471,11 +440,12 @@ jobs:
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
       - name: Run Build 6a (Build)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: MinSizeRel
           mode: 'build'
+          python_path_prefix: ${{ steps.ccache.outputs.container-prefix }}
           extra_build_flags: >-
             --cmake_generator Ninja
             --build_wheel
@@ -488,11 +458,12 @@ jobs:
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
       - name: Run Build 6a (Test)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: MinSizeRel
           mode: 'test'
+          python_path_prefix: ${{ steps.ccache.outputs.container-prefix }}
           extra_build_flags: >-
             --cmake_generator Ninja
             --build_wheel
@@ -503,6 +474,13 @@ jobs:
             --disable_types string sparsetensor float4 float8 optional
             --include_ops_by_config /onnxruntime_src/build/.test_data/include_no_operators.config
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
+
+      - name: Save CCache
+        if: ${{ success() && github.ref == 'refs/heads/main' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
+          path: .cache/ccache
 
   # Job 6b: Minimal build with all optional features disabled.
   build_minimal_no_optional:
@@ -526,7 +504,7 @@ jobs:
           touch ${{ runner.temp }}/.test_data/include_no_operators.config
 
       - name: Get Docker Image using Action
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: ./.github/actions/build-docker-image
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
@@ -536,19 +514,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup CCache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          key: ccache | linux_minimal_build.yml | build_minimal_no_optional
-          path: ~/.cache/ccache
-
       - name: Setup VCPKG Cache
         uses: ./.github/actions/setup-vcpkg-cache
         with:
           key: linux-minimal-no-optional
 
       - name: Run Build 6b (Update)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: MinSizeRel # From original --config MinSizeRel
@@ -568,7 +540,7 @@ jobs:
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
       - name: Run Build 6b (Build)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: MinSizeRel # From original --config MinSizeRel
@@ -609,7 +581,7 @@ jobs:
           touch ${{ runner.temp }}/.test_data/include_no_operators.config
 
       - name: Get Docker Image using Action
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: ./.github/actions/build-docker-image
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
@@ -625,19 +597,13 @@ jobs:
           mkdir -p ${{ runner.temp }}/.test_data
           touch ${{ runner.temp }}/.test_data/include_no_operators.config
 
-      - name: Setup CCache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          key: ccache | linux_minimal_build.yml | build_extended_minimal_no_optional
-          path: ~/.cache/ccache
-
       - name: Setup VCPKG Cache
         uses: ./.github/actions/setup-vcpkg-cache
         with:
           key: linux-extended-minimal-no-optional
 
       - name: Run Build 6c (Update)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: MinSizeRel # From original --config MinSizeRel
@@ -657,7 +623,7 @@ jobs:
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
       - name: Run Build 6c (Build)
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: MinSizeRel # From original --config MinSizeRel
@@ -702,7 +668,7 @@ jobs:
           path: ${{ runner.temp }}/.test_data/
 
       - name: Get Docker Image using Action
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: ./.github/actions/build-docker-image
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
@@ -714,15 +680,6 @@ jobs:
 
       - name: Setup Android NDK
         uses: ./.github/actions/setup-android-ndk
-        with:
-          ndk-version: 28.0.13004108
-          # Use default android-sdk-root if not specified
-
-      - name: Setup CCache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          key: ccache | linux_minimal_build.yml | build_extended_minimal_android
-          path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
         uses: ./.github/actions/setup-vcpkg-cache

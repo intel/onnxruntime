@@ -2,12 +2,14 @@
 // Licensed under the MIT License.
 
 #include "core/framework/tensor.h"
+#include "core/framework/stream_handles.h"
 #include "core/framework/allocator_utils.h"
 #include "test/unittest_util/framework_test_utils.h"
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include <absl/base/config.h>
+#include <cstdlib>
 #include <sstream>
 
 namespace onnxruntime {
@@ -258,7 +260,130 @@ TEST(TensorTest, Strided) {
   ASSERT_THAT(t4.Strides(), testing::ContainerEq(gsl::make_span(zero_strides)));
   ASSERT_EQ(t4.SizeInBytes(), sizeof(float));
 }
+
+TEST(TensorTest, ReshapeContiguousRecomputesCachedStrides) {
+  auto alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  Tensor t(DataTypeImpl::GetType<float>(), TensorShape({6}), alloc);
+
+  // Populate the lazy cache for {6} before changing the shape.
+  const TensorShapeVector original_strides{1};
+  ASSERT_THAT(t.Strides(), testing::ContainerEq(gsl::make_span(original_strides)));
+  ASSERT_TRUE(t.IsContiguous());
+
+  t.Reshape(TensorShape({2, 3}));
+
+  const TensorShapeVector expected_strides{3, 1};
+  EXPECT_EQ(t.Shape(), TensorShape({2, 3}));
+  EXPECT_THAT(t.Strides(), testing::ContainerEq(gsl::make_span(expected_strides)));
+  EXPECT_TRUE(t.IsContiguous());
+}
+
+TEST(TensorTest, ReshapeNonContiguousIsRejectedAndMetadataUnchanged) {
+  auto alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  Tensor t(DataTypeImpl::GetType<float>(), TensorShape({2, 3}), alloc);
+  const TensorShape shape({2, 3});
+  const TensorShapeVector strides{1, 2};
+  t.SetShapeAndStrides(shape, strides);
+  ASSERT_FALSE(t.IsContiguous());
+
+  EXPECT_THROW(t.Reshape(TensorShape({6})), OnnxRuntimeException);
+
+  EXPECT_EQ(t.Shape(), shape);
+  EXPECT_THAT(t.Strides(), testing::ContainerEq(gsl::make_span(strides)));
+  EXPECT_FALSE(t.IsContiguous());
+}
+
 #endif
+
+namespace {
+
+// Records which allocation entry point a tensor used, so the stream aware constructor can be
+// distinguished from the plain one.
+class StreamRecordingAllocator : public IAllocator {
+ public:
+  StreamRecordingAllocator()
+      : IAllocator(OrtMemoryInfo("StreamRecording", OrtAllocatorType::OrtDeviceAllocator)) {}
+
+  bool IsStreamAware() const override { return stream_aware_; }
+  void SetStreamAware(bool stream_aware) { stream_aware_ = stream_aware; }
+
+  void* Alloc(size_t size) override {
+    ++plain_allocs;
+    return std::malloc(size);
+  }
+
+  void* AllocOnStream(size_t size, Stream* stream) override {
+    ++stream_allocs;
+    last_stream = stream;
+    return std::malloc(size);
+  }
+
+  void Free(void* p) override {
+    ++frees;
+    std::free(p);
+  }
+
+  int plain_allocs = 0;
+  int stream_allocs = 0;
+  int frees = 0;
+  Stream* last_stream = nullptr;
+
+ private:
+  bool stream_aware_ = true;
+};
+
+}  // namespace
+
+// An intermediate tensor is released while the work that writes it may still be queued, so its
+// buffer has to be associated with the stream that work runs on. Without that association a
+// stream aware arena is free to hand the memory to another stream immediately.
+TEST(TensorTest, AllocatesOnTheGivenStream) {
+  auto alloc = std::make_shared<StreamRecordingAllocator>();
+  TensorShape shape({4, 8});
+  OrtDevice device;  // Stream keeps a reference to this, so it has to outlive the stream
+  Stream stream(nullptr, device);
+
+  {
+    Tensor t(DataTypeImpl::GetType<float>(), shape, alloc, &stream);
+    EXPECT_EQ(alloc->stream_allocs, 1);
+    EXPECT_EQ(alloc->plain_allocs, 0);
+    EXPECT_EQ(alloc->last_stream, &stream);
+    EXPECT_NE(t.DataRaw(), nullptr);
+  }
+  EXPECT_EQ(alloc->frees, 1);
+}
+
+TEST(TensorTest, FallsBackToPlainAllocation) {
+  TensorShape shape({4, 8});
+  OrtDevice device;  // Stream keeps a reference to this, so it has to outlive the stream
+  Stream stream(nullptr, device);
+
+  // No stream to bind to.
+  {
+    auto alloc = std::make_shared<StreamRecordingAllocator>();
+    Tensor t(DataTypeImpl::GetType<float>(), shape, alloc, nullptr);
+    EXPECT_EQ(alloc->stream_allocs, 0);
+    EXPECT_EQ(alloc->plain_allocs, 1);
+  }
+
+  // Allocator does not implement stream handling.
+  {
+    auto alloc = std::make_shared<StreamRecordingAllocator>();
+    alloc->SetStreamAware(false);
+    Tensor t(DataTypeImpl::GetType<float>(), shape, alloc, &stream);
+    EXPECT_EQ(alloc->stream_allocs, 0);
+    EXPECT_EQ(alloc->plain_allocs, 1);
+  }
+
+  // An empty tensor allocates nothing at all.
+  {
+    auto alloc = std::make_shared<StreamRecordingAllocator>();
+    Tensor t(DataTypeImpl::GetType<float>(), TensorShape({0}), alloc, &stream);
+    EXPECT_EQ(alloc->stream_allocs, 0);
+    EXPECT_EQ(alloc->plain_allocs, 0);
+    EXPECT_EQ(t.DataRaw(), nullptr);
+  }
+}
 
 }  // namespace test
 }  // namespace onnxruntime
