@@ -21,6 +21,53 @@
 
 namespace onnxruntime {
 namespace rewrite {
+namespace detail {
+
+// Graph-independent ordinals align with Match::nodes. Only internally produced
+// tensor edges connect operators; shared external bindings do not connect them.
+struct MatchPlan {
+  struct Producer {
+    size_t op;
+    size_t slot;
+  };
+  explicit MatchPlan(const Pattern& pattern)
+      : anchor(pattern.Nodes().size() - 1), producers(pattern.ValueCount()), adjacency(pattern.Nodes().size()) {
+    const auto& nodes = pattern.Nodes();
+    for (size_t op = 0; op < nodes.size(); ++op)
+      for (size_t slot = 0; slot < nodes[op].outputs.size(); ++slot)
+        producers[nodes[op].outputs[slot].handle] = Producer{op, slot};
+    for (size_t op = 0; op < nodes.size(); ++op) {
+      for (Value input : nodes[op].inputs) {
+        if (input.handle < 0 || !producers[input.handle]) continue;
+        const size_t source = producers[input.handle]->op;
+        adjacency[op].push_back(source);
+        adjacency[source].push_back(op);
+      }
+    }
+    InlinedHashSet<size_t> seen;
+    InlinedVector<size_t> pending{anchor};
+    while (!pending.empty()) {
+      const size_t op = pending.back();
+      pending.pop_back();
+      if (!seen.insert(op).second) continue;
+      pending.insert(pending.end(), adjacency[op].begin(), adjacency[op].end());
+    }
+    connected = seen.size() == nodes.size();
+    seen = {anchor};
+    for (size_t op = nodes.size(); op-- > 0;) {
+      if (!seen.count(op)) continue;
+      for (Value input : nodes[op].inputs)
+        if (input.handle >= 0 && producers[input.handle]) seen.insert(producers[input.handle]->op);
+    }
+    producer_rooted = seen.size() == nodes.size();
+  }
+  size_t anchor;
+  InlinedVector<std::optional<Producer>> producers;
+  InlinedVector<InlinedVector<size_t>> adjacency;
+  bool connected = false;
+  bool producer_rooted = false;
+};
+}  // namespace detail
 namespace {
 
 std::string Key(const std::string& op, const std::string& domain) { return domain + '\0' + op; }
@@ -263,82 +310,93 @@ bool MatchTypes(const Pattern& pattern, const Graph& graph, Match& match, std::s
   } while (true);
 }
 
-bool MatchPattern(const Pattern& pattern, const Graph& graph, const Node& root, const Producers& producers,
-                  Match& match, FailureStage& stage, std::string& reason) {
+struct MatchState {
+  Match match;
+  InlinedVector<bool> bound;
+  InlinedHashSet<NodeIndex> distinct;
+};
+
+bool BindOperator(const Pattern& pattern, size_t ordinal, const Node& node, const Node* root,
+                  MatchState& state, const InlinedHashSet<NodeIndex>* region,
+                  FailureStage& stage, std::string& reason) {
   auto fail = [&](FailureStage failure_stage, std::string_view message) {
     stage = failure_stage;
     reason = message;
     return false;
   };
-  const auto& root_op = pattern.Nodes().back().op;
-  // Cheap root rejection precedes binding allocation in the reference implementation too.
-  if (root.OpType() != root_op.name || root.Domain() != root_op.domain) {
-    return fail(FailureStage::Structure, "Root operator/domain mismatch.");
+  auto& match = state.match;
+  auto& bound = state.bound;
+  const auto& expected = pattern.Nodes()[ordinal];
+  if (region && !region->count(node.Index()))
+    return fail(FailureStage::Boundary, "Match includes nodes outside the rewrite region.");
+  if (!state.distinct.insert(node.Index()).second)
+    return fail(FailureStage::Structure, "Distinct pattern nodes mapped to one model node.");
+  if (node.OpType() != expected.op.name || node.Domain() != expected.op.domain)
+    return fail(FailureStage::Structure, "Producer operator/domain mismatch.");
+  if (node.InputDefs().size() > expected.inputs.size() || node.OutputDefs().size() != expected.outputs.size())
+    return fail(FailureStage::Structure, "Operator input/output arity mismatch.");
+  if (node.GetAttributeNameToSubgraphMap().size() != expected.graphs.size() ||
+      (!node.ImplicitInputDefs().empty() && expected.graphs.empty()))
+    return fail(FailureStage::Structure, "Every owned subgraph must have an explicit graph pattern.");
+  if (root && node.GetLayeringAnnotation() != root->GetLayeringAnnotation())
+    return fail(FailureStage::Structure, "Layer annotation mismatch.");
+  match.nodes[ordinal] = &node;
+  for (const auto& attribute : expected.attributes) {
+    auto found = node.GetAttributes().find(attribute.name);
+    if (found == node.GetAttributes().end()) {
+      if (!attribute.optional || attribute.capture.empty() || !match.BindAbsentAttribute(attribute.capture))
+        return fail(FailureStage::Attribute, "Missing attribute or repeated capture presence mismatch.");
+      continue;
+    }
+    if (!attribute.Matches(found->second))
+      return fail(FailureStage::Attribute, "Missing attribute or attribute constraint mismatch.");
+    if (!attribute.capture.empty() && !match.BindAttribute(attribute.capture, found->second))
+      return fail(FailureStage::Attribute, "Repeated attribute capture mismatch.");
   }
-  match.values.assign(pattern.ValueCount(), nullptr);
-  match.nodes.assign(pattern.Nodes().size(), nullptr);
-  match.nodes.back() = &root;
-  InlinedVector<bool> bound(pattern.ValueCount(), false);
-  InlinedHashSet<NodeIndex> distinct;
-  for (size_t i = pattern.Nodes().size(); i-- > 0;) {
-    const auto& expected = pattern.Nodes()[i];
-    const Node* node = match.nodes[i];
-    if (!node) {
-      for (Value output : expected.outputs) {
-        if (!match.values[output]) continue;
-        auto it = producers.find(match.values[output]);
-        if (it != producers.end()) node = graph.GetNode(it->second);
-        break;
-      }
-    }
-    if (!node) return fail(FailureStage::Structure, "No producer for the expected node.");
-    if (!distinct.insert(node->Index()).second)
-      return fail(FailureStage::Structure, "Distinct pattern nodes mapped to one model node.");
-    if (node->OpType() != expected.op.name || node->Domain() != expected.op.domain)
-      return fail(FailureStage::Structure, "Producer operator/domain mismatch.");
-    if (node->InputDefs().size() > expected.inputs.size() || node->OutputDefs().size() != expected.outputs.size())
-      return fail(FailureStage::Structure, "Operator input/output arity mismatch.");
-    if (!node->GetAttributeNameToSubgraphMap().empty() || !node->ImplicitInputDefs().empty())
-      return fail(FailureStage::Structure, "Matched operators cannot own subgraphs or implicit inputs.");
-    if (node->GetLayeringAnnotation() != root.GetLayeringAnnotation())
-      return fail(FailureStage::Structure, "Layer annotation mismatch.");
-    match.nodes[i] = node;
-    for (const auto& attribute : expected.attributes) {
-      auto found = node->GetAttributes().find(attribute.name);
-      if (found == node->GetAttributes().end()) {
-        if (!attribute.optional || attribute.capture.empty() || !match.BindAbsentAttribute(attribute.capture))
-          return fail(FailureStage::Attribute, "Missing attribute or repeated capture presence mismatch.");
-        continue;
-      }
-      if (!attribute.Matches(found->second))
-        return fail(FailureStage::Attribute, "Missing attribute or attribute constraint mismatch.");
-      if (!attribute.capture.empty() && !match.BindAttribute(attribute.capture, found->second))
-        return fail(FailureStage::Attribute, "Repeated attribute capture mismatch.");
-    }
-    for (size_t j = 0; j < expected.outputs.size(); ++j) {
-      const NodeArg* output = node->OutputDefs()[j];
-      const NodeArg*& binding = match.values[expected.outputs[j]];
-      if (!output->Exists() || (binding && binding != output))
-        return fail(FailureStage::Structure, "Output slot or repeated value mismatch.");
-      binding = output;
-      bound[expected.outputs[j].handle] = true;
-    }
-    for (size_t j = 0; j < expected.inputs.size(); ++j) {
-      const NodeArg* actual = j < node->InputDefs().size() && node->InputDefs()[j]->Exists()
-                                  ? node->InputDefs()[j]
-                                  : nullptr;
-      const Value value = expected.inputs[j];
-      if (value.handle < 0) {
-        if (actual) return fail(FailureStage::Structure, "Input slot must be absent.");
-        continue;
-      }
-      const NodeArg*& binding = match.values[value];
-      if ((!actual && !pattern.IsOptional(value)) || (bound[value.handle] && binding != actual))
-        return fail(FailureStage::Structure, "Required input absent or repeated value mismatch.");
-      binding = actual;
-      bound[value.handle] = true;
-    }
+  for (const auto& expected_graph : expected.graphs) {
+    const auto* body = node.GetGraphAttribute(expected_graph.name);
+    if (!body) return fail(FailureStage::Attribute, "Missing graph attribute.");
+    std::optional<Match> nested;
+    ORT_THROW_IF_ERROR(expected_graph.pattern->MatchGraph(*body, nested));
+    if (!nested) return fail(FailureStage::Structure, "Graph attribute pattern mismatch.");
+    match.subgraphs.emplace(expected_graph.instance, std::make_shared<const Match>(std::move(*nested)));
   }
+  for (size_t j = 0; j < expected.outputs.size(); ++j) {
+    const NodeArg* output = node.OutputDefs()[j];
+    const NodeArg*& binding = match.values[expected.outputs[j]];
+    if (!output->Exists() || (bound[expected.outputs[j].handle] && binding != output))
+      return fail(FailureStage::Structure, "Output slot or repeated value mismatch.");
+    binding = output;
+    bound[expected.outputs[j].handle] = true;
+  }
+  for (size_t j = 0; j < expected.inputs.size(); ++j) {
+    const NodeArg* actual = j < node.InputDefs().size() && node.InputDefs()[j]->Exists()
+                                ? node.InputDefs()[j]
+                                : nullptr;
+    const Value value = expected.inputs[j];
+    if (value.handle < 0) {
+      if (actual) return fail(FailureStage::Structure, "Input slot must be absent.");
+      continue;
+    }
+    const NodeArg*& binding = match.values[value];
+    if ((!actual && !pattern.IsOptional(value)) || (bound[value.handle] && binding != actual))
+      return fail(FailureStage::Structure, "Required input absent or repeated value mismatch.");
+    binding = actual;
+    bound[value.handle] = true;
+  }
+  return true;
+}
+
+bool ValidateCompleteMatch(const Pattern& pattern, const Graph& graph, const Producers& producers,
+                           MatchState& state, FailureStage& stage, std::string& reason,
+                           bool whole_graph = false) {
+  auto fail = [&](FailureStage failure_stage, std::string_view message) {
+    stage = failure_stage;
+    reason = message;
+    return false;
+  };
+  auto& match = state.match;
+  const auto& distinct = state.distinct;
   // Input variables must be outside the deletion set, even when aliasing another binding.
   if (!MatchTypes(pattern, graph, match, reason)) {
     stage = FailureStage::TypeShape;
@@ -347,10 +405,13 @@ bool MatchPattern(const Pattern& pattern, const Graph& graph, const Node& root, 
   }
   for (int value = 0; value < static_cast<int>(pattern.ValueCount()); ++value) {
     if (!pattern.IsInput(value)) continue;
+    if (whole_graph && !pattern.IsAttribute(value) && !state.bound[value])
+      return fail(FailureStage::Boundary, "Graph pattern input is not bound.");
     auto it = producers.find(match.values[value]);
     if (it != producers.end() && distinct.count(it->second))
       return fail(FailureStage::Boundary, "Pattern input is produced inside the deletion set.");
   }
+  InlinedHashSet<NodeIndex> literal_nodes;
   for (const auto& [handle, expected] : pattern.Constants()) {
     ConstantSource source;
     ORT_THROW_IF_ERROR(FindConstant(graph, match.values[handle], source));
@@ -380,6 +441,25 @@ bool MatchPattern(const Pattern& pattern, const Graph& graph, const Node& root, 
     },
                                   expected);
     if (!equal) return fail(FailureStage::Constant, "Literal initializer values mismatch.");
+    auto producer = producers.find(match.values[handle]);
+    if (producer != producers.end()) literal_nodes.insert(producer->second);
+  }
+  if (whole_graph) {
+    for (const auto& node : graph.Nodes())
+      if (!distinct.count(node.Index()) && !literal_nodes.count(node.Index()))
+        return fail(FailureStage::Boundary, "Graph contains an unmatched operator.");
+    for (int handle = 0; handle < static_cast<int>(pattern.ValueCount()); ++handle) {
+      const Value input{handle};
+      if (!pattern.IsInput(input) || pattern.IsAttribute(input) || pattern.Constants().count(handle)) continue;
+      const NodeArg* actual = match.values[input];
+      if (!actual && pattern.IsOptional(input)) continue;
+      if (std::find(graph.GetInputs().begin(), graph.GetInputs().end(), actual) != graph.GetInputs().end())
+        continue;
+      if (!actual || (graph.GetInitializer(actual->Name(), false)
+                          ? !graph.GetConstantInitializer(actual->Name(), false)
+                          : !graph.IsOuterScopeValue(actual->Name())))
+        return fail(FailureStage::Boundary, "Graph tensor leaf is not a formal input, immutable initializer, or lexical capture.");
+    }
   }
   InlinedHashSet<const NodeArg*> exposed;
   for (Value value : pattern.Outputs()) exposed.insert(match.values[value]);
@@ -398,11 +478,224 @@ bool MatchPattern(const Pattern& pattern, const Graph& graph, const Node& root, 
   return true;
 }
 
+bool MatchGraphPattern(const Pattern& pattern, const Graph& graph, const Producers& producers,
+                       Match& match, FailureStage& stage, std::string& reason) {
+  auto fail = [&](std::string_view message) {
+    stage = FailureStage::Structure;
+    reason = message;
+    return false;
+  };
+  MatchState state;
+  state.match.pattern = &pattern;
+  state.match.matched_graph = &graph;
+  state.match.values.assign(pattern.ValueCount(), nullptr);
+  state.match.nodes.assign(pattern.Nodes().size(), nullptr);
+  state.bound.assign(pattern.ValueCount(), false);
+  auto bind = [&](Value value, const NodeArg* actual) {
+    if (state.bound[value.handle] && state.match.values[value] != actual) return false;
+    state.match.values[value] = actual;
+    state.bound[value.handle] = true;
+    return true;
+  };
+  if (pattern.Outputs().size() != graph.GetOutputs().size() ||
+      pattern.GraphInputs().size() < graph.GetInputs().size())
+    return fail("Graph input/output arity mismatch.");
+  for (size_t i = 0; i < graph.GetInputs().size(); ++i)
+    if (!bind(pattern.GraphInputs()[i], graph.GetInputs()[i])) return fail("Graph formal input mismatch.");
+  for (size_t i = 0; i < graph.GetOutputs().size(); ++i)
+    if (!bind(pattern.Outputs()[i], graph.GetOutputs()[i])) return fail("Graph output identity mismatch.");
+  for (size_t ordinal = pattern.Nodes().size(); ordinal-- > 0;) {
+    const Node* node = nullptr;
+    for (Value output : pattern.Nodes()[ordinal].outputs) {
+      if (!state.bound[output.handle]) continue;
+      auto producer = producers.find(state.match.values[output]);
+      if (producer == producers.end()) return fail("No producer for the expected node.");
+      const Node* actual = graph.GetNode(producer->second);
+      if (!actual || (node && node != actual)) return fail("Graph output producer mismatch.");
+      node = actual;
+    }
+    if (!node) return fail("No producer for the expected node.");
+    if (!BindOperator(pattern, ordinal, *node, nullptr, state, nullptr, stage, reason)) return false;
+  }
+  if (!ValidateCompleteMatch(pattern, graph, producers, state, stage, reason, true)) return false;
+  match = std::move(state.match);
+  return true;
+}
+
+// false means the visitor stopped the entire enumeration, not a failed branch.
+bool MatchPattern(const Pattern& pattern, const detail::MatchPlan& plan, const Graph& graph, const Node& root,
+                  const Producers& producers, const std::function<bool(Match&)>& visitor,
+                  FailureStage& stage, std::string& reason, const InlinedHashSet<NodeIndex>* region = nullptr,
+                  bool exact_region = false) {
+  const auto& root_op = pattern.Nodes()[plan.anchor].op;
+  if (root.OpType() != root_op.name || root.Domain() != root_op.domain) {
+    stage = FailureStage::Structure;
+    reason = "Root operator/domain mismatch.";
+    return true;
+  }
+  MatchState initial;
+  initial.match.pattern = &pattern;
+  initial.match.matched_graph = &graph;
+  initial.match.values.assign(pattern.ValueCount(), nullptr);
+  initial.match.nodes.assign(pattern.Nodes().size(), nullptr);
+  initial.bound.assign(pattern.ValueCount(), false);
+  auto bind = [&](size_t ordinal, const Node& node, MatchState& state) {
+    return BindOperator(pattern, ordinal, node, &root, state, region, stage, reason);
+  };
+  auto complete = [&](MatchState& state) {
+    if (exact_region && state.distinct.size() != region->size()) {
+      stage = FailureStage::Boundary;
+      reason = "Match must equal the original rewrite region.";
+      return true;
+    }
+    // Failed validation may bind types/dimensions; every assignment owns its state.
+    reason.clear();
+    if (!ValidateCompleteMatch(pattern, graph, producers, state, stage, reason)) return true;
+    return visitor(state.match);
+  };
+  auto forced_producer = [&](size_t ordinal, const MatchState& state) -> const Node* {
+    const Node* node = nullptr;
+    for (Value output : pattern.Nodes()[ordinal].outputs) {
+      if (!state.bound[output.handle]) continue;
+      auto it = producers.find(state.match.values[output.handle]);
+      if (it == producers.end()) return nullptr;
+      const Node* producer = graph.GetNode(it->second);
+      if (!producer || (node && producer != node)) return nullptr;
+      node = producer;
+    }
+    // BindOperator verifies every bound output's precise slot.
+    return node;
+  };
+  if (!bind(plan.anchor, root, initial)) return true;
+  if (plan.producer_rooted) {
+    for (size_t ordinal = plan.anchor; ordinal-- > 0;) {
+      const Node* node = forced_producer(ordinal, initial);
+      if (!node) {
+        stage = FailureStage::Structure;
+        reason = "No producer for the expected node.";
+        return true;
+      }
+      if (!bind(ordinal, *node, initial)) return true;
+    }
+    return complete(initial);
+  }
+  std::function<bool(MatchState&)> enumerate = [&](MatchState& state) {
+    if (state.distinct.size() == pattern.Nodes().size()) return complete(state);
+    for (size_t ordinal = pattern.Nodes().size(); ordinal-- > 0;) {
+      if (state.match.nodes[ordinal]) continue;
+      const auto& outputs = pattern.Nodes()[ordinal].outputs;
+      if (std::none_of(outputs.begin(), outputs.end(), [&](Value value) { return state.bound[value.handle]; }))
+        continue;
+      const Node* node = forced_producer(ordinal, state);
+      if (!node) {
+        stage = FailureStage::Structure;
+        reason = "No producer for the expected node.";
+        return true;
+      }
+      MatchState branch = state;
+      return !bind(ordinal, *node, branch) || enumerate(branch);
+    }
+    for (size_t ordinal = pattern.Nodes().size(); ordinal-- > 0;) {
+      if (state.match.nodes[ordinal]) continue;
+      const auto& inputs = pattern.Nodes()[ordinal].inputs;
+      for (size_t slot = 0; slot < inputs.size(); ++slot) {
+        const int handle = inputs[slot].handle;
+        if (handle < 0 || !plan.producers[handle]) continue;
+        const auto source = *plan.producers[handle];
+        const Node* producer = state.match.nodes[source.op];
+        if (!producer) continue;
+        InlinedVector<NodeIndex> candidates;
+        for (auto edge = producer->OutputEdgesBegin(); edge != producer->OutputEdgesEnd(); ++edge) {
+          if (edge->GetSrcArgIndex() == static_cast<int>(source.slot) &&
+              edge->GetDstArgIndex() == static_cast<int>(slot))
+            candidates.push_back(edge->GetNode().Index());
+        }
+        std::sort(candidates.begin(), candidates.end());
+        candidates.erase(std::unique(candidates.begin(), candidates.end()), candidates.end());
+        if (candidates.empty()) {
+          stage = FailureStage::Structure;
+          reason = "No consumer on the expected producer output and input slots.";
+        }
+        for (NodeIndex candidate : candidates) {
+          MatchState branch = state;
+          if (bind(ordinal, *graph.GetNode(candidate), branch) && !enumerate(branch)) return false;
+        }
+        return true;
+      }
+    }
+    ORT_ENFORCE(false, "Connected match plan has no frontier.");
+    return true;
+  };
+  return enumerate(initial);
+}
+
 bool CanRewritePartition(const Match& match, const Options& options) {
   const auto& provider = match.nodes.back()->GetExecutionProviderType();
   if (!provider.empty() && !options.compatible_execution_providers.count(provider)) return false;
-  return std::all_of(match.nodes.begin(), match.nodes.end(),
-                     [&](const Node* node) { return node->GetExecutionProviderType() == provider; });
+  const auto& layer = match.nodes.back()->GetLayeringAnnotation();
+  std::function<bool(const Match&)> compatible = [&](const Match& body) {
+    if (&body == &match) {
+      for (const Node* node : body.nodes)
+        if (node->GetExecutionProviderType() != provider || node->GetLayeringAnnotation() != layer) return false;
+    } else {
+      for (const auto& node : body.graph().Nodes())
+        if (node.GetExecutionProviderType() != provider || node.GetLayeringAnnotation() != layer) return false;
+    }
+    for (const auto& [name, nested] : body.subgraphs)
+      if (!compatible(*nested)) return false;
+    return true;
+  };
+  return compatible(match);
+}
+
+Status ResolveInput(const Match& match, std::string_view name, const Graph& target, const NodeArg*& result) {
+  for (const auto& [path, body] : match.subgraphs) {
+    if (name.size() > path.size() && name.substr(0, path.size()) == path && name[path.size()] == '.')
+      return ResolveInput(*body, name.substr(path.size() + 1), target, result);
+  }
+  const Value value = match.pattern->NamedValue(name);
+  ORT_RETURN_IF(!match.pattern->IsInput(value) || match.pattern->IsAttribute(value),
+                "Replacement inputs must be pattern input variables.");
+  const NodeArg* input = match.values[value];
+  if (!input) {
+    result = nullptr;
+    return Status::OK();
+  }
+  const Graph* scope = &match.graph();
+  while (scope != &target) {
+    ORT_RETURN_IF(!scope->ParentGraph() || !scope->IsOuterScopeValue(input->Name()) ||
+                      scope->GetAllInitializedTensors().count(input->Name()) ||
+                      std::any_of(scope->GetInputsIncludingInitializers().begin(),
+                                  scope->GetInputsIncludingInitializers().end(),
+                                  [&](const NodeArg* formal) { return formal->Name() == input->Name(); }),
+                  "Subgraph-local values cannot be replacement inputs.");
+    for (const auto& node : scope->Nodes())
+      for (const NodeArg* output : node.OutputDefs())
+        ORT_RETURN_IF(output->Exists() && output->Name() == input->Name(),
+                      "Subgraph-produced values cannot be replacement inputs.");
+    const auto& captures = scope->ParentNode()->ImplicitInputDefs();
+    auto captured = std::find_if(captures.begin(), captures.end(),
+                                 [&](const NodeArg* arg) { return arg->Name() == input->Name(); });
+    const Graph* parent = scope->ParentGraph();
+    ORT_RETURN_IF(captured == captures.end() || parent->GetNodeArgIncludingParentGraphs(input->Name()) != *captured,
+                  "Capture does not identify a value in the replacement's ancestor graph.");
+    input = *captured;
+    scope = parent;
+  }
+  const NodeArg* target_input = target.GetNodeArg(input->Name());
+  ORT_RETURN_IF(!target_input || target_input != input,
+                "Replacement graph must already own the resolved input NodeArg.");
+  result = target_input;
+  return Status::OK();
+}
+
+std::pair<const Pattern*, Value> InputPlan(const Pattern& pattern, std::string_view name) {
+  for (const auto& node : pattern.Nodes())
+    for (const auto& body : node.graphs)
+      if (name.size() > body.instance.size() && name.substr(0, body.instance.size()) == body.instance &&
+          name[body.instance.size()] == '.')
+        return InputPlan(*body.pattern, name.substr(body.instance.size() + 1));
+  return {&pattern, pattern.NamedValue(name)};
 }
 
 void RollbackFragment(Graph& graph, InlinedVector<NodeIndex>& added, const InlinedVector<std::string>& initializers) {
@@ -577,12 +870,19 @@ Status Replace(Graph& graph, const Pattern& pattern, const Match& match, const R
   InlinedVector<NodeArg*> returned_outputs;
   for (Value output : pattern.Outputs()) returned_outputs.push_back(graph.GetNodeArg(match.values[output]->Name()));
   auto tensor = [&](const Replacement::Input& input, NodeArg*& result) -> Status {
-    const Value value = std::holds_alternative<Value>(input) ? std::get<Value>(input)
-                                                             : pattern.NamedValue(std::get<std::string>(input));
-    ORT_RETURN_IF(value.handle < 0 || static_cast<size_t>(value.handle) >= match.values.size() ||
-                      !pattern.IsInput(value) || pattern.IsAttribute(value),
-                  "Replacement inputs must be pattern input variables.");
-    result = match.values[value] ? graph.GetNodeArg(match.values[value]->Name()) : nullptr;
+    const NodeArg* binding = nullptr;
+    if (const auto* value = std::get_if<Value>(&input)) {
+      ORT_RETURN_IF(value->handle < 0 || static_cast<size_t>(value->handle) >= match.values.size() ||
+                        !pattern.IsInput(*value) || pattern.IsAttribute(*value),
+                    "Replacement inputs must be pattern input variables.");
+      binding = match.values[*value];
+    } else {
+      ORT_RETURN_IF_ERROR(ResolveInput(match, std::get<std::string>(input), graph, binding));
+    }
+    for (const Node* node : match.nodes)
+      ORT_RETURN_IF(std::find(node->OutputDefs().begin(), node->OutputDefs().end(), binding) != node->OutputDefs().end(),
+                    "Replacement capture is produced inside the deletion set.");
+    result = binding ? graph.GetNodeArg(binding->Name()) : nullptr;
     return Status::OK();
   };
   auto attribute = [&](const std::string& name, std::optional<ONNX_NAMESPACE::AttributeProto>& result) -> Status {
@@ -660,6 +960,8 @@ Status Replace(Graph& graph, const Pattern& pattern, const Match& match, const R
       if (!input->Exists()) continue;
       graph.RemoveConsumerNode(input->Name(), graph.GetNode(node->Index()));
     }
+    for (const NodeArg* input : node->ImplicitInputDefs())
+      graph.RemoveConsumerNode(input->Name(), graph.GetNode(node->Index()));
     graph_utils::RemoveNodeOutputEdges(graph, *graph.GetNode(node->Index()));
   }
   // Remove in reverse order so producers cannot be left with dangling edges.
@@ -890,10 +1192,22 @@ class PatternParser {
     auto symbol = [&](size_t index, std::string_view text) {
       return tokens[index].first == Kind::Symbol && tokens[index].second == text;
     };
+    InlinedVector<bool> call_arguments;
     for (size_t i = 0; i + 1 < tokens.size(); ++i) {
+      if (symbol(i, "(")) {
+        call_arguments.push_back(i > 0 &&
+                                 ((tokens[i - 1].first == Kind::Identifier && tokens[i - 1].second != "return") ||
+                                  symbol(i - 1, ")")));
+      } else if (symbol(i, ")") && !call_arguments.empty()) {
+        call_arguments.pop_back();
+      }
       if (tokens[i].first == Kind::Identifier && tokens[i].second.find('.') == std::string::npos &&
           symbol(i + 1, "(") && (i == 0 || !symbol(i - 1, "::")))
         names.push_back(tokens[i].second);
+      if (symbol(i, "=") && tokens[i + 1].first == Kind::Identifier &&
+          !call_arguments.empty() && call_arguments.back() && i >= 2 &&
+          tokens[i - 1].first == Kind::Identifier && (symbol(i - 2, "(") || symbol(i - 2, ",")))
+        names.push_back(tokens[i + 1].second);
       if (!symbol(i, "(")) continue;
       InlinedVector<std::string> members;
       size_t j = i + 1;
@@ -920,6 +1234,7 @@ class PatternParser {
         ORT_RETURN_IF(symbols_.count(name), Error("duplicate input name"));
         ORT_RETURN_IF(pattern_.ValueCount() >= 256, Error("too many values"));
         Value input = pattern_.Input(name);
+        pattern_.graph_inputs_.push_back(input);
         symbols_.emplace(name, input);
         if (token_ == ":") {
           InlinedVector<TypeConstraint, 1> alternatives;
@@ -1067,10 +1382,12 @@ class PatternParser {
       for (Value input : node.inputs)
         ORT_RETURN_IF(pattern_.IsAttribute(input), Error("attribute variable used as a tensor input"));
     InlinedHashSet<int> reachable;
+    if (definition_ || !replacement_attributes_)
+      for (Value output : pattern_.Outputs()) reachable.insert(output.handle);
     if (!pattern_.Nodes().empty() && !definition_)
       for (Value output : pattern_.Nodes().back().outputs) reachable.insert(output.handle);
-    else
-      for (Value output : pattern_.Outputs()) reachable.insert(output.handle);
+    if (!definition_ && !replacement_attributes_ && !pattern_.Nodes().empty())
+      ORT_RETURN_IF(!MatchPlan(pattern_).connected, Error("disconnected pattern node"));
     for (int handle : attribute_inputs_) reachable.insert(handle);
     for (auto it = pattern_.Nodes().rbegin(); it != pattern_.Nodes().rend(); ++it) {
       ORT_RETURN_IF(std::none_of(it->outputs.begin(), it->outputs.end(),
@@ -1081,7 +1398,13 @@ class PatternParser {
         if (input.handle >= 0) reachable.insert(input.handle);
     }
     for (int handle : pattern_.optional_inputs_) reachable.insert(handle);
+    if (definition_)
+      for (Value input : pattern_.graph_inputs_) reachable.insert(input.handle);
     ORT_RETURN_IF(reachable.size() != pattern_.ValueCount(), Error("unused input"));
+    pattern_.graph_inputs_.erase(
+        std::remove_if(pattern_.graph_inputs_.begin(), pattern_.graph_inputs_.end(),
+                       [&](Value input) { return pattern_.IsAttribute(input); }),
+        pattern_.graph_inputs_.end());
     pattern_.binding_constraints_ = std::move(binding_constraints_);
     destination = std::move(pattern_);
     return Status::OK();
@@ -1371,6 +1694,7 @@ class PatternParser {
     ORT_RETURN_IF_ERROR(Expect("("));
     InlinedVector<Value> inputs;
     InlinedVector<AttributeMatcher, 1> attributes;
+    InlinedVector<Pattern::NodePattern::GraphAttribute, 1> graphs;
     NodeAttributes literal_attributes;
     InlinedHashMap<std::string, std::string> bindings;
     InlinedHashSet<std::string> attribute_names;
@@ -1388,6 +1712,34 @@ class PatternParser {
             if (kind_ == Kind::Identifier) {
               std::string capture;
               ORT_RETURN_IF_ERROR(Identifier(capture, replacement_bindings_ != nullptr));
+              const auto* graph_definition = resolve_ ? resolve_(capture) : nullptr;
+              if (graph_definition) {
+                ORT_RETURN_IF(symbols_.count(capture) || pattern_.attribute_names_.count(capture),
+                              Error("graph pattern name conflicts with an attribute binding"));
+                ORT_RETURN_IF(graph_definition->kind == Definition::Kind::Interface ||
+                                  graph_definition->plans.empty(),
+                              Error("graph attribute requires a concrete pattern"));
+                const size_t call = radices_.size();
+                radices_.push_back(graph_definition->plans.size());
+                const size_t choice = call < choices_.size() ? choices_[call] : 0;
+                ORT_RETURN_IF(choice >= graph_definition->plans.size(), Error("invalid graph alternative"));
+                const auto& body = graph_definition->plans[choice];
+                ORT_RETURN_IF(body->expanded_calls_ >= 256 ||
+                                  pattern_.expanded_calls_ >= 256 - body->expanded_calls_,
+                              Error("expanded graph call limit of 256 exceeded"));
+                pattern_.expanded_calls_ += body->expanded_calls_ + 1;
+                const std::string instance = (names.empty() ? std::string("root") : names.front()) + "." + name;
+                ORT_RETURN_IF(pattern_.instances_.count(instance),
+                              Error("graph instance conflicts with a pattern instance"));
+                for (const auto& previous : pattern_.Nodes())
+                  ORT_RETURN_IF(std::any_of(previous.graphs.begin(), previous.graphs.end(),
+                                            [&](const auto& graph) { return graph.instance == instance; }),
+                                Error("duplicate graph instance; assign the final control-flow operator a unique name"));
+                graphs.push_back({name, instance, body});
+                if (token_ != ",") break;
+                ORT_RETURN_IF_ERROR(Next());
+                continue;
+              }
               ORT_RETURN_IF(pattern_.instances_.count(capture), Error("attribute capture conflicts with a pattern instance"));
               if (replacement_bindings_) {
                 auto found = symbols_.find(capture);
@@ -1489,6 +1841,7 @@ class PatternParser {
     auto values = pattern_.MultiOp(std::move(op), gsl::span<const Value>(inputs), outputs);
     last_outputs_ = values;
     pattern_.Attributes(std::move(attributes));
+    pattern_.nodes_.back().graphs = std::move(graphs);
     if (replacement_attributes_) replacement_attributes_->push_back(std::move(literal_attributes));
     if (replacement_bindings_) replacement_bindings_->push_back(std::move(bindings));
     for (size_t i = 0; i < names.size(); ++i) {
@@ -1912,6 +2265,7 @@ Status PatternParser::PatternCall(const InlinedVector<std::string>& names, const
     for (auto& output : copy.outputs) output = remap(output);
     for (auto& attribute : copy.attributes)
       if (!attribute.capture.empty()) attribute.capture = attribute_name(attribute.capture);
+    for (auto& body : copy.graphs) body.instance = scoped(body.instance);
     pattern_.nodes_.push_back(std::move(copy));
   }
   for (const auto& name : source.attribute_names_) {
@@ -2016,18 +2370,23 @@ class PatternModule {
     }
   }
 
-  Pattern GetPattern(std::string_view name) const {
+  Pattern GetPattern(std::string_view name, bool graph_entry = false) const {
     auto found = by_name_.find(std::string(name));
     ORT_ENFORCE(found != by_name_.end(), "Unknown library pattern: ", name);
     const auto& definition = definitions_[found->second];
     ORT_ENFORCE(definition.kind != Definition::Kind::Interface, "Interfaces cannot be rule entries: ", name);
-    for (const auto& plan : definition.plans) ValidateEntry(*plan, name);
+    for (const auto& plan : definition.plans) {
+      if (graph_entry)
+        ValidateGraphEntry(*plan);
+      else
+        ValidateEntry(*plan, name);
+    }
     Pattern result = *definition.plans.front();
     for (size_t i = 1; i < definition.plans.size(); ++i) result.alternatives_.push_back(definition.plans[i]);
     return result;
   }
 
-  static void ValidateEntry(const Pattern& plan, std::string_view name) {
+  static std::shared_ptr<const MatchPlan> ValidateEntry(const Pattern& plan, std::string_view name) {
     ORT_ENFORCE(!plan.Nodes().empty(), "Pattern ", name, " cannot be a rule entry: no operator root.");
     InlinedHashSet<int> returned;
     for (Value output : plan.Outputs()) {
@@ -2036,19 +2395,34 @@ class PatternModule {
       ORT_ENFORCE(returned.insert(output.handle).second, "Pattern ", name,
                   " cannot be a rule entry: duplicate returned value after alias expansion.");
     }
+    auto match_plan = std::make_shared<const MatchPlan>(plan);
+    ORT_ENFORCE(match_plan->connected, "Pattern ", name,
+                " cannot be a rule entry: disconnected operators (shared external inputs do not connect branches).");
     InlinedHashSet<int> reachable;
-    for (Value value : plan.Nodes().back().outputs) reachable.insert(value.handle);
-    for (auto it = plan.Nodes().rbegin(); it != plan.Nodes().rend(); ++it) {
-      ORT_ENFORCE(std::any_of(it->outputs.begin(), it->outputs.end(),
-                              [&](Value value) { return reachable.count(value.handle); }),
-                  "Pattern ", name, " cannot be a rule entry: independent branches do not reach one operator root.");
-      for (Value value : it->outputs) reachable.insert(value.handle);
-      for (Value value : it->inputs)
+    for (const auto& node : plan.Nodes()) {
+      for (Value value : node.outputs) reachable.insert(value.handle);
+      for (Value value : node.inputs)
         if (value.handle >= 0) reachable.insert(value.handle);
     }
     for (int handle : plan.attribute_inputs_) reachable.insert(handle);
     for (int handle : plan.optional_inputs_) reachable.insert(handle);
     ORT_ENFORCE(reachable.size() == plan.ValueCount(), "Pattern ", name, " cannot be a rule entry: unused inputs.");
+    return match_plan;
+  }
+
+  static void ValidateGraphEntry(const Pattern& plan) {
+    InlinedHashSet<int> reachable;
+    for (Value output : plan.Outputs()) {
+      ORT_ENFORCE(!plan.IsAttribute(output), "Graph outputs must be tensors.");
+      reachable.insert(output.handle);
+    }
+    for (auto it = plan.Nodes().rbegin(); it != plan.Nodes().rend(); ++it) {
+      ORT_ENFORCE(std::any_of(it->outputs.begin(), it->outputs.end(),
+                              [&](Value value) { return reachable.count(value.handle); }),
+                  "Graph pattern contains an output-unreachable operator.");
+      for (Value input : it->inputs)
+        if (input.handle >= 0) reachable.insert(input.handle);
+    }
   }
 
  private:
@@ -2196,6 +2570,7 @@ class PatternModule {
 
 PatternLibrary::PatternLibrary(std::string_view text) : module_(std::make_shared<const detail::PatternModule>(text)) {}
 Pattern PatternLibrary::GetPattern(std::string_view name) const { return module_->GetPattern(name); }
+Pattern PatternLibrary::GetGraphPattern(std::string_view name) const { return module_->GetPattern(name, true); }
 
 Rule::Rule(std::string name, Pattern pattern, ReplacementFunction replacement, CheckAndBind check_and_bind,
            InlinedVector<OpsetRequirement, 1> opsets)
@@ -2235,25 +2610,52 @@ Status Pattern::VisitMatches(const Graph& graph, NodeIndex root_index,
                 "Pattern root does not exist in the supplied graph.");
   const Node* root = graph.GetNode(root_index);
   ORT_RETURN_IF(!root, "Pattern root does not exist in the supplied graph.");
-  detail::PatternModule::ValidateEntry(*this, "<standalone>");
-  for (const auto& alternative : alternatives_) detail::PatternModule::ValidateEntry(*alternative, "<standalone>");
+  InlinedVector<std::shared_ptr<const detail::MatchPlan>, 1> plans;
+  plans.push_back(detail::PatternModule::ValidateEntry(*this, "<standalone>"));
+  for (const auto& alternative : alternatives_)
+    plans.push_back(detail::PatternModule::ValidateEntry(*alternative, "<standalone>"));
   Producers producers;
   for (const auto& node : graph.Nodes())
     for (const NodeArg* output : node.OutputDefs())
       if (output->Exists()) producers[output] = node.Index();
+  auto visit = [&](const Pattern& pattern, const detail::MatchPlan& plan) {
+    FailureStage stage = FailureStage::Structure;
+    std::string reason;
+    auto owned_pattern = std::make_shared<const Pattern>(pattern);
+    return MatchPattern(pattern, plan, graph, *root, producers, [&](Match& match) {
+      match.owned_pattern_ = owned_pattern;
+      match.pattern = owned_pattern.get();
+      return visitor(match); }, stage, reason);
+  };
+  if (!visit(*this, *plans.front())) return Status::OK();
+  for (size_t i = 0; i < alternatives_.size(); ++i)
+    if (!visit(*alternatives_[i], *plans[i + 1])) break;
+  return Status::OK();
+}
+
+Status Pattern::MatchGraph(const Graph& graph, std::optional<Match>& result) const {
+  ORT_RETURN_IF(graph.GraphResolveNeeded(), "Pattern matching requires an already resolved graph.");
+  Producers producers;
+  for (const auto& node : graph.Nodes())
+    for (const NodeArg* output : node.OutputDefs())
+      if (output->Exists()) producers[output] = node.Index();
+  std::optional<Match> candidate;
   auto visit = [&](const Pattern& plan) {
+    detail::PatternModule::ValidateGraphEntry(plan);
     Match match;
     match.pattern = &plan;
     FailureStage stage = FailureStage::Structure;
     std::string reason;
-    if (!MatchPattern(plan, graph, *root, producers, match, stage, reason)) return true;
+    if (!MatchGraphPattern(plan, graph, producers, match, stage, reason)) return false;
     match.owned_pattern_ = std::make_shared<const Pattern>(plan);
     match.pattern = match.owned_pattern_.get();
-    return visitor(match);
+    candidate = std::move(match);
+    return true;
   };
-  if (!visit(*this)) return Status::OK();
-  for (const auto& alternative : alternatives_)
-    if (!visit(*alternative)) break;
+  if (!visit(*this))
+    for (const auto& alternative : alternatives_)
+      if (visit(*alternative)) break;
+  result = std::move(candidate);
   return Status::OK();
 }
 
@@ -2382,8 +2784,18 @@ std::optional<int32_t> BindingView::elementTypeOf(std::string_view name) const {
 BindingView BindingView::instance(std::string_view name) const {
   ORT_ENFORCE(match_->pattern && !name.empty(), "Instance lookup requires a matched pattern and a name.");
   const std::string path = Qualify(name);
+  auto nested = match_->subgraphs.find(path);
+  if (nested != match_->subgraphs.end()) return nested->second->bindings();
   ORT_ENFORCE(match_->pattern->instances_.count(path), "Unknown pattern instance: ", path);
   return BindingView(*match_, path);
+}
+const Graph& Match::graph() const {
+  ORT_ENFORCE(matched_graph, "Graph lookup requires a matched graph.");
+  return *matched_graph;
+}
+const Graph& BindingView::graph() const { return match_->graph(); }
+Status BindingView::resolveInput(std::string_view name, const Graph& target, const NodeArg*& result) const {
+  return rewrite::ResolveInput(*match_, Qualify(name), target, result);
 }
 const Pattern::Instance& BindingView::Selection() const {
   ORT_ENFORCE(match_->pattern && match_->pattern->instances_.count(path_), "No definition at binding path: ", path_);
@@ -2426,6 +2838,7 @@ void Match::update(std::string_view name, ONNX_NAMESPACE::AttributeProto value) 
               "Extra bindings require a name and a concrete attribute value.");
   ORT_ENFORCE(!dimensions_.count(std::string(name)) && !element_types_.count(std::string(name)),
               "Extra attribute binding cannot overwrite a dimension or element type: ", name);
+  ORT_ENFORCE(!subgraphs.count(std::string(name)), "Extra attribute binding cannot overwrite a graph instance: ", name);
   if (pattern) {
     ORT_ENFORCE(!pattern->aliases_.count(std::string(name)) && !pattern->instances_.count(std::string(name)),
                 "Extra attribute binding cannot overwrite a pattern binding: ", name);
@@ -2535,9 +2948,13 @@ PatternRewriter::PatternRewriter(Rules rules, Options options)
                   "Rule opset requirements need a positive, nonempty inclusive range.");
       ORT_ENFORCE(domains.insert(requirement.domain).second, "Duplicate rule opset domain: ", requirement.domain);
     }
-    for (const auto& node : rule.pattern.Nodes()) {
-      ORT_ENFORCE(domains.count(node.op.domain), "Missing rule opset requirement for domain: ", node.op.domain);
-    }
+    std::function<void(const Pattern&)> validate_domains = [&](const Pattern& plan) {
+      for (const auto& node : plan.Nodes()) {
+        ORT_ENFORCE(domains.count(node.op.domain), "Missing rule opset requirement for domain: ", node.op.domain);
+        for (const auto& body : node.graphs) validate_domains(*body.pattern);
+      }
+    };
+    validate_domains(rule.pattern);
     if (auto* recipe = rule.replacement.Parsed(); recipe && recipe->plan_) {
       auto nodes = *recipe->plan_;
       for (auto& node : nodes) {
@@ -2555,36 +2972,23 @@ PatternRewriter::PatternRewriter(Rules rules, Options options)
         }
         for (auto& input : node.inputs) {
           if (const auto* name = std::get_if<std::string>(&input)) {
-            auto value = rule.pattern.NamedValue(*name);
-            ORT_ENFORCE(rule.pattern.IsInput(value) && !rule.pattern.IsAttribute(value),
+            auto [owner, value] = InputPlan(rule.pattern, *name);
+            ORT_ENFORCE(owner->IsInput(value) && !owner->IsAttribute(value),
                         "Replacement inputs must be pattern tensor input variables: ", *name);
-            input = std::move(value);
+            if (owner == &rule.pattern) input = std::move(value);
           }
         }
       }
       recipe->plan_ = std::make_shared<const InlinedVector<Replacement::NodeRecipe, 1>>(std::move(nodes));
     }
-    // Every node must reach the last node. Disconnected definitions are not patterns.
-    const auto& root_outputs = rule.pattern.Nodes().back().outputs;
-    InlinedHashSet<int> reachable;
-    for (Value output : root_outputs) reachable.insert(output.handle);
-    for (auto it = rule.pattern.Nodes().rbegin(); it != rule.pattern.Nodes().rend(); ++it) {
-      ORT_ENFORCE(
-          std::any_of(it->outputs.begin(), it->outputs.end(), [&](Value output) { return reachable.count(output); }),
-          "Disconnected pattern node.");
-      for (Value output : it->outputs) reachable.insert(output.handle);
-      for (Value input : it->inputs)
-        if (input.handle >= 0) reachable.insert(input.handle);
-    }
-    for (int handle : rule.pattern.attribute_inputs_) reachable.insert(handle);
-    for (int handle : rule.pattern.optional_inputs_) reachable.insert(handle);
-    ORT_ENFORCE(reachable.size() == rule.pattern.ValueCount(), "Unused pattern input.");
+    plans_.push_back(detail::PatternModule::ValidateEntry(rule.pattern, rule.name));
+    has_multi_sink_plans_ |= !plans_.back()->producer_rooted;
     invalidation_depth_ = std::max(invalidation_depth_, rule.pattern.Nodes().size());
     if (!options_.indexed) continue;
     std::string signature = Signature(rule.pattern);
     // Opaque predicates cannot be compared safely; keep their plans distinct.
     if (std::any_of(rule.pattern.Nodes().begin(), rule.pattern.Nodes().end(),
-                    [](const auto& node) { return !node.attributes.empty(); }) ||
+                    [](const auto& node) { return !node.attributes.empty() || !node.graphs.empty(); }) ||
         !rule.pattern.OrderedTypeConstraints().empty())
       signature += "#" + std::to_string(i);
     auto [it, inserted] = signatures.emplace(signature, groups_.size());
@@ -2605,9 +3009,20 @@ Status PatternRewriter::Run(Graph& graph, Statistics& statistics, InlinedHashSet
   return RunImpl(graph, statistics, &region);
 }
 
-Status PatternRewriter::RunImpl(Graph& graph, Statistics& statistics, InlinedHashSet<NodeIndex>* region) const {
+Status PatternRewriter::RunOnce(Graph& graph, Statistics& statistics, InlinedHashSet<NodeIndex>& region,
+                                NodeIndex anchor) const {
+  return RunImpl(graph, statistics, &region, anchor);
+}
+
+Status PatternRewriter::RunImpl(Graph& graph, Statistics& statistics, InlinedHashSet<NodeIndex>* region,
+                                std::optional<NodeIndex> anchor) const {
   statistics = {};
   ORT_RETURN_IF(graph.GraphResolveNeeded(), "PatternRewriter requires an already resolved graph.");
+  if (anchor) {
+    ORT_RETURN_IF(options_.match_only, "RunOnce does not support match_only.");
+    ORT_RETURN_IF(!region || region->empty() || !region->count(*anchor),
+                  "RunOnce requires a nonempty region containing its anchor.");
+  }
   if (region) {
     for (auto index : *region)
       ORT_RETURN_IF(index >= static_cast<NodeIndex>(graph.MaxNodeIndex()) || graph.GetNode(index) == nullptr,
@@ -2633,7 +3048,10 @@ Status PatternRewriter::RunImpl(Graph& graph, Statistics& statistics, InlinedHas
     else
       report(id, std::numeric_limits<NodeIndex>::max(), FailureStage::Opset, "Missing or unsupported domain import.");
   }
-  if (applicable_rules.empty()) return Status::OK();
+  if (applicable_rules.empty()) {
+    ORT_RETURN_IF(anchor, "RunOnce found no eligible exact-region match.");
+    return Status::OK();
+  }
   InlinedVector<InlinedVector<size_t>, 1> applicable_groups;
   for (const auto& group : groups_) {
     InlinedVector<size_t> ids;
@@ -2648,7 +3066,7 @@ Status PatternRewriter::RunImpl(Graph& graph, Statistics& statistics, InlinedHas
   GraphViewer viewer(graph);
   for (NodeIndex index : viewer.GetNodesInTopologicalOrder()) {
     const Node& node = *graph.GetNode(index);
-    if (!region || region->count(index)) {
+    if ((!region || region->count(index)) && (!anchor || index == *anchor)) {
       worklist.push_back(index);
       queued.insert(index);
     }
@@ -2675,27 +3093,43 @@ Status PatternRewriter::RunImpl(Graph& graph, Statistics& statistics, InlinedHas
         std::string reason;
         bool matched = false;
       };
-      auto match_group = [&](const Pattern& pattern, CandidateMatch& candidate) {
-        ++statistics.structural_checks;
-        candidate.matched = MatchPattern(pattern, graph, *root, producers, candidate.match,
-                                         candidate.stage, candidate.reason);
-        if (candidate.matched && region &&
-            std::any_of(candidate.match.nodes.begin(), candidate.match.nodes.end(),
-                        [&](const Node* node) { return !region->count(node->Index()); })) {
-          candidate.matched = false;
-          candidate.stage = FailureStage::Boundary;
-          candidate.reason = "Match includes nodes outside the rewrite region.";
-        }
+      auto check_partition = [&](CandidateMatch& candidate) {
         if (candidate.matched && !CanRewritePartition(candidate.match, options_)) {
           candidate.matched = false;
           candidate.stage = FailureStage::ExecutionProvider;
           candidate.reason = "Mixed or unsupported execution providers.";
         }
       };
+      auto match_group = [&](const Pattern& pattern, const detail::MatchPlan& plan, CandidateMatch& candidate) {
+        ++statistics.structural_checks;
+        auto capture = [&](Match& match) {
+          candidate.match = std::move(match);
+          candidate.matched = true;
+          return false;
+        };
+        MatchPattern(pattern, plan, graph, *root, producers, capture,
+                     candidate.stage, candidate.reason, region, anchor.has_value());
+        check_partition(candidate);
+      };
       auto consider = [&](size_t id, const CandidateMatch& candidate) {
         ++statistics.candidates;
         if (!candidate.matched) {
           report(id, root->Index(), candidate.stage, candidate.reason);
+          return;
+        }
+        std::function<bool(const Match&)> supported_bodies = [&](const Match& body) {
+          for (const auto& requirement : rules_[id].opsets) {
+            auto imported = body.graph().DomainToVersionMap().find(requirement.domain);
+            if (imported == body.graph().DomainToVersionMap().end() ||
+                imported->second < requirement.min_version || imported->second > requirement.max_version)
+              return false;
+          }
+          for (const auto& [name, nested] : body.subgraphs)
+            if (!supported_bodies(*nested)) return false;
+          return true;
+        };
+        if (!supported_bodies(candidate.match)) {
+          report(id, root->Index(), FailureStage::Opset, "Missing or unsupported nested graph domain import.");
           return;
         }
         Match rule_match = candidate.match;
@@ -2717,6 +3151,23 @@ Status PatternRewriter::RunImpl(Graph& graph, Statistics& statistics, InlinedHas
           winning_pattern = winning_match.pattern;
         }
       };
+      auto enumerate_rule = [&](size_t id) {
+        ++statistics.structural_checks;
+        CandidateMatch failure;
+        bool emitted = false;
+        auto visit = [&](Match& match) {
+          emitted = true;
+          CandidateMatch candidate;
+          candidate.match = std::move(match);
+          candidate.matched = true;
+          check_partition(candidate);
+          consider(id, candidate);
+          return options_.match_only || !winning_pattern;
+        };
+        MatchPattern(rules_[id].pattern, *plans_[id], graph, *root, producers, visit,
+                     failure.stage, failure.reason, region, anchor.has_value());
+        if (!emitted) consider(id, failure);
+      };
       if (options_.indexed) {
         auto it = roots_.find(Key(root->OpType(), root->Domain()));
         if (it != roots_.end()) {
@@ -2727,17 +3178,25 @@ Status PatternRewriter::RunImpl(Graph& graph, Statistics& statistics, InlinedHas
           InlinedHashMap<size_t, CandidateMatch> cache;
           // Share structural work, but never run a lower-priority callback before an earlier rule.
           for (const auto& [id, group] : candidates) {
-            auto [cached, inserted] = cache.try_emplace(group);
-            if (inserted) match_group(groups_[group].pattern, cached->second);
-            consider(id, cached->second);
+            if (!plans_[id]->producer_rooted) {
+              enumerate_rule(id);
+            } else {
+              auto [cached, inserted] = cache.try_emplace(group);
+              if (inserted) match_group(groups_[group].pattern, *plans_[id], cached->second);
+              consider(id, cached->second);
+            }
             if (!options_.match_only && winning_pattern) break;
           }
         }
       } else {
         for (size_t id : applicable_rules) {
-          CandidateMatch candidate;
-          match_group(rules_[id].pattern, candidate);
-          consider(id, candidate);
+          if (!plans_[id]->producer_rooted) {
+            enumerate_rule(id);
+          } else {
+            CandidateMatch candidate;
+            match_group(rules_[id].pattern, *plans_[id], candidate);
+            consider(id, candidate);
+          }
           if (!options_.match_only && winning_pattern) break;
         }
       }
@@ -2748,6 +3207,12 @@ Status PatternRewriter::RunImpl(Graph& graph, Statistics& statistics, InlinedHas
         if (!winning_pattern->IsInput(value)) continue;
         auto it = producers.find(winning_match.values[value]);
         if (it != producers.end()) affected.push_back(it->second);
+      }
+      for (const Node* node : winning_match.nodes) {
+        for (const NodeArg* input : node->ImplicitInputDefs()) {
+          auto it = producers.find(input);
+          if (it != producers.end()) affected.push_back(it->second);
+        }
       }
       InlinedVector<NodeIndex> added;
       auto recipe = rules_[winner].replacement(graph, winning_match);
@@ -2775,6 +3240,7 @@ Status PatternRewriter::RunImpl(Graph& graph, Statistics& statistics, InlinedHas
         region->insert(added.begin(), added.end());
       }
       ++statistics.rewrites;
+      if (anchor) return Status::OK();
       affected.insert(affected.end(), added.begin(), added.end());
       // A changed producer or use count can affect a deeper pattern root, not just a direct consumer.
       InlinedHashSet<NodeIndex> seen;
@@ -2794,15 +3260,30 @@ Status PatternRewriter::RunImpl(Graph& graph, Statistics& statistics, InlinedHas
       }
     }
     if (options_.match_only || statistics.rewrites == rewrites_before) break;
+    if (has_multi_sink_plans_) {
+      // A changed sibling need not be downstream of any affected producer.
+      next_worklist.clear();
+      for (const auto& node : graph.Nodes())
+        if (!region || region->count(node.Index())) next_worklist.push_back(node.Index());
+    }
     worklist = std::move(next_worklist);
     if (iteration + 1 == options_.max_iterations && !worklist.empty())
       statistics.iteration_limit_reached = true;
   }
+  ORT_RETURN_IF(anchor, "RunOnce found no eligible exact-region match.");
   return Status::OK();
 }
 
 Status PatternRewriter::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
-  for (auto& node : graph.Nodes()) ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
+  bool bodies_modified = false;
+  for (auto& node : graph.Nodes()) ORT_RETURN_IF_ERROR(Recurse(node, bodies_modified, graph_level, logger));
+  modified |= bodies_modified;
+  const bool matches_graphs = std::any_of(rules_.begin(), rules_.end(), [](const Rule& rule) {
+    return std::any_of(rule.pattern.Nodes().begin(), rule.pattern.Nodes().end(),
+                       [](const auto& node) { return !node.graphs.empty(); });
+  });
+  // Parent graph patterns need refreshed body outputs, types, and lexical captures.
+  if (bodies_modified && matches_graphs) ORT_RETURN_IF_ERROR(graph.Resolve());
   Statistics statistics;
   ORT_RETURN_IF_ERROR(Run(graph, statistics));
   modified |= statistics.rewrites != 0;

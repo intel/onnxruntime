@@ -1123,22 +1123,13 @@ class HistogramCollector(CalibrationDataCollector):
     def _avg_std(hist, hist_edges, power=1):
         if power <= 0:
             raise ValueError(f"power={power} <= 0 is invalid.")
-        values = (hist_edges[:-1] + hist_edges[1:]) * 0.5
-        if power == 1:
-            avg = (hist * values).sum() / hist.sum()
-            std = ((hist * values**2).sum() / hist.sum() - avg**2) ** 0.5
-            return np.array(avg, dtype=hist_edges.dtype), np.array(std, dtype=hist_edges.dtype)
-        if int(power) == power and int(power) % 2 == 1:
-            avg = (hist * values**power).sum() / hist.sum()
-            std = ((hist * (values**power - avg) ** 2).sum() / hist.sum()) ** 0.5
-            return np.array(avg, dtype=hist_edges.dtype), np.array(std, dtype=hist_edges.dtype)
-
-        fact = np.abs(values) / values
-        fact[np.isnan(fact)] = 1
-        fact[np.isinf(fact)] = 1
-        values = np.abs(values) ** power * fact
+        # Promote before forming midpoints and moments; calibration edges may be float16.
+        edges = hist_edges.astype(np.float64)
+        values = (edges[:-1] + edges[1:]) * 0.5
+        if power != 1:
+            values = np.copysign(np.abs(values) ** power, values)
         avg = (hist * values).sum() / hist.sum()
-        std = ((hist * values**2).sum() / hist.sum() - avg**2) ** 0.5
+        std = ((hist * (values - avg) ** 2).sum() / hist.sum()) ** 0.5
         return np.array(avg, dtype=hist_edges.dtype), np.array(std, dtype=hist_edges.dtype)
 
     def compute_distribution(self):
@@ -1242,14 +1233,14 @@ class HistogramCollector(CalibrationDataCollector):
 
             # in order to compare p and q, we need to make length of q equals to length of p
             # expand quantized bins into p.size bins
-            q = np.zeros(p.size, dtype=np.int64)
+            q = np.zeros(p.size, dtype=np.float64)
             for index in range(num_quantized_bins):
                 start = index * num_merged_bins
-                end = start + num_merged_bins
+                end = p.size if index == num_quantized_bins - 1 else start + num_merged_bins
 
                 norm = sum(nonzeros[start:end])
                 if norm != 0:
-                    q[start:end] = quantized_bins[index] / norm
+                    q[start:end] = (quantized_bins[index] / norm) * nonzeros[start:end]
 
             p = smooth_distribution(p)
             q = smooth_distribution(q)

@@ -106,7 +106,7 @@ Status errors and configuration
 exceptions leave the caller's result unchanged. The result owns its selected
 plan but borrows the unchanged graph, as described in [Match](#the-match-object).
 The graph must already be resolved; an unresolved graph or invalid root returns
-an error. Malformed/non-rooted pattern configuration throws.
+an error. Malformed/disconnected entry configuration throws.
 
 This standalone API uses the same structural, attribute, constant, type/shape,
 layer and **deletion-boundary** matcher as the engine. It finds rewrite-safe
@@ -115,6 +115,160 @@ or execution-provider policy, run a checker, construct a replacement, or travers
 other roots/subgraphs. After introducing pattern disjunction below,
 [matching alternatives at one root](#matching-alternatives-at-one-root) describes
 first-match ordering and the separate ordered visitor API.
+
+### Control-flow graph attributes and whole-graph matching
+
+A library pattern can constrain a **GRAPH** attribute using `attribute=PatternName`:
+
+```text
+pattern Branch(x:float[N]) { y=Identity(x); return y }
+pattern Conditional(condition) {
+  result=If(condition,then_branch=Branch,else_branch=Branch)
+  return result
+}
+```
+
+The attribute identifier must name a concrete library definition (including an
+alternative group). Forward references are supported; recursive references are
+rejected. A name that is also a declared tensor/attribute binding is ambiguous
+and rejected. Other identifier attributes retain their ordinary capture meaning.
+Every graph owned by a matched node must have an explicit pattern constraint.
+Missing graph attributes do not match. `GRAPHS` attributes are not supported.
+Matching uses the resolved `Node::GetGraphAttribute`, not the attribute's original
+serialized graph.
+
+**Example: capturing an outer-scope tensor**
+
+The `Branch`/`Conditional` pattern above matches this concrete target graph
+(schematic graph notation, not pattern DSL), as exercised by
+`PatternGraphTests.IfCaptureRewriteAndNumerics`:
+
+```text
+main inputs: cond:bool[], outer_value:float[2]
+main output: selected:float[2]
+selected = If(cond)
+  then_branch:
+    inputs: []
+    then_output = Identity(outer_value)
+    outputs: [then_output]
+  else_branch:
+    inputs: []
+    else_output = Identity(outer_value)
+    outputs: [else_output]
+```
+
+Neither branch declares `outer_value` as a formal input or defines it locally:
+both Identity nodes read the enclosing graph's tensor by lexical capture.
+Their outputs are distinct Identity-produced values, not graph-input aliases.
+In the pattern, `Branch(x:float[N])` describes this captured operand structurally;
+`x` is a pattern binding, not a declaration of a target branch formal input.
+Here `match.instance("result.then_branch").valueOf("x")` binds the then-branch
+operand, and the corresponding `result.else_branch` view binds the else-branch
+operand; each has `N=2` in its own scope. The name `x` need not match
+`outer_value`, and using the same pattern name in both branches does **not**
+require them to capture the same tensor. To establish that identity, a checker
+must call each view's `resolveInput("x", parent_graph, resolved)` and compare
+the successfully resolved parent `NodeArg` pointers, as in the test.
+
+**Future extension (not implemented):** Subgraph parameter annotations could
+explicitly distinguish required outer-scope captures from formal inputs and
+local immutable values, and optionally refer to a parent pattern binding to
+express capture identity across scopes. Currently no such capture-role annotation
+syntax or enforcement exists: binding is structural, and a checker must use
+scoped resolution to prove an operand is a visible capture rather than a local
+initializer or formal input. Any future annotation would retain the existing
+shadowing checks and would not make equal local parameter names unify branches.
+
+`PatternLibrary::GetGraphPattern(name)` retrieves a graph-entry pattern;
+`pattern.MatchGraph(graph, result)` matches an entire resolved graph independently
+of a rewriter. Its ordered return values match `Graph::GetOutputs()` positionally.
+Returns may come from unrelated operators, alias the same value more than once,
+or pass through formal inputs without any operators. Ordinary `GetPattern`,
+`MatchAt`, and rewrite-rule entries retain their connected operator-pattern restrictions; the
+graph-entry API does not enable whole-graph replacement of these output aliases.
+Library construction permits unused header parameters for graph formals;
+ordinary entry retrieval rejects unused inputs in every expanded alternative.
+Like `MatchAt`, `MatchGraph` clears the result on nonmatch and preserves it on
+configuration/status errors.
+
+The first `Graph::GetInputs().size()` tensor parameters in the pattern header
+bind to the graph's formal inputs in order, including unused formals. This API
+excludes initializer inputs. Any remaining header parameters bind structurally
+to lexical captures or immutable local initializers; unused extra parameters
+do not match. The same boundary applies to tensor leaves introduced by
+composition or wildcards; optional absent operands are allowed. Attribute
+parameters are not formal tensor inputs. The match must
+cover **every operator**, except exact `Constant` producers consumed and validated
+by literal patterns. Unused initializers are permitted, but unmatched `Constant`
+operators and output-unreachable extra work are not. Clean up dead work before
+matching an unoptimized function body.
+
+For example, this matches a Loop whose body copies its condition and carried
+state through explicit Identity operators:
+
+```text
+pattern LoopBody(iteration,condition,state) -> (continue_loop,result) {
+  next_condition=Identity(condition)
+  next_state=Identity(state)
+  return (continue_loop=next_condition,result=next_state)
+}
+pattern LoopPattern(trip,condition,initial_state) {
+  y=Loop(trip,condition,initial_state,body=LoopBody)
+  return y
+}
+```
+
+`LoopBody` binds the body's three formal inputs positionally: iteration number,
+per-iteration condition, and carried state. These are not lexical captures or
+one-to-one aliases of the Loop's outer operands; even the unused iteration
+formal is part of the body signature. In contrast, the If branches above have
+no formal inputs, so their `x` binds structurally to a capture (or an immutable
+local initializer). The Loop example is structural matching, not an elimination
+rule: `match.instance("y.body").valueOf("state")` is body-local and cannot be
+promoted to a parent replacement input. Any rewrite must separately establish
+iteration, condition, and state semantics.
+The named return entries label the two Identity results; they do not alias
+graph inputs to graph outputs. Unlike the zero-node body in
+`PatternGraphTests.LoopFormalInputsAndPassthroughOutputs`, this pattern requires
+both Identity nodes to be present in the matched body.
+
+Nested bindings are separate matches, not nodes in the outer deletion set.
+`match.instance("result.then_branch")` provides the body `BindingView`; an
+unassigned final operator uses `root.then_branch`. Composition prefixes these
+paths in the same way as ordinary pattern instances. The view's `graph()` is the
+owning resolved graph; `valueOf`, dimensions, element types, and further instances
+are scoped to that match. Type/dimension names do not implicitly unify across
+graphs: a semantic checker must explicitly compare parent and body bindings.
+Each concrete alternative gets fresh matching state. Graph references participate
+in dependency-cycle detection, the 64-level dependency limit, the transitive
+256-call expansion limit, and the 64-concrete-plan limit.
+
+A replacement may name a scoped body **input**, for example
+`(result.then_branch.x)=>Identity(result.then_branch.x)`. It is promoted only if
+resolved implicit-input identities prove it is visible in the replacement graph:
+every intervening graph must capture that value, with no formal-input,
+initializer, or producer shadow. Body-local initializers, formal inputs,
+produced tensors, and captures produced inside the outer deletion set cannot
+escape through this mechanism. All participating body operators must satisfy the
+outer rule's provider, layer, and opset policy. A semantic checker remains
+responsible for branch equivalence, iteration counts, state/output ordering,
+Scan axes/directions, and other operator semantics.
+`view.resolveInput(name, target_graph, result)` exposes the same checked
+promotion to semantic callbacks (and leaves `result` unchanged on error).
+For example, compare both branches' successfully resolved inputs by pointer
+identity in the parent graph, not by their possibly shadowed local names.
+Captures may pass through an intervening graph without a local `NodeArg`, but
+the replacement graph must already own the resolved input `NodeArg`; promotion
+does not manufacture local bindings.
+
+Deleting the parent deletes its bodies; inner nodes are never independently
+deleted by the outer rewrite. Matches and views borrow graph objects and become
+invalid after graph mutation (including parent deletion). Engine replacements
+still cannot construct control-flow nodes. This feature is opt-in through rules;
+it does not register a production optimizer.
+Transformer `Apply` rewrites bodies first and resolves their changed interfaces
+before matching parent graph attributes. `Run` still processes only its supplied
+graph and does not recursively rewrite bodies.
 
 ### Pattern syntax and shared replacement notation
 
@@ -170,7 +324,12 @@ splits at the last dot, so `com.microsoft.FusedMatMul` has domain
 `com.microsoft` and operator name `FusedMatMul`.
 
 Names must be unique and defined before use. Every declared pattern input must
-participate, and every operator must reach the root. Inputs to different named
+participate, and entry operators must be weakly connected through internally
+produced tensor edges. Sharing only an external input, initializer, or attribute
+does not connect operators. Connectivity alone is not sufficient: every operator
+must reach a declared return or, for an inline `Pattern`, the last-operator anchor.
+Named library bodies require every operator to reach a declared return.
+Inputs to different named
 variables may alias; repeating one variable requires identical binding.
 `match.valueOf("x")` and `match.valueOf("clip")` return bound `const NodeArg*`
 values. Unknown names and unbound values raise explicit errors. Read-only
@@ -511,9 +670,22 @@ Pattern pattern("(x) => { a = Identity(x); y = Add(a, a); z = Mul(y, y); return 
 Replacement replacement("(x) => { y = Add(x, x); z = Mul(y, y); return y, z; }");
 ```
 
-The final operator remains the unique sink used to anchor backward matching.
-Every defined operator must reach it, independently of the returned-value order.
-Multiple independent sinks are rejected. Return position defines correspondence:
+The last operator in the fully expanded concrete pattern is always the anchor,
+independently of the returned-value order. Connected patterns may have multiple sinks:
+
+```cpp
+Pattern pattern("(x)=>{c=Identity(x);state=Neg(c);y=Abs(c);return y,state}");
+```
+
+Here a candidate root maps to `Abs`; matching follows its input backward to
+`Identity`, then follows that producer's outgoing edges to find `Neg`.
+Removing `state` from the return list rejects this inline pattern: `Neg` reaches
+neither the returned `y` nor the `Abs` anchor. The anchor itself may be unreturned
+in an inline pattern, preserving the existing last-operator liveness exception.
+Independent fragments, including two operators sharing only external `x`, are
+not valid entries. Replacement topology is unchanged: every replacement operator
+must still reach its final operator (a single multi-output operator can preserve
+multiple sink outputs). Return position defines correspondence:
 the first replacement return inherits the first pattern return's `NodeArg`,
 and so on. The returned counts must match. Returning a leaf input, duplicate
 names, or undefined values is rejected.
@@ -583,9 +755,11 @@ previously unused target names. No `product.port` notation is needed.
 ### Expressions, alternatives, and branch-local inputs
 
 The example factors optional scaling outside the shared Sigmoid/Mul suffix:
-`scaled = (Mul(g, alpha) | g)`. An assignment `scaled = g` is an alias to the exact
-same `NodeArg`, not an inserted Identity. Reusing both names therefore imposes
-the same binding-identity requirement as reusing either name.
+`scaled = (Mul(g, alpha) | g)`. The bare-value alternative binds `scaled` to the
+exact same `NodeArg` as `g`, not an inserted Identity. This is an internal pattern
+binding, not a recommendation to reuse graph input names as graph outputs.
+Reusing both names therefore imposes the same binding-identity requirement as
+reusing either name.
 
 Alternatives are tried in source order, expanding into complete concrete
 plans. Put multiplication first to prefer it when both alternatives can match.
@@ -662,8 +836,9 @@ Reusable bodies may return identity aliases or independent output branches.
 Every required declared input must be used, and every operator must reach at least
 one returned value, but those returned values need not have a single root.
 `GetPattern(name)` validates **every fully expanded plan** as a standalone
-entry: it must have an operator root, all operators must feed that final
-operator, and returned values cannot be leaf/identity aliases or duplicate
+entry: it must have an operator anchor and a weakly connected internal
+producer-consumer operator graph, with every operator reaching a declared return.
+Returned values cannot be leaf/identity aliases or duplicate
 the same value through different output names. Callable bodies may still
 export multiple aliases of the same value. An entry violation raises a
 use-time diagnostic naming the requested entry. Inherited interface inputs
@@ -677,7 +852,7 @@ Thus a library
 may contain useful callable patterns that cannot independently serve as rules:
 
 ```text
-pattern identity(x) -> (y) { return x }
+pattern copy(x) -> (y) { y = Identity(x); return y }
 pattern branches(x, z) {
   left = Identity(x)
   right = Neg(z)
@@ -685,15 +860,17 @@ pattern branches(x, z) {
 }
 pattern join(x, z) {
   left, right = branches(x, z)
-  value = identity(left)
+  value = copy(left)
   return Add(value, right)
 }
 ```
 
-`GetPattern("join")` succeeds; `GetPattern("identity")` and
-`GetPattern("branches")` fail. These checks apply equally to body patterns,
+`GetPattern("join")` and `GetPattern("copy")` succeed;
+`GetPattern("branches")` fails because its outputs have independent roots.
+The copy pattern requires an actual Identity node with a distinct output,
+not an input/output alias. These checks apply equally to body patterns,
 aliases and alternative definitions. Legacy standalone `Pattern("(x) => ...")`
-syntax remains supported; its operator-root and output-boundary checks are unchanged.
+syntax remains supported with the same connectivity and output-boundary checks.
 
 The legacy colon signature extends an interface implementation with external
 inputs discovered by matching. For example,
@@ -829,16 +1006,23 @@ ORT_RETURN_IF_ERROR(pattern.VisitMatches(graph, root_index, [&](Match& match) {
 }));
 ```
 
-`MatchAt` returns only the first successful concrete plan in source order.
+`MatchAt` returns only the first successful assignment of the first matching
+concrete plan in source order.
 It does not run a checker or search another candidate after a later checker
 rejection. `VisitMatches` anchors at the same root in an **already resolved**
-graph and visits successful expanded graph plans in source order, each with
-fresh bindings. Both APIs use the standalone eligibility checks described in
+graph and visits expanded graph plans in source order, exhausting their
+deterministic assignments before advancing. Within a plan, forced producers
+are bound first; otherwise the highest unmatched operator with an input from a
+matched producer uses its lowest eligible input slot. That producer's outgoing
+edges on the exact source-output/destination-input slots supply candidates,
+deduplicated and sorted by ascending `NodeIndex`. Each assignment has fresh
+bindings, including optional absence, captures and prepared updates.
+Both APIs use the standalone eligibility checks described in
 [Patterns](#patterns), without rule opset-range or provider filtering.
 `true` means **continue**, `false` means **stop**; these are traversal controls,
 not check-and-bind acceptance. Ordinary nonmatches/exhaustion return OK without
 invoking the visitor. Unresolved graphs, invalid root indices and empty visitors
-return errors; malformed/non-rooted pattern configuration throws. Visitor
+return errors; malformed/disconnected entry configuration throws. Visitor
 exceptions propagate, never silently retry. The callback may copy a candidate
 but must not mutate the graph.
 
@@ -1277,6 +1461,74 @@ An ordinary staging failure leaves that match's source IDs in the set and does
 not add its staged replacement IDs.
 As with unscoped `Run`, resolve the graph explicitly before later consumers.
 
+For an already selected exact region, use the internal C++ `RunOnce` entry point:
+
+```cpp
+ORT_RETURN_IF_ERROR(rewriter.RunOnce(graph, statistics, region, anchor));
+// Success: statistics.rewrites == 1, region contains exactly the emitted IDs.
+ORT_RETURN_IF_ERROR(graph.Resolve());
+```
+
+It requires a resolved graph, a nonempty region of live IDs containing `anchor`,
+and `match_only == false`. Only that anchor is searched, in normal rule,
+alternative, and assignment order. A candidate's matched node set must **equal**
+the original region, not merely be a subset, before check-and-bind or replacement
+callbacks run. Candidate nodes outside the region are pruned during binding;
+deletion-boundary checks still inspect consumers across the whole graph.
+One successful rewrite returns immediately, even for a self-matching replacement:
+no new nodes or other anchors are visited. No eligible exact match is an error
+and leaves source nodes and the region unchanged. Replacement errors use the
+same staging/rollback path as `Run`, not a whole-graph transaction. This API does
+not discover regions, select providers, verify target kernels, or resolve the graph.
+
+### Choosing `Run` or `RunOnce`
+
+Choose by the **rewrite contract**, not by whether the EP uses registered kernels
+or compiles a subgraph. Both entry points use the same matcher and require a
+complete pattern match; they differ in the permitted anchors, region coverage,
+and number of rewrites.
+
+| Intent | Entry point | Contract |
+|---|---|---|
+| Optimize a graph or region with an ordered set of rules | `Run(graph, statistics)` or `Run(graph, statistics, region)` | Visit eligible roots and allow iterative rewriting up to the configured limit. Scoped matches may consume only a subset of the region. |
+| Apply one previously discovered, validated, and accepted exact candidate | `RunOnce(graph, statistics, region, anchor)` | Search only the specified anchor, require the match to cover the entire original region, and perform exactly one successful replacement. |
+
+An anchor is the actual graph node mapped to the pattern's last expanded
+operator, independently of return order. For `Conv -> Swish`, it is the `Swish`
+node. Specifying an anchor fixes the matching start, not a different search
+algorithm. For a single-node Swish pattern, the Swish node is both the anchor
+and the sole region member, so `RunOnce` is also appropriate.
+
+For example, with a `Conv -> Swish` pattern and a region containing
+`Conv -> Swish -> Identity`, scoped `Run` may replace the first two nodes and
+leave `Identity` in the updated region. `RunOnce` rejects that match because it
+does not cover the entire region. With only the `Conv` and `Swish` nodes in the
+region and the `Swish` as anchor, the match satisfies `RunOnce`'s coverage
+requirement, subject to the remaining eligibility and semantic checks.
+
+Prefer `RunOnce` in a capability callback that promises one exact fusion
+candidate. Discovery has checked a specific source region and target
+implementation; acceptance should fulfill that proposal rather than initiate
+a new region-wide optimization search. The callback must still revalidate
+case-specific source assumptions and verify the replacement result. Exact
+membership and one replacement do not prove semantic equivalence or kernel
+support, nor do they select a unique rule if several rules match that region.
+
+Use scoped `Run` when the intended operation is a region optimization pass,
+such as repeatedly composing adjacent Transposes. New nodes can participate
+in later iterations, provided each match satisfies the rule and boundary
+checks. The caller must account for the final region, including unmatched and
+newly emitted nodes, and ensure it remains executable by the EP. This is not
+automatic rediscovery of EP capabilities or optimization across assigned
+partition boundaries.
+
+Neither API determines whether the result runs through registered EP kernels
+or EP compilation. That execution contract is separate and must be established
+by the integration. In either mode, update the owning capability's node list
+after mutation, preserve its external interface and reconcile affected
+metadata, and resolve the graph before subsequent use. Neither mode provides
+a whole-callback transaction.
+
 ### Function expansion and capability application
 
 The rewriter does not decide when ORT expands functions or assigns nodes to an
@@ -1348,7 +1600,10 @@ Resolve the complete graph before use.
 
 Rules have deterministic **registration-order priority**, including across
 different structural groups. At each eligible root, rewriting chooses the first
-passing check-and-bind callback. With `Options{.match_only = true}`, all passing callbacks are counted
+passing check-and-bind callback. Each higher-priority concrete alternative
+exhausts its assignments until one passes policy and check-and-bind before a
+lower-priority alternative or rule is tried. Replacement errors never fall back.
+With `Options{.match_only = true}`, all passing assignments are counted
 and replacements are not called. `indexed = false` selects the reference matching
 mode with the same eligibility and priority semantics.
 
@@ -1360,7 +1615,10 @@ remain unsupported; identity elimination is a separate transformation.
 `Options::max_iterations` is a positive upper bound, defaulting to 10.
 Each iteration processes a fixed candidate batch, initially all live nodes in
 topological order. For scoped `Run`, the initial batch contains only region nodes.
-Replacements and affected existing nodes are queued for the next batch, never
+With exclusively producer-rooted plans, replacements and affected existing nodes
+are queued for the next batch. If any rule has a multi-sink plan, any progress
+instead rebuilds the next batch from all live region-eligible anchors, since
+changes on a sibling branch may otherwise be missed. New candidates are never
 appended to the current batch. An existing later candidate can still match an
 earlier replacement in the same batch. Processing stops
 when a batch performs no rewrites, there are no pending candidates, or the bound
@@ -1406,8 +1664,10 @@ author must not rely on schema staging alone to prove type correctness.
 
 `Statistics` exposes live roots visited (including revisits), enumerated
 candidates, structural checks, `check_and_bind_calls`, successful matches, and completed
-rewrites. Match-only counts all passing check-and-bind callbacks; rewrite mode counts selected
-winners. These counters do not alter rule semantics.
+rewrites. Match-only counts every accepted assignment (including when there is
+no check-and-bind callback); rewrite mode counts selected winners. Structural
+checks count plan invocations, not recursive binding steps. These counters do not
+alter rule semantics.
 
 ### Opt-in failure diagnostics
 
@@ -1462,12 +1722,14 @@ the engine's integration tests or duplicate a second matcher/recipe executor.
 ## Limits and unsupported forms
 
 Concrete entry plans are limited to 64 nodes, 256 values, and 64 inputs/outputs per
-operator. They are connected acyclic graphs rooted at the final operator.
+operator. They are connected acyclic graphs anchored at the final operator;
+only internal produced-tensor edges establish connectivity. Every operator must
+also reach a declared return or, for an inline `Pattern`, the anchor.
 `PatternLibrary` supports bounded named and inline expression alternatives,
 including calls and value aliases, as described in
 [Expressions, alternatives, and branch-local inputs](#expressions-alternatives-and-branch-local-inputs).
 Standalone `Pattern` does not accept those library expressions. There is no
-general structural backtracking, implicit commutation, variadic matching,
+implicit commutation, variadic matching,
 general tensor synthesis, domain-import editing, or model-local function
 rewriting. Control-flow operators are not matched, although their subgraphs can
 be rewritten through `Apply`.
@@ -1479,14 +1741,19 @@ executed equivalence tests when writing or extending a rule.
 
 ## Matching algorithm outline
 
-A single match is a **backward traversal from a candidate sink node**, without
-structural backtracking. Starting with the pattern's final operator bound to that model
-node, the matcher visits pattern operators in reverse definition order and
-follows bound values to their producers through a value-to-producer dictionary.
+Each concrete entry compiles a graph-independent immutable match plan containing
+the last-operator anchor, value producers and output slots, internal adjacency,
+and whether every operator reaches the anchor. Producer-rooted plans retain the
+forced-producer reverse traversal fast path. Connected multi-sink plans share
+the same operator binding and complete-match validation, but enumerate outgoing
+edges to reach sibling branches and backtrack over candidate assignments.
+There is no whole-graph sibling search. A boundary-invalid assignment does not
+prevent trying another sibling. Visitor `false` stops all enumeration.
 Each input/output slot binds to one exact model value; repeated bindings must
-agree. Independent DAG branches need not have the same node ordering in the
+agree; an unbound optional slot differs from a bound absence. Distinct pattern
+operators cannot map to one model node. DAG branches need not have the same node ordering in the
 model, but operand order and data dependencies must match. A mismatch rejects
-the candidate rather than trying other producers or operand permutations.
+that assignment rather than trying operand permutations.
 Constants, attributes, deletion boundaries, and EP eligibility are checked
 before the rule's check-and-bind callback. Type unions use the separate bounded
 annotation-choice search described above.
@@ -1505,7 +1772,8 @@ for each iteration, up to max_iterations (default 10):
 ```
 
 The first batch contains all model nodes in topological order; later batches
-contain only queued candidates. New nodes and revisits wait for the next batch,
+contain queued candidates for producer-rooted rules, or all live eligible anchors
+when multi-sink rules are present and progress occurred. New nodes and revisits wait for the next batch,
 although a later node already in the current batch sees earlier graph changes.
 The retry loop is therefore **outside** the node loop, not a separate ten-retry
 loop at each node.
@@ -1515,14 +1783,17 @@ groups using the model node as the prospective pattern root. Structurally
 identical patterns can share a traversal, followed by their rule-specific check-and-bind callbacks;
 patterns with attribute predicates or type/shape annotations are kept separate. The earliest passing
 rule wins even across groups, and lower-priority work is skipped when possible.
-Structural results are cached per group and candidate node, but callbacks
+Single-result producer-rooted structural results are cached per group and candidate
+node; multi-sink assignments are streamed, not collected in a potentially
+exponential cache. Callbacks
 run in global registration order, not group order. Rewrite mode stops at
 the first accepted rule without invoking lower-priority callbacks; match-only
 mode visits all matching rules in that same order. Group signatures use
 locale-independent serialization.
 With `indexed = false`, the reference mode instead tries all opset-applicable
 rules in registration order at each node. Match-only mode processes one batch,
-counts all passing rules, and never applies replacements.
+counts all passing assignments, and never applies replacements.
+`structural_checks` counts plan invocations, not recursive enumeration steps.
 
 ## Instance binding views and handwritten C++ structs
 

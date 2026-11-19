@@ -454,7 +454,10 @@ TEST_F(ActivationOpTest, CeluOpset28NewTypes) {
   bf16_test.AddAttribute("alpha", alpha);
   bf16_test.AddInput<BFloat16>("X", {2, 2}, FloatsToBFloat16s(input));
   bf16_test.AddOutput<BFloat16>("Y", {2, 2}, FloatsToBFloat16s(expected));
-  bf16_test.Run();
+  if (!CudaHasBF16Support()) {
+    bf16_test.ConfigExcludeEps({kCudaExecutionProvider, kCudaNHWCExecutionProvider});
+  }
+  bf16_test.RunWithConfig();
 
   TestActivationOp<double>(
       "Celu", {{-1.0, -0.5, 0.0, 1.0}},
@@ -483,7 +486,10 @@ TEST_F(ActivationOpTest, CeluOpset28BFloat16CastsAlpha) {
   test.AddAttribute("alpha", 0.5001f);
   test.AddInput<BFloat16>("X", {1}, {BFloat16(-3.109375f)});
   test.AddOutput<BFloat16>("Y", {1}, {BFloat16(-0.498046875f)});
-  test.Run();
+  if (!CudaHasBF16Support()) {
+    test.ConfigExcludeEps({kCudaExecutionProvider, kCudaNHWCExecutionProvider});
+  }
+  test.RunWithConfig();
 }
 
 TEST_F(ActivationOpTest, LeakyRelu) {
@@ -865,32 +871,7 @@ TEST_F(ActivationOpNoInfTest, Softsign) {
   TestActivationOp<float>(
       "Softsign",
       input_values,
-      [](float x) {
-        auto result = x / (1 + std::abs(x));
-
-#if defined(__arm__)
-        // Softsign uses Eigen inverse(), which on ARM32 results in a different value when x is FLT_MAX or -FLT_MAX
-        // 3.40282347e+38 -> 0 with ARM32 inverse() vs something like 2.939e-39#DEN with other platforms.
-        //
-        // Possibly explained by https://en.wikipedia.org/wiki/ARM_architecture#Advanced_SIMD_(Neon)
-        // 'A quirk of Neon in Armv7 devices is that it flushes all subnormal numbers to zero'
-        //
-        // c.f.
-        // cmake\external\eigen\Eigen\src\Core\arch\SSE\PacketMath.h uses _mm_div_ps for 'pdiv<Packet4f>'
-        // cmake\external\eigen\Eigen\src\Core\arch\NEON\PacketMath.h uses a custom implementation for 'pdiv<Packet4f>'
-        //
-        // Special case the expected values to allow for that. If handling FLT_MAX more consistently is required
-        // we'd need to not use Eigen for Softsign on ARM32.
-        //
-        if (x == FLT_MAX) {
-          result = 0.;
-        } else if (x == -FLT_MAX) {
-          result = -0.;
-        }
-#endif
-
-        return result;
-      },
+      [](float x) { return x / (1 + std::abs(x)); },
       {}, {}, false);  // Disable TensorRT because result mismatches
 }
 
