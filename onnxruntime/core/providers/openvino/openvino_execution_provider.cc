@@ -185,7 +185,6 @@ common::Status OpenVINOExecutionProvider::Compile(
 
       for (const auto& fused_node_graph : fused_nodes) {
         const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
-
         // Set include_embed_data to true only for the first backend manager
         backend_it->TryExportCompiledBlobAsEPCtxNode(graph_body_viewer, is_first);
 
@@ -208,9 +207,9 @@ common::Status OpenVINOExecutionProvider::Compile(
   return status;
 }
 
-#ifdef USE_OVEP_NPU_MEMORY
+ #ifdef USE_OVEP_NPU_MEMORY
 std::vector<AllocatorPtr> OpenVINOExecutionProvider::CreatePreferredAllocators() {
-  if (session_context_.device_type.find("NPU") != std::string::npos) {
+  /* if (session_context_.device_type.find("NPU") != std::string::npos) {
     AllocatorCreationInfo npu_allocator_info{
         [this](OrtDevice::DeviceId device_id) {
           return std::make_unique<OVRTAllocator>(
@@ -224,9 +223,9 @@ std::vector<AllocatorPtr> OpenVINOExecutionProvider::CreatePreferredAllocators()
 
     // fill in allocator
     return std::vector<AllocatorPtr>{CreateAllocator(npu_allocator_info)};
-  } else {
+  } else {*/
     return std::vector<AllocatorPtr>{};
-  }
+  //}
 }
 #endif
 

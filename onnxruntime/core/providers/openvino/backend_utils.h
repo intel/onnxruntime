@@ -107,6 +107,10 @@ void printPerformanceCounts(OVInferRequestPtr request, std::ostream& stream);
 
 bool IsModelStreamXML(std::istream& model_stream);
 
+void Set_Affinity(std::shared_ptr<OVNetwork> ov_model, const SessionContext& session_context);
+
+std::string get_shapes_string(const reshape_t& shapes);
+
 }  // namespace backend_utils
 }  // namespace openvino_ep
 }  // namespace onnxruntime
